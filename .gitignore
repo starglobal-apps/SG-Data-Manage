@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+*.log
+.clasprc.json
+.claude/
+
+# Real spreadsheet IDs — pushed to Apps Script by clasp, never to the public repo.
+# See Sources.example.js for the shape.
+gas/Sources.js
+.clasp.json

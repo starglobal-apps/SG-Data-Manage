@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a56db">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="SG Data">
+  <title>SG Data</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button id="btn-back" class="icon-btn" hidden aria-label="Back">&#8592;</button>
+  <div class="topbar-title" id="topbar-title">SG Data</div>
+  <button id="btn-logout" class="icon-btn" hidden aria-label="Logout">&#x23FB;</button>
+</header>
+
+<main>
+
+  <!-- LOGIN -->
+  <section id="scr-login" class="screen">
+    <div class="card center">
+      <h1>SG Data</h1>
+      <p class="muted">Production data entry</p>
+      <label>PIN</label>
+      <input id="in-pin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="••••">
+      <button id="btn-login" class="primary big">Login</button>
+      <p id="login-msg" class="msg"></p>
+    </div>
+  </section>
+
+  <!-- HOME -->
+  <section id="scr-home" class="screen" hidden>
+    <div class="row">
+      <input id="in-date" type="date">
+      <div id="factory-toggle" class="toggle"></div>
+    </div>
+
+    <div class="tiles">
+      <button class="tile" data-go="att">
+        <span class="tile-icon">&#128101;</span>
+        <span class="tile-name">Attendance</span>
+        <span class="tile-sub">Subah ki entry</span>
+      </button>
+      <button class="tile" data-go="hourly" disabled>
+        <span class="tile-icon">&#9201;</span>
+        <span class="tile-name">Hourly Output</span>
+        <span class="tile-sub">Phase 3</span>
+      </button>
+      <button class="tile" data-go="manpower" disabled>
+        <span class="tile-icon">&#128100;</span>
+        <span class="tile-name">Manpower</span>
+        <span class="tile-sub">Phase 4</span>
+      </button>
+      <button class="tile" data-go="dayclose" disabled>
+        <span class="tile-icon">&#127769;</span>
+        <span class="tile-name">Day Close</span>
+        <span class="tile-sub">Phase 5</span>
+      </button>
+      <button class="tile manager-only" data-go="review" disabled>
+        <span class="tile-icon">&#9989;</span>
+        <span class="tile-name">Review</span>
+        <span class="tile-sub">Phase 5</span>
+      </button>
+    </div>
+
+    <h2>Aaj ki attendance</h2>
+    <div id="att-status" class="list"></div>
+  </section>
+
+  <!-- ATTENDANCE -->
+  <section id="scr-att" class="screen" hidden>
+    <div class="card">
+      <div class="row">
+        <div class="field">
+          <label>Dept / Line</label>
+          <select id="att-dept"></select>
+        </div>
+        <div class="field small">
+          <label>Shift</label>
+          <select id="att-shift"></select>
+        </div>
+      </div>
+      <div id="att-banner" class="banner" hidden></div>
+    </div>
+
+    <table class="att-table">
+      <thead><tr><th>Role</th><th>Hrs</th><th>Count</th></tr></thead>
+      <tbody id="att-rows"></tbody>
+      <tfoot><tr><td>Total</td><td id="att-total-hrs">0</td><td id="att-total-count">0</td></tr></tfoot>
+    </table>
+
+    <div class="sticky-bottom">
+      <button id="btn-att-save" class="primary big">Save</button>
+    </div>
+  </section>
+
+</main>
+
+<div id="busy" class="busy" hidden><div class="spinner"></div></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
