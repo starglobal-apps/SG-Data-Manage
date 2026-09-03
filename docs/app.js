@@ -1,4 +1,5 @@
-// app.js — SG Data mobile app (PWA). Talks to the Apps Script API in gas/Api.js.
+// app.js — SG Data mobile app core: auth, api + offline queue, navigation, home, attendance.
+// Other screens live in modules.js and register through window.SG.
 (function () {
   'use strict';
 
@@ -14,6 +15,8 @@
     factory: localStorage.getItem('sg_factory') || '666',
     screen: 'login'
   };
+  var screens = {};       // name -> open function (registered by modules)
+  var WRITE_ACTIONS = ['att.save', 'hourly.save', 'manpower.save'];
 
   function parse(s) { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
   function pad(n) { return String(n).padStart(2, '0'); }
@@ -23,11 +26,11 @@
   // ---------- ui helpers ----------
 
   var toastTimer;
-  function toast(msg, kind) {
+  function toast(msg, kind, ms) {
     var t = $('#toast');
     t.textContent = msg; t.className = 'toast ' + (kind || ''); t.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.hidden = true; }, 2800);
+    toastTimer = setTimeout(function () { t.hidden = true; }, ms || 3200);
   }
   function busy(on) { $('#busy').hidden = !on; }
 
@@ -40,32 +43,99 @@
     window.scrollTo(0, 0);
   }
 
-  // ---------- api ----------
+  function ctxTitle(prefix) { return prefix + ' · ' + state.date + ' · FAC' + state.factory; }
 
-  function api(action, payload) {
-    if (!API_URL) return Promise.reject(new Error('API URL set nahi hai — docs/config.js me daalo'));
-    busy(true);
-    var body = Object.assign({}, payload || {}, { action: action, token: state.token });
+  // ---------- api + offline queue ----------
+
+  function rawPost(body) {
     return fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(body),
-      redirect: 'follow'
-    })
-      .then(function (r) { return r.json(); })
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body), redirect: 'follow'
+    }).then(function (r) { return r.json(); });
+  }
+
+  function api(action, payload, opts) {
+    opts = opts || {};
+    if (!API_URL) return Promise.reject(new Error('API URL set nahi hai — docs/config.js me daalo'));
+    if (!opts.quiet) busy(true);
+    var body = Object.assign({}, payload || {}, { action: action, token: state.token });
+    return rawPost(body)
       .then(function (data) {
         if (!data.ok) {
           if (data.error === 'AUTH') { logout(); }
-          throw new Error(data.message || data.error || 'Server error');
+          var err = new Error(data.message || data.error || 'Server error');
+          err.code = data.error; err.data = data;
+          throw err;
         }
+        if (queue().length) setTimeout(flushQueue, 50);
         return data;
       })
       .catch(function (err) {
-        if (err instanceof TypeError) throw new Error('Network nahi mila — internet check karo');
+        if (err instanceof TypeError) {
+          if (WRITE_ACTIONS.indexOf(action) >= 0 && !opts.noQueue) {
+            enqueue(action, payload);
+            return { ok: true, queued: true };
+          }
+          throw new Error('Network nahi mila — internet check karo');
+        }
         throw err;
       })
-      .finally(function () { busy(false); });
+      .finally(function () { if (!opts.quiet) busy(false); });
   }
+
+  function queue() { return parse(localStorage.getItem('sg_queue')) || []; }
+  function saveQueue(q) { localStorage.setItem('sg_queue', JSON.stringify(q)); renderQueue(); }
+  function enqueue(action, payload) {
+    var q = queue();
+    q.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), action: action, payload: payload, ts: new Date().toISOString(), error: '' });
+    saveQueue(q);
+    toast('Offline — entry save hogi jab net aayega (' + q.length + ' pending)', '', 4000);
+  }
+  var flushing = false;
+  function flushQueue() {
+    if (flushing || !navigator.onLine || !state.token) return Promise.resolve();
+    var q = queue();
+    if (!q.length) return Promise.resolve();
+    flushing = true;
+    var item = q[0];
+    return rawPost(Object.assign({}, item.payload, { action: item.action, token: state.token }))
+      .then(function (data) {
+        var cur = queue();
+        if (data.ok) { cur = cur.filter(function (x) { return x.id !== item.id; }); saveQueue(cur); toast('Offline entry sync ho gayi', 'ok'); }
+        else if (data.error === 'AUTH') { logout(); }
+        else {
+          // server rejected it (validation, lock...) — keep it visible for the user to retry or delete
+          cur = cur.map(function (x) { if (x.id === item.id) x.error = data.message || data.error; return x; });
+          // move failed item to the end so others can flush
+          var failed = cur.filter(function (x) { return x.id === item.id; }), rest = cur.filter(function (x) { return x.id !== item.id; });
+          saveQueue(rest.concat(failed));
+        }
+      })
+      .catch(function () { /* still offline */ })
+      .finally(function () {
+        flushing = false;
+        var left = queue();
+        if (left.length && left.some(function (x) { return !x.error; })) setTimeout(flushQueue, 500);
+      });
+  }
+  function renderQueue() {
+    var q = queue();
+    var b = $('#queue-badge'); b.hidden = !q.length; b.textContent = '⏳ ' + q.length;
+    var box = $('#queue-box'); box.hidden = !q.length;
+    $('#queue-list').innerHTML = q.map(function (x) {
+      var p = x.payload || {};
+      var what = x.action.replace('.save', '') + ' · ' + esc(p.dept || '') + (p.srn ? ' · ' + esc(p.srn) : '') + ' · ' + esc(p.date || '');
+      return '<div class="item"><div><div class="name">' + what + '</div><div class="sub" style="color:' + (x.error ? 'var(--bad)' : 'var(--muted)') + '">' + esc(x.error || 'Sync ka wait') + '</div></div>' +
+        '<div class="actions-inline"><button class="primary small" data-retry="' + x.id + '">Retry</button><button class="danger small" data-drop="' + x.id + '">✕</button></div></div>';
+    }).join('');
+  }
+  $('#queue-list').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var q = queue();
+    if (b.dataset.drop) { if (confirm('Ye offline entry hata dein?')) saveQueue(q.filter(function (x) { return x.id !== b.dataset.drop; })); }
+    if (b.dataset.retry) { saveQueue(q.map(function (x) { if (x.id === b.dataset.retry) x.error = ''; return x; })); flushQueue(); }
+  });
+  window.addEventListener('online', function () { flushQueue(); });
 
   // ---------- auth ----------
 
@@ -81,7 +151,7 @@
         $('#in-pin').value = '';
         return loadMasters();
       })
-      .then(function () { goHome(); })
+      .then(function () { goHome(); flushQueue(); })
       .catch(function (e) { $('#login-msg').textContent = e.message; });
   }
 
@@ -116,15 +186,13 @@
     return c ? c.label : (cat || '');
   }
 
-  // Depts for a factory, restricted to the user's allowed depts, grouped by category order then name
-  function deptsFor(factory) {
-    var list = M('DEPT').filter(function (d) { return d.factory === factory; });
+  // Depts for a factory, restricted to the user's allowed depts (and optionally a category), grouped by category
+  function deptsFor(factory, cat) {
+    var list = M('DEPT').filter(function (d) { return d.factory === factory && (!cat || d.extra === cat); });
     if (state.user && state.user.depts && state.user.depts.length) {
       list = list.filter(function (d) { return state.user.depts.indexOf(d.key) >= 0; });
     }
-    return list.sort(function (a, b) {
-      return (catOrder(a.extra) - catOrder(b.extra)) || a.key.localeCompare(b.key);
-    });
+    return list.sort(function (a, b) { return (catOrder(a.extra) - catOrder(b.extra)) || a.key.localeCompare(b.key); });
   }
 
   function deptCategory(dept) {
@@ -132,13 +200,26 @@
     return d ? d.extra : '';
   }
 
-  // Fixed designation list for a dept's category (CAT_ROLE); falls back to every ROLE
   function rolesForDept(dept) {
     var cat = deptCategory(dept);
     var list = M('CAT_ROLE').filter(function (r) { return r.key === cat; })
       .sort(function (a, b) { return Number(a.extra) - Number(b.extra); })
       .map(function (r) { return r.value; });
     return list.length ? list : M('ROLE').map(function (r) { return r.key; });
+  }
+
+  function deptOptions(depts, selected) {
+    var groups = {}, order = [];
+    depts.forEach(function (d) {
+      var g = catLabel(d.extra) || 'Other';
+      if (!groups[g]) { groups[g] = []; order.push(g); }
+      groups[g].push(d);
+    });
+    return order.map(function (g) {
+      return '<optgroup label="' + esc(g) + '">' + groups[g].map(function (d) {
+        return '<option value="' + esc(d.key) + '"' + (d.key === selected ? ' selected' : '') + '>' + esc(d.key) + '</option>';
+      }).join('') + '</optgroup>';
+    }).join('');
   }
 
   // ---------- home ----------
@@ -152,26 +233,35 @@
       return '<button data-f="' + esc(f) + '" class="' + (f === state.factory ? 'on' : '') + '">FAC' + esc(f) + '</button>';
     }).join('');
     $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); });
+    renderQueue();
     refreshStatus();
   }
+
+  function pill(s) { return s ? '<span class="pill ' + esc(s) + '">' + esc(s) + '</span>' : ''; }
 
   function refreshStatus() {
     var box = $('#att-status');
     box.innerHTML = '<div class="empty">Loading…</div>';
-    api('att.status', { date: state.date, factory: state.factory })
-      .then(function (d) {
-        var done = {};
-        d.depts.forEach(function (x) { done[x.dept + '|' + x.shift] = x; });
-        var depts = deptsFor(state.factory);
-        if (!depts.length) { box.innerHTML = '<div class="empty">Is factory ke depts MASTERS me nahi hain</div>'; return; }
-        box.innerHTML = depts.map(function (dp) {
-          var f = done[dp.key + '|Final'], o = done[dp.key + '|OT'], n = done[dp.key + '|Night'];
-          var val = f ? f.manpower + ' mp' : '—';
-          var sub = [catLabel(dp.extra), o ? 'OT ' + o.manpower : '', n ? 'Night ' + n.manpower : '', f ? 'by ' + f.by : ''].filter(String).join(' · ');
-          return '<div class="item" data-dept="' + esc(dp.key) + '"><div><div class="name">' + esc(dp.key) + '</div><div class="sub">' + esc(sub || 'Entry baaki') + '</div></div><div class="val" style="color:' + (f ? 'var(--ok)' : 'var(--muted)') + '">' + esc(val) + '</div></div>';
-        }).join('');
-      })
-      .catch(function (e) { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    Promise.all([
+      api('att.status', { date: state.date, factory: state.factory }, { quiet: true }),
+      api('hourly.day', { date: state.date, factory: state.factory }, { quiet: true })
+    ]).then(function (res) {
+      var att = {}, hr = {}, st = res[1].statuses || {};
+      res[0].depts.forEach(function (x) { att[x.dept + '|' + x.shift] = x; });
+      res[1].hourly.forEach(function (x) { hr[x.dept + '|' + x.type] = x; });
+      var depts = deptsFor(state.factory);
+      if (!depts.length) { box.innerHTML = '<div class="empty">Is factory ke depts MASTERS me nahi hain</div>'; return; }
+      box.innerHTML = depts.map(function (dp) {
+        var f = att[dp.key + '|Final'], o = att[dp.key + '|OT'], n = att[dp.key + '|Night'];
+        var parts = [catLabel(dp.extra)];
+        if (o) parts.push('OT ' + o.manpower);
+        if (n) parts.push('Night ' + n.manpower);
+        ['STITCH', 'ENDLINE', 'PACKING'].forEach(function (t) { var h = hr[dp.key + '|' + t]; if (h) parts.push(t.toLowerCase() + ' ' + h.qty + ' (' + h.slots + ' slot)'); });
+        var status = (st[dp.key + '|STITCH'] || st[dp.key + '|ENDLINE'] || st[dp.key + '|PACKING'] || st[dp.key + '|ATT'] || {}).status;
+        var val = f ? f.manpower + ' mp' : '—';
+        return '<div class="item" data-dept="' + esc(dp.key) + '"><div><div class="name">' + esc(dp.key) + pill(status) + '</div><div class="sub">' + esc(parts.join(' · ')) + '</div></div><div class="val" style="color:' + (f ? 'var(--ok)' : 'var(--muted)') + '">' + esc(val) + '</div></div>';
+      }).join('');
+    }).catch(function (e) { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
 
   // ---------- attendance ----------
@@ -183,22 +273,11 @@
     if (!depts.length) { toast('Is factory ke depts MASTERS me nahi hain', 'bad'); return; }
     att.dept = dept || att.dept || depts[0].key;
     if (!depts.some(function (d) { return d.key === att.dept; })) att.dept = depts[0].key;
-
-    var groups = {}, order = [];
-    depts.forEach(function (d) {
-      var g = catLabel(d.extra) || 'Other';
-      if (!groups[g]) { groups[g] = []; order.push(g); }
-      groups[g].push(d);
-    });
-    $('#att-dept').innerHTML = order.map(function (g) {
-      return '<optgroup label="' + esc(g) + '">' + groups[g].map(function (d) {
-        return '<option value="' + esc(d.key) + '"' + (d.key === att.dept ? ' selected' : '') + '>' + esc(d.key) + '</option>';
-      }).join('') + '</optgroup>';
-    }).join('');
+    $('#att-dept').innerHTML = deptOptions(depts, att.dept);
     $('#att-shift').innerHTML = state.masters.shifts.map(function (s) {
       return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>';
     }).join('');
-    show('att', 'Attendance · ' + state.date + ' · FAC' + state.factory);
+    show('att', ctxTitle('Attendance'));
     loadAttendance();
   }
 
@@ -229,8 +308,7 @@
     var byRole = {};
     rows.forEach(function (r) { byRole[r.role] = r; });
     var roles = rolesForDept(att.dept);
-    rows.forEach(function (r) { if (roles.indexOf(r.role) < 0) roles.push(r.role); }); // keep any saved role not in the fixed list
-
+    rows.forEach(function (r) { if (roles.indexOf(r.role) < 0) roles.push(r.role); });
     $('#att-rows').innerHTML = roles.map(function (role) {
       var r = byRole[role] || { hours: sd.hours, count: 0 };
       var opts = sd.hourOptions.slice();
@@ -263,7 +341,7 @@
     if (!rows.length && !confirm('Koi count nahi bhara. Is dept ki aaj ki entry khali save karein?')) return;
     api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, rows: rows })
       .then(function (d) {
-        toast('Saved: ' + d.saved + ' roles', 'ok');
+        toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok');
         goHome();
       })
       .catch(function (e) { toast(e.message, 'bad'); });
@@ -286,6 +364,7 @@
     t.addEventListener('click', function () {
       var go = t.getAttribute('data-go');
       if (go === 'att') openAttendance();
+      else if (screens[go]) screens[go]();
       else toast('Ye module abhi banega', '');
     });
   });
@@ -299,18 +378,29 @@
   $('#att-rows').addEventListener('input', updateAttTotals);
   $('#btn-att-save').addEventListener('click', saveAttendance);
 
+  // ---------- shared namespace for modules.js ----------
+
+  window.SG = {
+    state: state, $: $, $$: $$, esc: esc, api: api, show: show, toast: toast, busy: busy, pill: pill,
+    M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory,
+    rolesForDept: rolesForDept, catLabel: catLabel, goHome: goHome, ctxTitle: ctxTitle, todayStr: todayStr, screens: screens
+  };
+
   // ---------- boot ----------
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function () {});
   }
+  renderQueue();
 
   if (!API_URL) {
     show('login');
     $('#login-msg').textContent = 'docs/config.js me API_URL set karo';
   } else if (state.token && state.user) {
     // always refresh masters on open so MASTERS sheet edits reach the phone without re-login
-    api('me').then(loadMasters).then(goHome).catch(function () { show('login'); });
+    api('me').then(loadMasters).then(function () { goHome(); flushQueue(); }).catch(function (e) {
+      if (state.masters && e.message && /Network/.test(e.message)) goHome(); else show('login');
+    });
   } else {
     show('login');
   }

@@ -33,6 +33,23 @@ function tab_(name, create) {
   return sh;
 }
 
+// Adds any header columns that CFG.HEADERS has but the sheet does not (appended at the end, in order).
+// Column order in CFG.HEADERS must match the sheet for existing columns; new ones are appended.
+function ensureHeaders_(name) {
+  var sh = tab_(name, true), head = CFG.HEADERS[name];
+  var cur = sh.getLastColumn() ? sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(str_) : [];
+  var added = [];
+  head.forEach(function(h, i) {
+    if (cur.indexOf(h) >= 0) return;
+    // insert at position i so CFG order and sheet order stay aligned
+    sh.insertColumnBefore(i + 1);
+    sh.getRange(1, i + 1).setValue(h).setFontWeight('bold');
+    cur.splice(i, 0, h);
+    added.push(h);
+  });
+  return added;
+}
+
 // Read a tab as an array of objects keyed by CFG.HEADERS. Adds _row (sheet row number).
 function readTab_(name) {
   var sh = tab_(name, false);

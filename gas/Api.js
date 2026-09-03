@@ -35,7 +35,20 @@ function routes_() {
     'masters':    getMasters_,
     'att.get':    attGet_,
     'att.save':   attSave_,
-    'att.status': attStatus_
+    'att.status': attStatus_,
+    'orders.active':  ordersActive_,
+    'orders.refresh': ordersRefresh_,
+    'hourly.get':     hourlyGet_,
+    'hourly.save':    hourlySave_,
+    'hourly.day':     hourlyDay_,
+    'manpower.get':   manpowerGet_,
+    'manpower.save':  manpowerSave_,
+    'manpower.delete': manpowerDelete_,
+    'day.build':      dayBuild_,
+    'day.submit':     daySubmit_,
+    'review.list':    reviewList_,
+    'review.decide':  reviewDecide_,
+    'review.send':    reviewSend_
   };
 }
 
@@ -129,6 +142,9 @@ function getMasters_(req, user) {
     slots: CFG.SLOTS,
     floors: CFG.FLOORS,
     categories: CFG.DEPT_CATEGORIES.map(function(c) { return { key: c.key, label: c.label }; }),
+    hourlyTypes: CFG.HOURLY_TYPES,
+    mpEvents: CFG.MP_EVENTS,
+    appStart: CFG.APP_START_DATE,
     masters: m
   };
 }

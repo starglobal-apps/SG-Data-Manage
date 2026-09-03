@@ -54,8 +54,21 @@ As a fallback, `Import.js` reads Script Properties named `SRC_ATT`, `SRC_PACKING
 ## Phases
 
 - [x] 1. Setup, login, masters, attendance
-- [ ] 2. Hourly output (stitching) + loading balance
-- [ ] 3. Manpower events
-- [ ] 4. Day close + manager review + send to final
-- [ ] 5. Endline + packing + chain validation
-- [ ] 6. Offline queue, reports
+- [x] 2. Hourly output (stitching / endline / packing) + loading balance (hard block)
+- [x] 3. Manpower events (half day / left / late / absent / extra)
+- [x] 4. Day close + manager review + send to final (source sheets)
+- [x] 5. Chain validation: Loading >= Stitching >= Endline checked; Endline pass >= Packing
+- [x] 6. Offline queue for attendance / hourly / manpower saves
+- [ ] 7. Verify FINAL_TARGETS column mapping with `diagFinalTargets()` before first real Send to Final
+
+## Data flow
+
+```
+ATT_DAILY  ──┐
+HOURLY_LOG ──┼─ day.build ─▶ DAY_SUMMARY (Draft) ─ submit ─▶ Submitted ─ approve ─▶ Approved ─ send ─▶ Sent
+MANPOWER   ──┘                                                        └─ reject ─▶ Rejected ─ re-entry ─▶ Draft
+```
+
+Send to Final appends only the mapped columns (CFG.FINAL_TARGETS) at the first empty row of each source sheet;
+formula columns are never touched. History before CFG.APP_START_DATE is read from MASTER DATA, app-era rows
+from HOURLY_LOG, so nothing double counts after runAllImport.

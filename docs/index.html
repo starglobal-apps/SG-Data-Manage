@@ -18,6 +18,7 @@
 <header class="topbar">
   <button id="btn-back" class="icon-btn" hidden aria-label="Back">&#8592;</button>
   <div class="topbar-title" id="topbar-title">SG Data</div>
+  <span id="queue-badge" class="badge" hidden title="Offline entries pending"></span>
   <button id="btn-logout" class="icon-btn" hidden aria-label="Logout">&#x23FB;</button>
 </header>
 
@@ -29,7 +30,7 @@
       <h1>SG Data</h1>
       <p class="muted">Production data entry</p>
       <label>PIN</label>
-      <input id="in-pin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="••••">
+      <input id="in-pin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="••••••">
       <button id="btn-login" class="primary big">Login</button>
       <p id="login-msg" class="msg"></p>
     </div>
@@ -43,34 +44,19 @@
     </div>
 
     <div class="tiles">
-      <button class="tile" data-go="att">
-        <span class="tile-icon">&#128101;</span>
-        <span class="tile-name">Attendance</span>
-        <span class="tile-sub">Subah ki entry</span>
-      </button>
-      <button class="tile" data-go="hourly" disabled>
-        <span class="tile-icon">&#9201;</span>
-        <span class="tile-name">Hourly Output</span>
-        <span class="tile-sub">Phase 3</span>
-      </button>
-      <button class="tile" data-go="manpower" disabled>
-        <span class="tile-icon">&#128100;</span>
-        <span class="tile-name">Manpower</span>
-        <span class="tile-sub">Phase 4</span>
-      </button>
-      <button class="tile" data-go="dayclose" disabled>
-        <span class="tile-icon">&#127769;</span>
-        <span class="tile-name">Day Close</span>
-        <span class="tile-sub">Phase 5</span>
-      </button>
-      <button class="tile manager-only" data-go="review" disabled>
-        <span class="tile-icon">&#9989;</span>
-        <span class="tile-name">Review</span>
-        <span class="tile-sub">Phase 5</span>
-      </button>
+      <button class="tile" data-go="att"><span class="tile-icon">&#128101;</span><span class="tile-name">Attendance</span><span class="tile-sub">Subah ki entry</span></button>
+      <button class="tile" data-go="hourly"><span class="tile-icon">&#9201;</span><span class="tile-name">Hourly Output</span><span class="tile-sub">Stitching · Endline · Packing</span></button>
+      <button class="tile" data-go="manpower"><span class="tile-icon">&#128100;</span><span class="tile-name">Manpower</span><span class="tile-sub">Half day / left / late</span></button>
+      <button class="tile" data-go="dayclose"><span class="tile-icon">&#127769;</span><span class="tile-name">Day Close</span><span class="tile-sub">Shaam ka submit</span></button>
+      <button class="tile manager-only" data-go="review"><span class="tile-icon">&#9989;</span><span class="tile-name">Review</span><span class="tile-sub">Approve · Send to Final</span></button>
     </div>
 
-    <h2>Aaj ki attendance</h2>
+    <div id="queue-box" hidden>
+      <h2>Offline pending</h2>
+      <div id="queue-list" class="list"></div>
+    </div>
+
+    <h2>Aaj ka status</h2>
     <div id="att-status" class="list"></div>
   </section>
 
@@ -78,26 +64,93 @@
   <section id="scr-att" class="screen" hidden>
     <div class="card">
       <div class="row">
-        <div class="field">
-          <label>Dept / Line</label>
-          <select id="att-dept"></select>
-        </div>
-        <div class="field small">
-          <label>Shift</label>
-          <select id="att-shift"></select>
-        </div>
+        <div class="field"><label>Dept / Line</label><select id="att-dept"></select></div>
+        <div class="field small"><label>Shift</label><select id="att-shift"></select></div>
       </div>
       <div id="att-banner" class="banner" hidden></div>
     </div>
-
     <table class="att-table">
       <thead><tr><th>Role</th><th>Hrs</th><th>Count</th></tr></thead>
       <tbody id="att-rows"></tbody>
       <tfoot><tr><td>Total</td><td id="att-total-hrs">0</td><td id="att-total-count">0</td></tr></tfoot>
     </table>
+    <div class="sticky-bottom"><button id="btn-att-save" class="primary big">Save</button></div>
+  </section>
 
-    <div class="sticky-bottom">
-      <button id="btn-att-save" class="primary big">Save</button>
+  <!-- HOURLY -->
+  <section id="scr-hourly" class="screen" hidden>
+    <div id="hr-types" class="toggle wide"></div>
+    <div class="card">
+      <div class="row">
+        <div class="field"><label id="hr-dept-label">Line</label><select id="hr-dept"></select></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>SRN</label><select id="hr-srn"></select></div>
+        <button id="hr-refresh" class="icon-btn dark" title="Loading refresh">&#8635;</button>
+      </div>
+      <div class="row" id="hr-extra-row">
+        <div class="field" id="hr-floor-wrap"><label>Floor</label><select id="hr-floor"></select></div>
+        <div class="field" id="hr-checker-wrap" hidden><label>Checker</label><input id="hr-checker" type="text" placeholder="Checker ka naam"></div>
+      </div>
+      <div id="hr-balance" class="balance"></div>
+      <div id="hr-banner" class="banner" hidden></div>
+    </div>
+    <table class="att-table slot-table">
+      <thead id="hr-head"></thead>
+      <tbody id="hr-rows"></tbody>
+      <tfoot id="hr-foot"></tfoot>
+    </table>
+    <div class="sticky-bottom"><button id="btn-hr-save" class="primary big">Save</button></div>
+  </section>
+
+  <!-- MANPOWER -->
+  <section id="scr-manpower" class="screen" hidden>
+    <div class="card">
+      <div class="row">
+        <div class="field"><label>Dept / Line</label><select id="mp-dept"></select></div>
+        <div class="field"><label>Role</label><select id="mp-role"></select></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Kya hua</label><select id="mp-event"></select></div>
+        <div class="field small"><label>Kitne log</label><input id="mp-count" type="number" inputmode="numeric" min="1" value="1"></div>
+      </div>
+      <div class="row">
+        <div class="field small" id="mp-time-wrap"><label>Time</label><input id="mp-time" type="time"></div>
+        <div class="field"><label>Note</label><input id="mp-note" type="text" placeholder="optional"></div>
+      </div>
+      <button id="btn-mp-save" class="primary big">Add</button>
+    </div>
+    <h2>Aaj ke events</h2>
+    <div id="mp-list" class="list"></div>
+  </section>
+
+  <!-- DAY CLOSE -->
+  <section id="scr-dayclose" class="screen" hidden>
+    <div class="card">
+      <div class="row">
+        <div class="field"><label>Dept (blank = sab)</label><select id="dc-dept"></select></div>
+        <button id="btn-dc-preview" class="primary">Preview</button>
+      </div>
+      <p class="muted small-text">Hourly entries → final rows. Preview dekho, phir Submit. Submit ke baad us din ki entry lock ho jaati hai (manager reject kare to khulti hai).</p>
+    </div>
+    <div id="dc-out"></div>
+    <div class="sticky-bottom"><button id="btn-dc-submit" class="primary big" disabled>Submit for review</button></div>
+  </section>
+
+  <!-- REVIEW (manager) -->
+  <section id="scr-review" class="screen" hidden>
+    <div class="card">
+      <div class="row">
+        <div class="field"><label>Status</label><select id="rv-status"><option value="Submitted">Submitted</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option><option value="Sent">Sent</option><option value="">Sab (14 din)</option></select></div>
+        <div class="field small"><label>Date</label><input id="rv-date" type="date"></div>
+        <label class="chk"><input id="rv-all" type="checkbox"> All</label>
+      </div>
+    </div>
+    <div id="rv-list" class="list"></div>
+    <div class="sticky-bottom actions">
+      <button id="btn-rv-reject" class="danger">Reject</button>
+      <button id="btn-rv-approve" class="primary">Approve</button>
+      <button id="btn-rv-send" class="ok">Send to Final</button>
     </div>
   </section>
 
@@ -108,5 +161,6 @@
 
 <script src="config.js"></script>
 <script src="app.js"></script>
+<script src="modules.js"></script>
 </body>
 </html>

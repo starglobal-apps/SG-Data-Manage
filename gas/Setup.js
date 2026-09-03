@@ -7,7 +7,8 @@ function setupAppSheets() {
     var name = CFG.TABS[k];
     var existed = !!tab_(name, false);
     tab_(name, true);
-    log.push(name + (existed ? ' : exists' : ' : created'));
+    var added = existed ? ensureHeaders_(name) : [];
+    log.push(name + (existed ? ' : exists' + (added.length ? ' (+' + added.join(',') + ')' : '') : ' : created'));
   });
 
   var users = readTab_(CFG.TABS.USERS);
@@ -43,7 +44,7 @@ function seedMasters_() {
   CFG.FACTORIES.forEach(function(f) { add('FACTORY', f, 'FAC' + f, f); });
   CFG.FLOORS.forEach(function(f) { add('FLOOR', f, f); });
 
-  var roles = {}, depts = {}, lines = {};
+  var roles = {}, depts = {}, lines = {}, lineFloor = {}, lineStaff = {};
   var cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 90);
   CFG.DEFAULT_ROLES.forEach(function(r) { roles[r] = true; });
 
@@ -61,9 +62,20 @@ function seedMasters_() {
       });
       // col 4 = Stitching Data -> [date, line, dept, srn, floor, ...] ; col 5 = FAC117 stitching -> [date, floor, line, dept, srn, ...]
       var s = parseJson_(row[3]);
-      if (s && str_(s[1]) && str_(s[2])) noteLine_(lines, '666', str_(s[1]), str_(s[2]), parseDate_(s[0]));
+      if (s && str_(s[1]) && str_(s[2])) {
+        noteLine_(lines, '666', str_(s[1]), str_(s[2]), parseDate_(s[0]));
+        noteLatest_(lineFloor, str_(s[2]), str_(s[4]), '', parseDate_(s[0]));
+        noteLatest_(lineStaff, str_(s[2]), str_(s[9]), str_(s[10]), parseDate_(s[0]));
+      }
       var s7 = parseJson_(row[4]);
-      if (s7 && str_(s7[2]) && str_(s7[3])) noteLine_(lines, '117', str_(s7[2]), str_(s7[3]), parseDate_(s7[0]));
+      if (s7 && str_(s7[2]) && str_(s7[3])) {
+        noteLine_(lines, '117', str_(s7[2]), str_(s7[3]), parseDate_(s7[0]));
+        noteLatest_(lineFloor, str_(s7[3]), str_(s7[1]), '', parseDate_(s7[0]));
+        noteLatest_(lineStaff, str_(s7[3]), str_(s7[9]), str_(s7[10]), parseDate_(s7[0]));
+      }
+      // col 6 = Packing -> [srn, date, '', qty, cartons, pcs, '', factory, ..., supervisor(14), ..., floor(22)]
+      var pk = parseJson_(row[5]);
+      if (pk && str_(pk[21]) && /^SG\d+/.test(str_(pk[13]))) noteLatest_(lineStaff, str_(pk[21]), str_(pk[13]), '', parseDate_(pk[1]));
     });
   }
 
@@ -76,6 +88,8 @@ function seedMasters_() {
     var active = !last || last >= cutoff;
     add('DEPT', p[1], p[1], p[0], deptCategory_(p[1]), active);
   });
+  Object.keys(lineFloor).sort().forEach(function(k) { add('LINE_FLOOR', k, lineFloor[k].value, '', lineFloor[k].extra); });
+  Object.keys(lineStaff).sort().forEach(function(k) { add('LINE_STAFF', k, lineStaff[k].value, '', lineStaff[k].extra); });
   Object.keys(lines).sort().forEach(function(k) {
     var p = k.split('|'), L = lines[k];
     add('LINE', p[1], L.dept, p[0], L.date ? fmtDate_(L.date) : '', !L.date || L.date >= cutoff);
@@ -94,6 +108,11 @@ function reseedMasters() {
   var out = 'MASTERS : reseeded ' + n + ' rows';
   Logger.log(out);
   return out;
+}
+
+function noteLatest_(map, key, value, extra, date) {
+  if (!key || !value) return;
+  if (!map[key] || (date && (!map[key].date || map[key].date < date))) map[key] = { value: value, extra: extra, date: date };
 }
 
 function noteLine_(lines, factory, line, dept, date) {

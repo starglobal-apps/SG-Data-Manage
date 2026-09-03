@@ -23,7 +23,7 @@ var CFG = {
     USERS:           ['user_id', 'name', 'pin', 'role', 'factory', 'depts', 'active', 'created_at'],
     MASTERS:         ['type', 'key', 'value', 'factory', 'extra', 'active'],
     ATT_DAILY:       ['id', 'date', 'factory', 'dept', 'shift', 'role', 'hours', 'count', 'entered_by', 'entered_at'],
-    HOURLY_LOG:      ['id', 'date', 'factory', 'line', 'dept', 'srn', 'floor', 'type', 'shift', 'slot', 'qty', 'checked', 'pass', 'reject', 'cartons', 'pcs_per_ctn', 'entered_by', 'entered_at'],
+    HOURLY_LOG:      ['id', 'date', 'factory', 'line', 'dept', 'srn', 'floor', 'type', 'shift', 'slot', 'qty', 'checked', 'pass', 'reject', 'cartons', 'pcs_per_ctn', 'checker', 'entered_by', 'entered_at'],
     MANPOWER_EVENTS: ['id', 'date', 'factory', 'dept', 'role', 'event', 'count', 'time', 'eff_hours', 'note', 'entered_by', 'entered_at'],
     DAY_SUMMARY:     ['id', 'date', 'factory', 'line', 'dept', 'type', 'srn', 'shift', 'payload', 'status', 'flags', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'remark'],
     ACTIVE_ORDERS:   ['factory', 'line', 'dept', 'srn', 'loaded', 'stitched', 'balance', 'last_loading'],
@@ -99,6 +99,55 @@ var CFG = {
       roles: ['Operator'] }
   ]
 };
+
+// ---- App-era boundary ----
+// Cumulative checks (loading >= stitching >= endline >= packing) count MASTER DATA rows dated BEFORE this
+// and app rows (HOURLY_LOG / DAY_SUMMARY) dated ON/AFTER it, so nothing is double counted after runAllImport.
+CFG.APP_START_DATE = '2026-09-03';
+
+CFG.HOURLY_TYPES = [
+  { key: 'STITCH',  label: 'Stitching', cat: 'STITCH',  fields: ['qty'] },
+  { key: 'ENDLINE', label: 'Endline',   cat: 'STITCH',  fields: ['checked', 'pass', 'reject'] },
+  { key: 'PACKING', label: 'Packing',   cat: 'PACKING', fields: ['qty', 'cartons'] }
+];
+
+// Manpower change events. eff = how many hours that person effectively worked (null = computed from time)
+CFG.MP_EVENTS = [
+  { key: 'HALF_DAY',  label: 'Half day (4 hrs)',       eff: 4,    needsTime: false },
+  { key: 'LEFT_AT',   label: 'Beech me chala gaya',    eff: null, needsTime: true,  from: 9 },
+  { key: 'LATE_JOIN', label: 'Late aaya',              eff: null, needsTime: true,  to: 18 },
+  { key: 'ABSENT',    label: 'Absent (attendance ke baad)', eff: 0, needsTime: false },
+  { key: 'EXTRA',     label: 'Extra aaya (add)',       eff: 8,    needsTime: false, add: true }
+];
+
+// The 5 manpower-type columns (23-27) of the FAC666 stitching source sheet, in order.
+// PLACEHOLDER until diagFinalTargets() confirms the real headers.
+CFG.STITCH_ROLE_COLS = ['Operator', 'Helper', 'Thread cutter', 'End Line Checker', 'Feeder'];
+
+// Where "Send to Final" appends rows. cols = { sheetColumnNumber: payloadField }.
+// keyCol = column used to find the next empty row. minRow = first data row.
+// Column positions come from Import.js ranges; run diagFinalTargets() to verify against real headers.
+CFG.FINAL_TARGETS = {
+  STITCH_666: { srcKey: 'ATT', sheet: 'Data', keyCol: 1, minRow: 2,
+    cols: { 1: 'date', 2: 'line', 3: 'dept', 4: 'srn', 5: 'floor', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
+            10: 'supervisor', 11: 'incharge', 23: 'r1', 24: 'r2', 25: 'r3', 26: 'r4', 27: 'r5' } },
+  STITCH_117: { srcKey: 'STITCH117', sheet: 'FAC117-Stitching Output', keyCol: 1, minRow: 2,
+    cols: { 1: 'date', 2: 'floor', 3: 'line', 4: 'dept', 5: 'srn', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
+            10: 'supervisor', 11: 'incharge', 12: 'r1' } },
+  ENDLINE:    { srcKey: 'ENDLINE', sheet: 'Quality Endline data', keyCol: 1, minRow: 3,
+    cols: { 1: 'entryDate', 2: 'factoryName', 3: 'date', 4: 'srn', 5: 'item', 6: 'dept', 7: 'qfloor', 8: 'checker',
+            9: 'hours', 10: 'checked', 11: 'pass', 12: 'reject' } },
+  PACKING:    { srcKey: 'PACKING', sheet: 'Finishing_Res', keyCol: 2, minRow: 2,
+    cols: { 2: 'srn', 3: 'date', 5: 'qty', 6: 'cartons', 7: 'pcs_per_ctn', 9: 'factory', 15: 'supervisor', 19: 'hours', 23: 'floor' } },
+  ATT_666:    { srcKey: 'ATT', sheet: ' karigar att_666', keyCol: 3, minRow: 2,
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count' } },
+  ATT_117:    { srcKey: 'ATT', sheet: '117', keyCol: 3, minRow: 2,
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count', 9: 'manhours' } },
+  ATT_OT:     { srcKey: 'ATT', sheet: 'OT att', keyCol: 3, minRow: 2,
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'ot', 7: 'role', 8: 'hours', 9: 'count', 10: 'manhours' } }
+};
+
+CFG.STATUS = { DRAFT: 'Draft', SUBMITTED: 'Submitted', APPROVED: 'Approved', REJECTED: 'Rejected', SENT: 'Sent' };
 
 function deptCategory_(deptName) {
   var n = str_(deptName), cats = CFG.DEPT_CATEGORIES;
