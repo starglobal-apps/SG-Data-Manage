@@ -77,5 +77,31 @@ var CFG = {
 
   // Fallback role list; setupAppSheets() also pulls every role seen in MASTER DATA attendance
   DEFAULT_ROLES: ['Operator', 'Helper', 'Supervisor', 'Incharge', 'Feeder', 'Thread cutter', 'Checker',
-                  'End Line Checker', 'Final Checker', 'Data Collector', 'Line Qc.']
+                  'End Line Checker', 'Final Checker', 'Data Collector', 'Line Qc.'],
+
+  // Each dept belongs to one category, and each category has a fixed designation list
+  // (derived from attendance history). First matching pattern wins; no match -> CONTRACTOR.
+  // MASTERS rows: DEPT.extra = category key, CAT_ROLE key = category, value = role, extra = order.
+  DEPT_CATEGORIES: [
+    { key: 'STITCH',     label: 'Stitching Line', match: /line/i,
+      roles: ['Operator', 'Helper', 'Supervisor', 'Incharge', 'Feeder', 'Data Collector', 'Thread cutter', 'End Line Checker', 'Hand needle', 'Paster'] },
+    { key: 'PACKING',    label: 'Packing',        match: /packing/i,
+      roles: ['Supervisor', 'Incharge', 'Checker', 'Helper', 'Thread cutter', 'Press Man'] },
+    { key: 'QUALITY',    label: 'Quality',        match: /quality/i,
+      roles: ['Line Qc.', 'End Line Checker', 'Final Checker'] },
+    { key: 'CUTTING',    label: 'Cutting',        match: /cutting/i,
+      roles: ['Cutting master', 'Die cutter', 'Layer cutter', 'Helper', 'Incharge', 'Cutting QC'] },
+    { key: 'STORE',      label: 'Store',          match: /store/i,
+      roles: ['Incharge', 'Assistant', 'Helper', 'Store QC'] },
+    { key: 'PREP',       label: 'Preparation',    match: /^(preparation|mi)$/i,
+      roles: ['Supervisor', 'Operator', 'Helper'] },
+    { key: 'CONTRACTOR', label: 'Contractor',     match: null,
+      roles: ['Operator'] }
+  ]
 };
+
+function deptCategory_(deptName) {
+  var n = str_(deptName), cats = CFG.DEPT_CATEGORIES;
+  for (var i = 0; i < cats.length; i++) if (cats[i].match && cats[i].match.test(n)) return cats[i].key;
+  return cats[cats.length - 1].key;
+}

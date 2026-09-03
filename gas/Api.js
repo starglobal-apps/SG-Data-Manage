@@ -128,6 +128,7 @@ function getMasters_(req, user) {
     shifts: CFG.SHIFTS,
     slots: CFG.SLOTS,
     floors: CFG.FLOORS,
+    categories: CFG.DEPT_CATEGORIES.map(function(c) { return { key: c.key, label: c.label }; }),
     masters: m
   };
 }

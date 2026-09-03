@@ -67,11 +67,14 @@ function seedMasters_() {
     });
   }
 
+  CFG.DEPT_CATEGORIES.forEach(function(c) {
+    c.roles.forEach(function(r, i) { add('CAT_ROLE', c.key, r, '', i + 1); roles[r] = true; });
+  });
   Object.keys(roles).sort().forEach(function(r) { add('ROLE', r, r); });
   Object.keys(depts).sort().forEach(function(k) {
     var p = k.split('|'), last = depts[k];
     var active = !last || last >= cutoff;
-    add('DEPT', p[1], p[1], p[0], last ? fmtDate_(last) : '', active);
+    add('DEPT', p[1], p[1], p[0], deptCategory_(p[1]), active);
   });
   Object.keys(lines).sort().forEach(function(k) {
     var p = k.split('|'), L = lines[k];
@@ -80,6 +83,17 @@ function seedMasters_() {
 
   appendRows_(CFG.TABS.MASTERS, rows);
   return rows.length;
+}
+
+// Wipes MASTERS and rebuilds it from MASTER DATA + CFG.DEPT_CATEGORIES.
+// Run after changing categories/roles in Config.js. Manual edits in MASTERS are lost.
+function reseedMasters() {
+  var sh = tab_(CFG.TABS.MASTERS, true);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).clearContent();
+  var n = seedMasters_();
+  var out = 'MASTERS : reseeded ' + n + ' rows';
+  Logger.log(out);
+  return out;
 }
 
 function noteLine_(lines, factory, line, dept, date) {

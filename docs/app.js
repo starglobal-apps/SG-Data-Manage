@@ -106,12 +106,39 @@
     return state.user && state.user.factory ? all.filter(function (f) { return f === state.user.factory; }) : all;
   }
 
+  function catOrder(cat) {
+    var cats = (state.masters && state.masters.categories) || [];
+    for (var i = 0; i < cats.length; i++) if (cats[i].key === cat) return i;
+    return cats.length;
+  }
+  function catLabel(cat) {
+    var c = ((state.masters && state.masters.categories) || []).filter(function (x) { return x.key === cat; })[0];
+    return c ? c.label : (cat || '');
+  }
+
+  // Depts for a factory, restricted to the user's allowed depts, grouped by category order then name
   function deptsFor(factory) {
     var list = M('DEPT').filter(function (d) { return d.factory === factory; });
     if (state.user && state.user.depts && state.user.depts.length) {
       list = list.filter(function (d) { return state.user.depts.indexOf(d.key) >= 0; });
     }
-    return list;
+    return list.sort(function (a, b) {
+      return (catOrder(a.extra) - catOrder(b.extra)) || a.key.localeCompare(b.key);
+    });
+  }
+
+  function deptCategory(dept) {
+    var d = M('DEPT').filter(function (x) { return x.key === dept; })[0];
+    return d ? d.extra : '';
+  }
+
+  // Fixed designation list for a dept's category (CAT_ROLE); falls back to every ROLE
+  function rolesForDept(dept) {
+    var cat = deptCategory(dept);
+    var list = M('CAT_ROLE').filter(function (r) { return r.key === cat; })
+      .sort(function (a, b) { return Number(a.extra) - Number(b.extra); })
+      .map(function (r) { return r.value; });
+    return list.length ? list : M('ROLE').map(function (r) { return r.key; });
   }
 
   // ---------- home ----------
@@ -140,7 +167,7 @@
         box.innerHTML = depts.map(function (dp) {
           var f = done[dp.key + '|Final'], o = done[dp.key + '|OT'], n = done[dp.key + '|Night'];
           var val = f ? f.manpower + ' mp' : '—';
-          var sub = [o ? 'OT ' + o.manpower : '', n ? 'Night ' + n.manpower : '', f ? 'by ' + f.by : ''].filter(String).join(' · ');
+          var sub = [catLabel(dp.extra), o ? 'OT ' + o.manpower : '', n ? 'Night ' + n.manpower : '', f ? 'by ' + f.by : ''].filter(String).join(' · ');
           return '<div class="item" data-dept="' + esc(dp.key) + '"><div><div class="name">' + esc(dp.key) + '</div><div class="sub">' + esc(sub || 'Entry baaki') + '</div></div><div class="val" style="color:' + (f ? 'var(--ok)' : 'var(--muted)') + '">' + esc(val) + '</div></div>';
         }).join('');
       })
@@ -157,8 +184,16 @@
     att.dept = dept || att.dept || depts[0].key;
     if (!depts.some(function (d) { return d.key === att.dept; })) att.dept = depts[0].key;
 
-    $('#att-dept').innerHTML = depts.map(function (d) {
-      return '<option value="' + esc(d.key) + '"' + (d.key === att.dept ? ' selected' : '') + '>' + esc(d.key) + '</option>';
+    var groups = {}, order = [];
+    depts.forEach(function (d) {
+      var g = catLabel(d.extra) || 'Other';
+      if (!groups[g]) { groups[g] = []; order.push(g); }
+      groups[g].push(d);
+    });
+    $('#att-dept').innerHTML = order.map(function (g) {
+      return '<optgroup label="' + esc(g) + '">' + groups[g].map(function (d) {
+        return '<option value="' + esc(d.key) + '"' + (d.key === att.dept ? ' selected' : '') + '>' + esc(d.key) + '</option>';
+      }).join('') + '</optgroup>';
     }).join('');
     $('#att-shift').innerHTML = state.masters.shifts.map(function (s) {
       return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>';
@@ -193,8 +228,8 @@
     var sd = shiftDef();
     var byRole = {};
     rows.forEach(function (r) { byRole[r.role] = r; });
-    var roles = M('ROLE').map(function (r) { return r.key; });
-    rows.forEach(function (r) { if (roles.indexOf(r.role) < 0) roles.push(r.role); });
+    var roles = rolesForDept(att.dept);
+    rows.forEach(function (r) { if (roles.indexOf(r.role) < 0) roles.push(r.role); }); // keep any saved role not in the fixed list
 
     $('#att-rows').innerHTML = roles.map(function (role) {
       var r = byRole[role] || { hours: sd.hours, count: 0 };
@@ -274,7 +309,8 @@
     show('login');
     $('#login-msg').textContent = 'docs/config.js me API_URL set karo';
   } else if (state.token && state.user) {
-    api('me').then(function () { return state.masters ? null : loadMasters(); }).then(goHome).catch(function () { show('login'); });
+    // always refresh masters on open so MASTERS sheet edits reach the phone without re-login
+    api('me').then(loadMasters).then(goHome).catch(function () { show('login'); });
   } else {
     show('login');
   }
