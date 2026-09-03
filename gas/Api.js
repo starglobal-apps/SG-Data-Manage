@@ -41,15 +41,33 @@ function routes_() {
 
 // ---------- auth ----------
 
+// The web app URL is public, so a 4-digit PIN needs a brute-force brake:
+// after LOGIN_MAX_FAILS wrong PINs the whole endpoint pauses logins for LOGIN_LOCK_SEC.
+var LOGIN_MAX_FAILS = 8;
+var LOGIN_LOCK_SEC = 900;
+
 function login_(req) {
   var pin = str_(req.pin);
   if (!pin) return fail_('PIN', 'PIN daalo');
+
+  var cache = CacheService.getScriptCache();
+  var fails = Number(cache.get('loginfail') || 0);
+  if (fails >= LOGIN_MAX_FAILS) {
+    return fail_('LOCKED', 'Bahut galat PIN — ' + Math.round(LOGIN_LOCK_SEC / 60) + ' minute baad try karo');
+  }
+
   var users = readTab_(CFG.TABS.USERS).filter(function(u) {
     return str_(u.pin) === pin && isTrue_(u.active);
   });
   if (req.user_id) users = users.filter(function(u) { return str_(u.user_id) === str_(req.user_id); });
-  if (!users.length) return fail_('LOGIN', 'Galat PIN');
+  if (!users.length) {
+    cache.put('loginfail', String(fails + 1), LOGIN_LOCK_SEC);
+    Utilities.sleep(1000); // slow guessing down
+    audit_(null, 'login.fail', '', { attempt: fails + 1 });
+    return fail_('LOGIN', 'Galat PIN');
+  }
   if (users.length > 1) return fail_('LOGIN', 'Ye PIN ek se zyada users ka hai — USERS tab me PIN unique karo');
+  cache.remove('loginfail');
 
   var pub = publicUser_(users[0]);
   var token = uuid_();

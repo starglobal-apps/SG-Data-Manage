@@ -1,5 +1,5 @@
 // sw.js — caches the app shell so the app opens instantly / offline. API calls always go to network.
-var CACHE = 'sg-data-v1';
+var CACHE = 'sg-data-v2';
 var SHELL = ['./', './index.html', './style.css', './app.js', './config.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', function(e) {
