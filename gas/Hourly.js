@@ -87,7 +87,7 @@ function hourlySave_(req, user) {
     appendRows_(CFG.TABS.HOURLY_LOG, clean.map(function(c) {
       return { id: uuid_(), date: date, factory: factory, line: lineOf_(dept), dept: dept, srn: srn, floor: floor, type: type,
                shift: c.shift, slot: c.slot, qty: c.qty, checked: c.checked, pass: c.pass, reject: c.reject,
-               cartons: c.cartons, pcs_per_ctn: c.pcs_per_ctn, checker: checker, entered_by: user.user_id, entered_at: stamp };
+               cartons: c.cartons, pcs_per_ctn: c.pcs_per_ctn, checker: checker, entered_by: userName_(user), entered_at: stamp };
     }));
     return { replaced: existing.length, saved: clean.length };
   });
@@ -169,7 +169,7 @@ function manpowerSave_(req, user) {
   if (isLocked_(dayStatus_(date, factory, dept, 'ATT'))) return fail_('LOCKED', 'Attendance submit ho chuki — manager se reject karwao');
   var eff = effHours_(str_(req.event), str_(req.time));
   var row = { id: uuid_(), date: date, factory: factory, dept: dept, role: role, event: str_(req.event), count: count,
-              time: str_(req.time), eff_hours: eff, note: str_(req.note), entered_by: user.user_id, entered_at: nowStr_() };
+              time: str_(req.time), eff_hours: eff, note: str_(req.note), entered_by: userName_(user), entered_at: nowStr_() };
   appendRows_(CFG.TABS.MANPOWER_EVENTS, [row]);
   audit_(user, 'manpower.save', row.id, row);
   return { ok: true, id: row.id, eff_hours: eff };

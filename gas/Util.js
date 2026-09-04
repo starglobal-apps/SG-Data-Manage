@@ -91,7 +91,7 @@ function deleteRows_(name, rowNums) {
 function audit_(user, action, ref, detail) {
   try {
     appendRows_(CFG.TABS.AUDIT_LOG, [{
-      at: nowStr_(), user: user ? user.user_id : '', action: action, ref: ref || '',
+      at: nowStr_(), user: user ? userName_(user) : '', action: action, ref: ref || '',
       detail: typeof detail === 'string' ? detail : JSON.stringify(detail || '')
     }]);
   } catch (e) {}
@@ -173,3 +173,5 @@ function mastersRows_() {
   return rows;
 }
 function invalidateMasters_() { cacheDelBig_('masters_rows'); }
+
+function userName_(u) { return u ? (str_(u.name) || str_(u.user_id)) : ''; }

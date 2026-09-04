@@ -47,6 +47,8 @@ function routes_() {
     'factory.today':  factoryToday_,
     'line.today':     lineToday_,
     'review.count':   reviewCount_,
+    'users.list':     usersList_,
+    'users.save':     usersSave_,
     'manpower.get':   manpowerGet_,
     'manpower.save':  manpowerSave_,
     'manpower.delete': manpowerDelete_,
@@ -65,6 +67,16 @@ function routes_() {
 var LOGIN_MAX_FAILS = 8;
 var LOGIN_LOCK_SEC = 900;
 
+// USERS rows cached 2 min (invalidated on every users.save)
+function usersRows_() {
+  var hit = cacheGetBig_('users_rows');
+  if (hit) return hit;
+  var rows = readTab_(CFG.TABS.USERS);
+  cachePutBig_('users_rows', rows, 120);
+  return rows;
+}
+function invalidateUsers_() { cacheDelBig_('users_rows'); }
+
 function login_(req) {
   var pin = str_(req.pin);
   if (!pin) return fail_('PIN', 'PIN daalo');
@@ -75,7 +87,7 @@ function login_(req) {
     return fail_('LOCKED', 'Bahut galat PIN — ' + Math.round(LOGIN_LOCK_SEC / 60) + ' minute baad try karo');
   }
 
-  var users = readTab_(CFG.TABS.USERS).filter(function(u) {
+  var users = usersRows_().filter(function(u) {
     return str_(u.pin) === pin && isTrue_(u.active);
   });
   if (req.user_id) users = users.filter(function(u) { return str_(u.user_id) === str_(req.user_id); });
@@ -102,8 +114,57 @@ function auth_(token) {
   var raw = cache.get('tok:' + token);
   if (!raw) return null;
   cache.put('tok:' + token, raw, CFG.TOKEN_TTL_SEC); // sliding expiry
-  return JSON.parse(raw);
+  var pub = JSON.parse(raw);
+  // access can be changed by the admin at any time: refresh role/factory/depts from USERS on every call
+  var fresh = usersRows_().filter(function(u) { return str_(u.user_id) === pub.user_id; })[0];
+  if (!fresh || !isTrue_(fresh.active)) return null;
+  return publicUser_(fresh);
 }
+
+// ---------- admin: user management ----------
+
+function usersList_(req, user) {
+  if (user.role !== 'Admin') return fail_('PERM', 'Sirf admin');
+  return { ok: true, users: usersRows_().map(function(u) {
+    return { user_id: str_(u.user_id), name: str_(u.name), pin: str_(u.pin), role: str_(u.role), factory: str_(u.factory),
+             depts: csv_(u.depts), active: isTrue_(u.active), created_at: str_(u.created_at) };
+  }), roles: CFG.USER_ROLES };
+}
+
+// { user_id?, name, pin, role, factory, depts: [], active }  — user_id blank = new user
+function usersSave_(req, user) {
+  if (user.role !== 'Admin') return fail_('PERM', 'Sirf admin');
+  var id = str_(req.user_id), name = str_(req.name), pin = str_(req.pin), role = str_(req.role), factory = str_(req.factory);
+  var depts = Array.isArray(req.depts) ? req.depts.map(str_).filter(String) : csv_(req.depts);
+  var active = req.active === undefined ? true : isTrue_(req.active);
+  if (!name) return fail_('VAL', 'Naam likho');
+  if (!/^\d{4,8}$/.test(pin)) return fail_('VAL', 'PIN 4 se 8 digit ka number ho');
+  if (CFG.USER_ROLES.indexOf(role) < 0) return fail_('VAL', 'Role galat');
+  if (factory && CFG.FACTORIES.indexOf(factory) < 0) return fail_('VAL', 'Factory galat');
+  if (role !== 'Admin' && role !== 'Manager' && !depts.length) return fail_('VAL', 'Kam se kam ek line / floor chuno');
+
+  var rows = readTab_(CFG.TABS.USERS);
+  var dup = rows.filter(function(u) { return str_(u.pin) === pin && str_(u.user_id) !== id; })[0];
+  if (dup) return fail_('VAL', 'Ye PIN pehle se ' + str_(dup.name) + ' ka hai — dusra PIN do');
+  if (id === user.user_id && (role !== 'Admin' || !active)) return fail_('VAL', 'Apna hi admin access nahi hata sakte');
+
+  var sh = tab_(CFG.TABS.USERS, true), head = CFG.HEADERS.USERS;
+  var vals = { name: name, pin: pin, role: role, factory: factory, depts: depts.join(','), active: active ? 'TRUE' : 'FALSE' };
+  withLock_(function() {
+    if (id) {
+      var hit = rows.filter(function(u) { return str_(u.user_id) === id; })[0];
+      if (!hit) throw new Error('User nahi mila');
+      Object.keys(vals).forEach(function(k) { sh.getRange(hit._row, head.indexOf(k) + 1).setValue(vals[k]); });
+    } else {
+      id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) + '-' + Math.random().toString(36).slice(2, 6);
+      appendRows_(CFG.TABS.USERS, [Object.assign({ user_id: id, created_at: nowStr_() }, vals)]);
+    }
+  });
+  invalidateUsers_();
+  audit_(user, 'users.save', id, { name: name, role: role, factory: factory, depts: depts.length, active: active });
+  return { ok: true, user_id: id };
+}
+
 
 function publicUser_(u) {
   return {

@@ -343,6 +343,7 @@
   tabs.main = function () {
     var u = state.user, q = queue();
     var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : ' · dono factory') + (u.depts && u.depts.length ? ' · ' + u.depts.length + ' dept' : '') + '</div></div></div>';
+    if (u.role === 'Admin') html += '<h2>Admin</h2><div class="menu"><div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users & access</div><div class="s">Naya user, PIN, lines / floors, active</div></div>' + icon('chev') + '</div></div>';
     html += '<h2>Setting</h2><div class="menu">';
     html += '<div class="task" data-m="ctx"><div class="ic">' + icon('home') + '</div><div class="b"><div class="n">Entry / Data ki line</div><div class="s">' + esc(state.line || '—') + ' · FAC' + esc(state.factory) + '</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="endline"><div class="ic">' + icon('qc') + '</div><div class="b"><div class="n">Endline timeline me dikhao</div><div class="s">QC checker ke liye on karo</div></div><span class="v">' + (recall('show_endline') === '1' ? 'On' : 'Off') + '</span></div>';
@@ -366,6 +367,7 @@
     if (!t) return;
     var m = t.dataset.m;
     if (m === 'ctx') openContext();
+    else if (m === 'users') screens.users();
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
     else if (m === 'refresh') api('orders.refresh').then(function () { toast('Loading refresh ho gayi', 'ok'); invalidate(); }).catch(function (er) { toast(er.message, 'bad'); });
     else if (m === 'masters') loadMasters().then(function () { ensureLine(); toast('Masters reload ho gaye', 'ok'); }).catch(function (er) { toast(er.message, 'bad'); });

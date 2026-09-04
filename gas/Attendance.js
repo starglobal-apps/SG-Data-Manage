@@ -56,7 +56,7 @@ function attSave_(req, user) {
     deleteRows_(CFG.TABS.ATT_DAILY, existing.map(function(r) { return r._row; }));
     appendRows_(CFG.TABS.ATT_DAILY, clean.map(function(c) {
       return { id: uuid_(), date: date, factory: factory, dept: dept, shift: shift, role: c.role,
-               hours: c.hours, count: c.count, entered_by: user.user_id, entered_at: stamp, srn: srn };
+               hours: c.hours, count: c.count, entered_by: userName_(user), entered_at: stamp, srn: srn };
     }));
     return { replaced: existing.length, saved: clean.length };
   });

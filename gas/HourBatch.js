@@ -132,7 +132,7 @@ function slotUpsert_(p, user, ctx) {
   if (newAmt > 0) {
     var nr = { id: uuid_(), date: date, factory: factory, line: lineOf_(dept), dept: dept, srn: srn, floor: floor, type: type,
       shift: sd.shift, slot: slot, qty: row.qty, checked: row.checked, pass: row.pass, reject: row.reject, cartons: row.cartons,
-      pcs_per_ctn: row.pcs_per_ctn, checker: str_(p.checker), entered_by: user.user_id, entered_at: stamp };
+      pcs_per_ctn: row.pcs_per_ctn, checker: str_(p.checker), entered_by: userName_(user), entered_at: stamp };
     appendRows_(CFG.TABS.HOURLY_LOG, [nr]);
     nr._row = tab_(CFG.TABS.HOURLY_LOG, true).getLastRow();
     ctx.rows.push(nr);

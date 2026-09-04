@@ -166,7 +166,7 @@ function daySubmit_(req, user) {
       if (str_(r.date) !== date || str_(r.factory) !== factory || (onlyDept && str_(r.dept) !== onlyDept)) return;
       if (str_(r.status) !== 'Draft') return;
       sh.getRange(r._row, ci.status).setValue('Submitted');
-      sh.getRange(r._row, ci.by).setValue(user.user_id);
+      sh.getRange(r._row, ci.by).setValue(userName_(user));
       sh.getRange(r._row, ci.at).setValue(stamp);
       n++;
     });
@@ -235,7 +235,7 @@ function reviewDecide_(req, user) {
       } else {
         sh.getRange(r._row, ci.status).setValue('Rejected');
       }
-      sh.getRange(r._row, ci.by).setValue(user.user_id);
+      sh.getRange(r._row, ci.by).setValue(userName_(user));
       sh.getRange(r._row, ci.at).setValue(stamp);
       sh.getRange(r._row, ci.remark).setValue(remark);
       done++;
@@ -321,7 +321,7 @@ function reviewSend_(req, user) {
     var cs = head.indexOf('status') + 1, cb = head.indexOf('reviewed_by') + 1, ca = head.indexOf('reviewed_at') + 1, stamp = nowStr_();
     ready.forEach(function(r) {
       if (sentIds.indexOf(str_(r.id)) < 0) return;
-      sh.getRange(r._row, cs).setValue('Sent'); sh.getRange(r._row, cb).setValue(user.user_id); sh.getRange(r._row, ca).setValue(stamp);
+      sh.getRange(r._row, cs).setValue('Sent'); sh.getRange(r._row, cb).setValue(userName_(user)); sh.getRange(r._row, ca).setValue(stamp);
     });
   });
   cacheDelBig_('hist_agg'); cacheDelBig_('app_agg');
