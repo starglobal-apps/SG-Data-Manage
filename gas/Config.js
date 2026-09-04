@@ -153,9 +153,9 @@ CFG.FINAL_TARGETS = {
     cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count', 10: 'supervisor' } },
   ATT_117:    { srcKey: 'ATT', sheet: '117', keyCol: 3, minRow: 2,
     cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count' } },
-  // not verified (quota hit during diag) — inferred from Import.js range C:J = [date, factory, dept, OT, role, hrs, count, manhours]
+  // verified with diagAttOT(): year/month/total-hours + cols L onward are formula-fed
   ATT_OT:     { srcKey: 'ATT', sheet: 'OT att', keyCol: 3, minRow: 2,
-    cols: { 3: 'date', 4: 'factory', 5: 'dept', 7: 'role', 8: 'hours', 9: 'count' } }
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 7: 'role', 8: 'hours', 9: 'count', 11: 'supervisor' } }
 };
 
 CFG.STATUS = { DRAFT: 'Draft', SUBMITTED: 'Submitted', APPROVED: 'Approved', REJECTED: 'Rejected', SENT: 'Sent' };
