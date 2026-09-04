@@ -361,20 +361,23 @@
 
   // ---------- boot ----------
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
+  function boot() {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    }
+    renderQueue();
+    if (!API_URL) {
+      show('login');
+      $('#login-msg').textContent = 'docs/config.js me API_URL set karo';
+    } else if (state.token && state.user) {
+      // always refresh masters on open so MASTERS sheet edits reach the phone without re-login
+      api('me').then(loadMasters).then(function () { goHome(); flushQueue(); }).catch(function (e) {
+        if (state.masters && e.message && /Network/.test(e.message)) goHome(); else show('login');
+      });
+    } else {
+      show('login');
+    }
   }
-  renderQueue();
-
-  if (!API_URL) {
-    show('login');
-    $('#login-msg').textContent = 'docs/config.js me API_URL set karo';
-  } else if (state.token && state.user) {
-    // always refresh masters on open so MASTERS sheet edits reach the phone without re-login
-    api('me').then(loadMasters).then(function () { goHome(); flushQueue(); }).catch(function (e) {
-      if (state.masters && e.message && /Network/.test(e.message)) goHome(); else show('login');
-    });
-  } else {
-    show('login');
-  }
+  // wait for modules.js / home.js to register their screens before the first render
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
 })();
