@@ -3,8 +3,8 @@
 // Shell files are always revalidated against the server (cache: 'reload' / 'no-cache') because
 // GitHub Pages serves them with max-age=600 — without that, an updated config.js or app.js can
 // sit stale in the browser's HTTP cache for 10 minutes even after a new SW version installs.
-var CACHE = 'sg-data-v7';
-var SHELL = ['./', './index.html', './style.css', './app.js', './sheet.js', './home.js', './entry.js', './data.js', './modules.js', './config.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
+var CACHE = 'sg-data-v8';
+var SHELL = ['./', './index.html', './style.css', './app.js', './sheet.js', './home.js', './entry.js', './data.js', './hour.js', './modules.js', './config.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(

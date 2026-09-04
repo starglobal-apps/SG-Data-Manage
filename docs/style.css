@@ -207,3 +207,20 @@ body.has-nav .sticky-bottom { bottom: var(--nav-h); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 24px); transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 30; max-width: 90vw; }
 .toast.ok { background: var(--ok); } .toast.bad { background: var(--bad); }
+
+/* hour screen */
+.hour-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.hour-title { flex: 1; text-align: center; } .hour-title b { display: block; font-size: 20px; } .hour-title span { font-size: 12px; color: var(--muted); }
+.hcard { background: var(--card); border-radius: var(--r); padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.05); border-left: 4px solid var(--line); }
+.hcard.done { border-left-color: var(--ok); } .hcard.lock { border-left-color: var(--lock); opacity: .7; }
+.hcard-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.hcard-h .nm { font-weight: 700; font-size: 15px; } .hcard-h .tick { color: var(--ok); font-weight: 700; }
+.hrow { display: flex; gap: 6px; margin-bottom: 6px; }
+.hrow select { flex: 1; min-width: 0; padding: 8px; min-height: 46px; font-size: 14px; }
+.hrow input { width: 84px; flex: 0 0 auto; padding: 8px; min-height: 46px; text-align: center; font-weight: 700; font-size: 17px; }
+.hrow.end input { width: 62px; font-size: 15px; }
+.hend { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.hend-h { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.hend-h svg { width: 16px; height: 16px; } .hend-h input { flex: 1; min-height: 40px; padding: 6px 10px; font-weight: 500; }
+.hcard .lnk { padding: 2px 0; } .hint.warn { color: var(--warn); }
+.line-list .task .v { font-size: 15px; }
