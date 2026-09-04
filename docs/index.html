@@ -36,19 +36,15 @@
     </div>
   </section>
 
-  <!-- HOME -->
+  <!-- HOME = daily checklist for one line -->
   <section id="scr-home" class="screen" hidden>
-    <div class="row">
-      <input id="in-date" type="date">
-      <div id="factory-toggle" class="toggle"></div>
-    </div>
-
-    <div class="tiles">
-      <button class="tile" data-go="att"><span class="tile-icon">&#128101;</span><span class="tile-name">Attendance</span><span class="tile-sub">Subah ki entry</span></button>
-      <button class="tile" data-go="hourly"><span class="tile-icon">&#9201;</span><span class="tile-name">Hourly Output</span><span class="tile-sub">Stitching · Endline · Packing</span></button>
-      <button class="tile" data-go="manpower"><span class="tile-icon">&#128100;</span><span class="tile-name">Manpower</span><span class="tile-sub">Half day / left / late</span></button>
-      <button class="tile" data-go="dayclose"><span class="tile-icon">&#127769;</span><span class="tile-name">Day Close</span><span class="tile-sub">Shaam ka submit</span></button>
-      <button class="tile manager-only" data-go="review"><span class="tile-icon">&#9989;</span><span class="tile-name">Review</span><span class="tile-sub">Approve · Send to Final</span></button>
+    <div class="card hdr">
+      <div class="row">
+        <input id="in-date" type="date">
+        <div id="factory-toggle" class="toggle"></div>
+      </div>
+      <div id="line-pick"></div>
+      <div class="progress"><div class="bar"><i id="prog-bar"></i></div><span id="prog-text">—</span></div>
     </div>
 
     <div id="queue-box" hidden>
@@ -56,8 +52,17 @@
       <div id="queue-list" class="list"></div>
     </div>
 
-    <h2>Aaj ka status</h2>
-    <div id="att-status" class="list"></div>
+    <div id="checklist"></div>
+
+    <details class="more">
+      <summary>More · poori tables</summary>
+      <div class="tiles">
+        <button class="tile" data-go="hourly"><span class="tile-icon">&#9201;</span><span class="tile-name">Hourly table</span><span class="tile-sub">Saare slots ek saath</span></button>
+        <button class="tile" data-go="manpower"><span class="tile-icon">&#128100;</span><span class="tile-name">Manpower</span><span class="tile-sub">Events list</span></button>
+        <button class="tile" data-go="dayclose"><span class="tile-icon">&#127769;</span><span class="tile-name">Day Close</span><span class="tile-sub">Sab depts</span></button>
+        <button class="tile manager-only" data-go="review"><span class="tile-icon">&#9989;</span><span class="tile-name">Review</span><span class="tile-sub">Approve · Send</span></button>
+      </div>
+    </details>
   </section>
 
   <!-- ATTENDANCE -->
@@ -156,11 +161,20 @@
 
 </main>
 
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-bg" id="sheet-bg"></div>
+  <div class="sheet-body">
+    <div class="sheet-head"><b id="sheet-title"></b><button id="sheet-close" class="icon-btn dark" aria-label="Close">&#10005;</button></div>
+    <div id="sheet-content"></div>
+  </div>
+</div>
+
 <div id="busy" class="busy" hidden><div class="spinner"></div></div>
 <div id="toast" class="toast" hidden></div>
 
 <script src="config.js"></script>
 <script src="app.js"></script>
 <script src="modules.js"></script>
+<script src="home.js"></script>
 </body>
 </html>

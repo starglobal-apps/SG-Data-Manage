@@ -19,7 +19,9 @@
   // =====================================================================
   var hr = { type: recall('hr_type') || 'STITCH', dept: '', srn: '', floor: '', status: '', limit: 0, used: 0, saved: {} };
 
-  function openHourly() {
+  function openHourly(dept, type) {
+    if (type) { hr.type = type; remember('hr_type', type); }
+    if (dept) remember('hr_dept_' + hr.type, dept);
     var types = state.masters.hourlyTypes || [];
     $('#hr-types').innerHTML = types.map(function (t) {
       return '<button data-t="' + esc(t.key) + '" class="' + (t.key === hr.type ? 'on' : '') + '">' + esc(t.label) + '</button>';
@@ -168,9 +170,10 @@
   // =====================================================================
   var mp = { dept: '' };
 
-  function openManpower() {
+  function openManpower(dept) {
     var depts = S.deptsFor(state.factory);
     if (!depts.length) { toast('Depts nahi mile', 'bad'); return; }
+    if (dept) mp.dept = dept;
     mp.dept = depts.some(function (d) { return d.key === mp.dept; }) ? mp.dept : depts[0].key;
     $('#mp-dept').innerHTML = S.deptOptions(depts, mp.dept);
     $('#mp-event').innerHTML = opt(state.masters.mpEvents || [], null, function (x) { return x.key; }, function (x) { return x.label; });
@@ -216,12 +219,13 @@
   // =====================================================================
   // DAY CLOSE
   // =====================================================================
-  function openDayClose() {
+  function openDayClose(dept) {
     var depts = S.deptsFor(state.factory);
-    $('#dc-dept').innerHTML = '<option value="">— Sab depts —</option>' + S.deptOptions(depts, '');
+    $('#dc-dept').innerHTML = '<option value="">— Sab depts —</option>' + S.deptOptions(depts, dept || '');
     $('#dc-out').innerHTML = '';
     $('#btn-dc-submit').disabled = true;
     S.show('dayclose', S.ctxTitle('Day Close'));
+    if (dept) $('#btn-dc-preview').click();
   }
   function flagsHtml(flags) { return (flags || []).map(function (f) { return '<div class="flag ' + esc(f.level) + '">' + esc(f.msg) + '</div>'; }).join(''); }
   function renderDayRows(rows, locked) {

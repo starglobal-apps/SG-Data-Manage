@@ -234,43 +234,19 @@
     }).join('');
     $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); });
     renderQueue();
-    refreshStatus();
+    if (screens.checklist) screens.checklist();
   }
 
   function pill(s) { return s ? '<span class="pill ' + esc(s) + '">' + esc(s) + '</span>' : ''; }
-
-  function refreshStatus() {
-    var box = $('#att-status');
-    box.innerHTML = '<div class="empty">Loading…</div>';
-    Promise.all([
-      api('att.status', { date: state.date, factory: state.factory }, { quiet: true }),
-      api('hourly.day', { date: state.date, factory: state.factory }, { quiet: true })
-    ]).then(function (res) {
-      var att = {}, hr = {}, st = res[1].statuses || {};
-      res[0].depts.forEach(function (x) { att[x.dept + '|' + x.shift] = x; });
-      res[1].hourly.forEach(function (x) { hr[x.dept + '|' + x.type] = x; });
-      var depts = deptsFor(state.factory);
-      if (!depts.length) { box.innerHTML = '<div class="empty">Is factory ke depts MASTERS me nahi hain</div>'; return; }
-      box.innerHTML = depts.map(function (dp) {
-        var f = att[dp.key + '|Final'], o = att[dp.key + '|OT'], n = att[dp.key + '|Night'];
-        var parts = [catLabel(dp.extra)];
-        if (o) parts.push('OT ' + o.manpower);
-        if (n) parts.push('Night ' + n.manpower);
-        ['STITCH', 'ENDLINE', 'PACKING'].forEach(function (t) { var h = hr[dp.key + '|' + t]; if (h) parts.push(t.toLowerCase() + ' ' + h.qty + ' (' + h.slots + ' slot)'); });
-        var status = (st[dp.key + '|STITCH'] || st[dp.key + '|ENDLINE'] || st[dp.key + '|PACKING'] || st[dp.key + '|ATT'] || {}).status;
-        var val = f ? f.manpower + ' mp' : '—';
-        return '<div class="item" data-dept="' + esc(dp.key) + '"><div><div class="name">' + esc(dp.key) + pill(status) + '</div><div class="sub">' + esc(parts.join(' · ')) + '</div></div><div class="val" style="color:' + (f ? 'var(--ok)' : 'var(--muted)') + '">' + esc(val) + '</div></div>';
-      }).join('');
-    }).catch(function (e) { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
-  }
 
   // ---------- attendance ----------
 
   var att = { dept: '', shift: 'Final', prefill: false };
 
-  function openAttendance(dept) {
+  function openAttendance(dept, shift) {
     var depts = deptsFor(state.factory);
     if (!depts.length) { toast('Is factory ke depts MASTERS me nahi hain', 'bad'); return; }
+    if (shift) att.shift = shift;
     att.dept = dept || att.dept || depts[0].key;
     if (!depts.some(function (d) { return d.key === att.dept; })) att.dept = depts[0].key;
     $('#att-dept').innerHTML = deptOptions(depts, att.dept);
@@ -354,7 +330,7 @@
   $('#btn-logout').addEventListener('click', function () { if (confirm('Logout?')) logout(); });
   $('#btn-back').addEventListener('click', goHome);
 
-  $('#in-date').addEventListener('change', function () { state.date = this.value || todayStr(); refreshStatus(); });
+  $('#in-date').addEventListener('change', function () { state.date = this.value || todayStr(); if (screens.checklist) screens.checklist(); });
   $('#factory-toggle').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
     state.factory = b.getAttribute('data-f'); localStorage.setItem('sg_factory', state.factory);
@@ -368,10 +344,6 @@
       else toast('Ye module abhi banega', '');
     });
   });
-  $('#att-status').addEventListener('click', function (e) {
-    var it = e.target.closest('.item'); if (!it) return;
-    openAttendance(it.getAttribute('data-dept'));
-  });
 
   $('#att-dept').addEventListener('change', function () { att.dept = this.value; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
@@ -383,7 +355,8 @@
   window.SG = {
     state: state, $: $, $$: $$, esc: esc, api: api, show: show, toast: toast, busy: busy, pill: pill,
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory,
-    rolesForDept: rolesForDept, catLabel: catLabel, goHome: goHome, ctxTitle: ctxTitle, todayStr: todayStr, screens: screens
+    rolesForDept: rolesForDept, catLabel: catLabel, goHome: goHome, ctxTitle: ctxTitle, todayStr: todayStr, screens: screens,
+    openAttendance: openAttendance
   };
 
   // ---------- boot ----------

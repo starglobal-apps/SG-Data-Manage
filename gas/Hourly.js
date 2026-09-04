@@ -208,3 +208,102 @@ function effectiveAttendance_(date, factory, dept, shift, attRows, events) {
     });
   return Object.keys(out).map(function(k) { return out[k]; }).filter(function(r) { return r.count > 0; });
 }
+
+// ---------- checklist support ----------
+
+// Upserts ONE slot for (date, factory, type, dept, srn, slot). qty/checked 0 deletes it.
+// { date, factory, type, dept, srn, slot, floor, checker, qty | checked, pass, reject | qty, cartons }
+function hourlySlot_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), type = str_(req.type), dept = str_(req.dept), srn = str_(req.srn), slot = str_(req.slot);
+  if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
+  if (CFG.FACTORIES.indexOf(factory) < 0) return fail_('FACTORY', 'Factory galat');
+  if (!typeDef_(type)) return fail_('TYPE', 'Type galat');
+  var sd = slotDef_(slot); if (!sd) return fail_('SLOT', 'Slot galat');
+  if (!dept || !srn) return fail_('KEY', 'SRN chuno');
+  if (!canWrite_(user, factory, dept)) return fail_('PERM', 'Is line me entry ki permission nahi hai');
+  var status = dayStatus_(date, factory, dept, type);
+  if (isLocked_(status)) return fail_('LOCKED', 'Ye din ' + status + ' hai — manager se reject karwao tab edit hoga');
+
+  var row = { qty: 0, checked: 0, pass: 0, reject: 0, cartons: 0, pcs_per_ctn: 0 };
+  if (type === 'ENDLINE') {
+    row.checked = num_(req.checked); row.pass = num_(req.pass); row.reject = num_(req.reject);
+    if (row.checked < 0 || row.pass < 0 || row.reject < 0) return fail_('VAL', 'Negative nahi chalega');
+    if (row.pass + row.reject > row.checked) return fail_('VAL', 'Pass + reject checked se zyada hai');
+    if (!str_(req.checker)) return fail_('VAL', 'Checker ka naam likho');
+  } else {
+    row.qty = num_(req.qty);
+    if (row.qty < 0) return fail_('VAL', 'Negative nahi chalega');
+    if (type === 'PACKING') { row.cartons = num_(req.cartons); row.pcs_per_ctn = row.cartons ? Math.round(row.qty / row.cartons) : 0; }
+  }
+  var newAmt = type === 'ENDLINE' ? row.checked : row.qty;
+
+  var key = [date, factory, type, dept, srn].join('|');
+  var all = readTab_(CFG.TABS.HOURLY_LOG).filter(function(r) { return hourlyKey_(r) === key; });
+  var existing = all.filter(function(r) { return str_(r.slot) === slot; });
+  var oldAmt = 0; existing.forEach(function(r) { oldAmt += type === 'ENDLINE' ? num_(r.checked) : num_(r.qty); });
+
+  var chk = chainCheck_(ledger_(), type, dept, srn, newAmt - oldAmt);
+  if (!chk.ok) return { ok: false, error: 'CHAIN', message: chk.msg, limit: chk.limit, used: chk.used };
+
+  var stamp = nowStr_();
+  withLock_(function() {
+    deleteRows_(CFG.TABS.HOURLY_LOG, existing.map(function(r) { return r._row; }));
+    if (newAmt > 0) {
+      var floor = str_(req.floor) || (existing.length ? str_(existing[0].floor) : (all.length ? str_(all[0].floor) : ''));
+      appendRows_(CFG.TABS.HOURLY_LOG, [{ id: uuid_(), date: date, factory: factory, line: lineOf_(dept), dept: dept, srn: srn, floor: floor, type: type,
+        shift: sd.shift, slot: slot, qty: row.qty, checked: row.checked, pass: row.pass, reject: row.reject, cartons: row.cartons,
+        pcs_per_ctn: row.pcs_per_ctn, checker: str_(req.checker), entered_by: user.user_id, entered_at: stamp }]);
+    }
+  });
+  if (status === 'Rejected') setDayStatus_(date, factory, dept, type, 'Draft', user, 'Re-entered after reject');
+  audit_(user, 'hourly.slot', key + '|' + slot, { amt: newAmt });
+  var todayTotal = 0; all.forEach(function(r) { if (str_(r.slot) !== slot) todayTotal += type === 'ENDLINE' ? num_(r.checked) : num_(r.qty); });
+  todayTotal += newAmt;
+  return { ok: true, total: todayTotal, balance: chk.balance, limit: chk.limit, at: stamp };
+}
+
+// Everything the checklist needs for one line in one call.
+// { date, factory, dept } -> { att: {shift: {manpower, by}}, slots: {type: {slot: [rows]}}, totals, events, statuses }
+function lineToday_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept);
+  if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
+  if (!dept) return fail_('DEPT', 'Line chuno');
+
+  var att = {};
+  readTab_(CFG.TABS.ATT_DAILY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept) return;
+    var s = str_(r.shift);
+    if (!att[s]) att[s] = { manpower: 0, manhours: 0, by: str_(r.entered_by), at: str_(r.entered_at) };
+    att[s].manpower += num_(r.count); att[s].manhours += num_(r.count) * num_(r.hours);
+  });
+
+  var slots = {}, totals = {};
+  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept) return;
+    var t = str_(r.type), sk = str_(r.slot);
+    if (!slots[t]) { slots[t] = {}; totals[t] = { qty: 0, checked: 0, pass: 0, reject: 0, cartons: 0, slots: 0 }; }
+    if (!slots[t][sk]) { slots[t][sk] = []; totals[t].slots++; }
+    slots[t][sk].push({ srn: str_(r.srn), qty: num_(r.qty), checked: num_(r.checked), pass: num_(r.pass), reject: num_(r.reject),
+                        cartons: num_(r.cartons), checker: str_(r.checker), floor: str_(r.floor), by: str_(r.entered_by) });
+    totals[t].qty += num_(r.qty); totals[t].checked += num_(r.checked); totals[t].pass += num_(r.pass); totals[t].reject += num_(r.reject); totals[t].cartons += num_(r.cartons);
+  });
+
+  var events = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept; }).length;
+
+  var statuses = {}, order = ['Sent', 'Approved', 'Submitted', 'Rejected', 'Draft'];
+  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept) return;
+    var t = str_(r.type), s = str_(r.status);
+    if (!statuses[t] || order.indexOf(s) < order.indexOf(statuses[t].status)) statuses[t] = { status: s, remark: str_(r.remark) };
+  });
+
+  return { ok: true, att: att, slots: slots, totals: totals, events: events, statuses: statuses, serverTime: nowStr_() };
+}
+
+// Pending review count for the manager badge
+function reviewCount_(req, user) {
+  if (!isManager_(user)) return { ok: true, count: 0 };
+  var n = 0;
+  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Submitted' && (!req.factory || str_(r.factory) === str_(req.factory))) n++; });
+  return { ok: true, count: n };
+}
