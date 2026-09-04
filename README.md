@@ -2,6 +2,8 @@
 
 Star Global production data system — Google Sheets + Apps Script backend, mobile PWA frontend.
 
+**Live app:** https://starglobal-apps.github.io/SG-Data-Manage/ (own origin — keep it separate from other PWAs on `starmis2-lgtm.github.io`, whose root app has scope `/`).
+
 ```
 gas/    Apps Script (pushed with clasp)      ->  Sheets me data + JSON API (Web App)
 docs/   Mobile app (PWA, GitHub Pages)       ->  phone pe "Add to Home Screen"
