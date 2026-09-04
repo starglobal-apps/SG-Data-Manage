@@ -1,9 +1,10 @@
-// app.js — SG Data mobile app core: auth, api + offline queue, navigation, home, attendance.
-// Other screens live in modules.js and register through window.SG.
+// app.js — SG Data core: state, API + offline queue, auth, navigation (tabs + pushed screens),
+// context bar (line · factory · date), attendance form, Main tab. Feature tabs live in home.js / entry.js / data.js.
 (function () {
   'use strict';
 
   var API_URL = (window.SG_CONFIG && window.SG_CONFIG.API_URL) || '';
+  var VERSION = '2.0';
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -13,15 +14,25 @@
     masters: parse(localStorage.getItem('sg_masters')),
     date: todayStr(),
     factory: localStorage.getItem('sg_factory') || '666',
-    screen: 'login'
+    line: localStorage.getItem('sg_line') || ''
   };
-  var screens = {};       // name -> open function (registered by modules)
-  var WRITE_ACTIONS = ['att.save', 'hourly.save', 'manpower.save'];
+  var nav = { tab: 'home', sub: null };
+  var tabs = {}, screens = {};
+  var WRITE_ACTIONS = ['att.save', 'hourly.save', 'hourly.slot', 'manpower.save'];
 
   function parse(s) { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
   function pad(n) { return String(n).padStart(2, '0'); }
   function todayStr() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function fmtDay(iso) {
+    var p = (iso || '').split('-'); if (p.length !== 3) return iso;
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+  }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function nowHour() { var d = new Date(); return d.getHours() + d.getMinutes() / 60; }
+  function isToday() { return state.date === todayStr(); }
+  function remember(k, v) { try { localStorage.setItem('sg_' + k, v); } catch (e) {} }
+  function recall(k) { return localStorage.getItem('sg_' + k) || ''; }
 
   // ---------- ui helpers ----------
 
@@ -33,49 +44,67 @@
     toastTimer = setTimeout(function () { t.hidden = true; }, ms || 3200);
   }
   function busy(on) { $('#busy').hidden = !on; }
+  function pill(s) { return s ? '<span class="pill ' + esc(s) + '">' + esc(s) + '</span>' : ''; }
+  function icon(name) { return '<svg><use href="#i-' + name + '"/></svg>'; }
 
-  function show(name, title) {
-    state.screen = name;
-    $$('.screen').forEach(function (s) { s.hidden = s.id !== 'scr-' + name; });
-    $('#topbar-title').textContent = title || 'SG Data';
-    $('#btn-back').hidden = (name === 'login' || name === 'home');
-    $('#btn-logout').hidden = (name !== 'home');
-    window.scrollTo(0, 0);
+  // ---------- navigation ----------
+
+  function showOnly(id) { $$('.screen').forEach(function (s) { s.hidden = s.id !== id; }); window.scrollTo(0, 0); }
+  function setHeader(title, sub, back) {
+    $('#hdr-title').textContent = title;
+    $('#hdr-sub').textContent = sub || '';
+    $('#hdr-back').hidden = !back;
+    $('#hdr-ctx').disabled = !!back;
   }
+  function shortLine(d) { return (d || '').replace(/^FAC\d+-/, ''); }
+  function ctxSub() { return 'FAC' + state.factory + ' · ' + fmtDay(state.date) + (isToday() ? '' : ' (purana din)'); }
 
-  function ctxTitle(prefix) { return prefix + ' · ' + state.date + ' · FAC' + state.factory; }
+  function tab(name) {
+    if (!state.user) return;
+    if (name === 'review' && !isManager()) name = 'home';
+    nav.tab = name; nav.sub = null;
+    showOnly('tab-' + name);
+    document.body.classList.add('has-nav');
+    $('#nav').hidden = false;
+    $$('#nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
+    if (name === 'home' || name === 'entry' || name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
+    else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
+    else setHeader('Main', state.user.name, false);
+    if (tabs[name]) tabs[name]();
+  }
+  function push(id, title) {
+    nav.sub = id;
+    showOnly('scr-' + id);
+    $('#nav').hidden = true;
+    document.body.classList.remove('has-nav');
+    setHeader(title, '', true);
+  }
+  function back() { tab(nav.tab); }
+  function refresh() { if (nav.sub) return; tab(nav.tab); }
+  function home() { tab('home'); }
 
   // ---------- api + offline queue ----------
 
   function rawPost(body) {
-    return fetch(API_URL, {
-      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(body), redirect: 'follow'
-    }).then(function (r) { return r.json(); });
+    return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow' })
+      .then(function (r) { return r.json(); });
   }
-
   function api(action, payload, opts) {
     opts = opts || {};
     if (!API_URL) return Promise.reject(new Error('API URL set nahi hai — docs/config.js me daalo'));
     if (!opts.quiet) busy(true);
-    var body = Object.assign({}, payload || {}, { action: action, token: state.token });
-    return rawPost(body)
+    return rawPost(Object.assign({}, payload || {}, { action: action, token: state.token }))
       .then(function (data) {
         if (!data.ok) {
-          if (data.error === 'AUTH') { logout(); }
-          var err = new Error(data.message || data.error || 'Server error');
-          err.code = data.error; err.data = data;
-          throw err;
+          if (data.error === 'AUTH') logout();
+          var err = new Error(data.message || data.error || 'Server error'); err.code = data.error; err.data = data; throw err;
         }
         if (queue().length) setTimeout(flushQueue, 50);
         return data;
       })
       .catch(function (err) {
         if (err instanceof TypeError) {
-          if (WRITE_ACTIONS.indexOf(action) >= 0 && !opts.noQueue) {
-            enqueue(action, payload);
-            return { ok: true, queued: true };
-          }
+          if (WRITE_ACTIONS.indexOf(action) >= 0 && !opts.noQueue) { enqueue(action, payload); return { ok: true, queued: true }; }
           throw new Error('Network nahi mila — internet check karo');
         }
         throw err;
@@ -84,7 +113,7 @@
   }
 
   function queue() { return parse(localStorage.getItem('sg_queue')) || []; }
-  function saveQueue(q) { localStorage.setItem('sg_queue', JSON.stringify(q)); renderQueue(); }
+  function saveQueue(q) { localStorage.setItem('sg_queue', JSON.stringify(q)); renderQueueBadge(); }
   function enqueue(action, payload) {
     var q = queue();
     q.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), action: action, payload: payload, ts: new Date().toISOString(), error: '' });
@@ -94,47 +123,20 @@
   var flushing = false;
   function flushQueue() {
     if (flushing || !navigator.onLine || !state.token) return Promise.resolve();
-    var q = queue();
-    if (!q.length) return Promise.resolve();
+    var q = queue(); if (!q.length) return Promise.resolve();
+    var item = q.filter(function (x) { return !x.error; })[0]; if (!item) return Promise.resolve();
     flushing = true;
-    var item = q[0];
     return rawPost(Object.assign({}, item.payload, { action: item.action, token: state.token }))
       .then(function (data) {
         var cur = queue();
-        if (data.ok) { cur = cur.filter(function (x) { return x.id !== item.id; }); saveQueue(cur); toast('Offline entry sync ho gayi', 'ok'); }
-        else if (data.error === 'AUTH') { logout(); }
-        else {
-          // server rejected it (validation, lock...) — keep it visible for the user to retry or delete
-          cur = cur.map(function (x) { if (x.id === item.id) x.error = data.message || data.error; return x; });
-          // move failed item to the end so others can flush
-          var failed = cur.filter(function (x) { return x.id === item.id; }), rest = cur.filter(function (x) { return x.id !== item.id; });
-          saveQueue(rest.concat(failed));
-        }
+        if (data.ok) { saveQueue(cur.filter(function (x) { return x.id !== item.id; })); toast('Offline entry sync ho gayi', 'ok'); invalidate(); }
+        else if (data.error === 'AUTH') logout();
+        else saveQueue(cur.map(function (x) { if (x.id === item.id) x.error = data.message || data.error; return x; }));
       })
-      .catch(function () { /* still offline */ })
-      .finally(function () {
-        flushing = false;
-        var left = queue();
-        if (left.length && left.some(function (x) { return !x.error; })) setTimeout(flushQueue, 500);
-      });
+      .catch(function () {})
+      .finally(function () { flushing = false; if (queue().some(function (x) { return !x.error; })) setTimeout(flushQueue, 500); });
   }
-  function renderQueue() {
-    var q = queue();
-    var b = $('#queue-badge'); b.hidden = !q.length; b.textContent = '⏳ ' + q.length;
-    var box = $('#queue-box'); box.hidden = !q.length;
-    $('#queue-list').innerHTML = q.map(function (x) {
-      var p = x.payload || {};
-      var what = x.action.replace('.save', '') + ' · ' + esc(p.dept || '') + (p.srn ? ' · ' + esc(p.srn) : '') + ' · ' + esc(p.date || '');
-      return '<div class="item"><div><div class="name">' + what + '</div><div class="sub" style="color:' + (x.error ? 'var(--bad)' : 'var(--muted)') + '">' + esc(x.error || 'Sync ka wait') + '</div></div>' +
-        '<div class="actions-inline"><button class="primary small" data-retry="' + x.id + '">Retry</button><button class="danger small" data-drop="' + x.id + '">✕</button></div></div>';
-    }).join('');
-  }
-  $('#queue-list').addEventListener('click', function (e) {
-    var b = e.target.closest('button'); if (!b) return;
-    var q = queue();
-    if (b.dataset.drop) { if (confirm('Ye offline entry hata dein?')) saveQueue(q.filter(function (x) { return x.id !== b.dataset.drop; })); }
-    if (b.dataset.retry) { saveQueue(q.map(function (x) { if (x.id === b.dataset.retry) x.error = ''; return x; })); flushQueue(); }
-  });
+  function renderQueueBadge() { var q = queue(); var b = $('#queue-badge'); b.hidden = !q.length; b.textContent = '⏳ ' + q.length; }
   window.addEventListener('online', function () { flushQueue(); });
 
   // ---------- auth ----------
@@ -146,238 +148,233 @@
     api('login', { pin: pin })
       .then(function (d) {
         state.token = d.token; state.user = d.user;
-        localStorage.setItem('sg_token', d.token);
-        localStorage.setItem('sg_user', JSON.stringify(d.user));
+        localStorage.setItem('sg_token', d.token); localStorage.setItem('sg_user', JSON.stringify(d.user));
         $('#in-pin').value = '';
         return loadMasters();
       })
-      .then(function () { goHome(); flushQueue(); })
+      .then(function () { ensureLine(); home(); flushQueue(); })
       .catch(function (e) { $('#login-msg').textContent = e.message; });
   }
-
   function logout() {
     state.token = ''; state.user = null;
     localStorage.removeItem('sg_token'); localStorage.removeItem('sg_user');
-    show('login');
+    $('#nav').hidden = true; document.body.classList.remove('has-nav');
+    setHeader('SG Data', '', false);
+    showOnly('scr-login');
+  }
+  function loadMasters() {
+    return api('masters').then(function (d) { state.masters = d; localStorage.setItem('sg_masters', JSON.stringify(d)); });
   }
 
-  function loadMasters() {
-    return api('masters').then(function (d) {
-      state.masters = d;
-      localStorage.setItem('sg_masters', JSON.stringify(d));
-    });
-  }
+  // ---------- masters helpers ----------
 
   function M(type) { return (state.masters && state.masters.masters && state.masters.masters[type]) || []; }
-  function isManager() { return state.user && (state.user.role === 'Manager' || state.user.role === 'Admin'); }
-
+  function isManager() { return !!state.user && (state.user.role === 'Manager' || state.user.role === 'Admin'); }
   function allowedFactories() {
     var all = (state.masters && state.masters.factories) || ['666', '117'];
     return state.user && state.user.factory ? all.filter(function (f) { return f === state.user.factory; }) : all;
   }
-
-  function catOrder(cat) {
-    var cats = (state.masters && state.masters.categories) || [];
-    for (var i = 0; i < cats.length; i++) if (cats[i].key === cat) return i;
-    return cats.length;
-  }
-  function catLabel(cat) {
-    var c = ((state.masters && state.masters.categories) || []).filter(function (x) { return x.key === cat; })[0];
-    return c ? c.label : (cat || '');
-  }
-
-  // Depts for a factory, restricted to the user's allowed depts (and optionally a category), grouped by category
+  function catOrder(cat) { var cats = (state.masters && state.masters.categories) || []; for (var i = 0; i < cats.length; i++) if (cats[i].key === cat) return i; return cats.length; }
+  function catLabel(cat) { var c = ((state.masters && state.masters.categories) || []).filter(function (x) { return x.key === cat; })[0]; return c ? c.label : (cat || ''); }
   function deptsFor(factory, cat) {
     var list = M('DEPT').filter(function (d) { return d.factory === factory && (!cat || d.extra === cat); });
-    if (state.user && state.user.depts && state.user.depts.length) {
-      list = list.filter(function (d) { return state.user.depts.indexOf(d.key) >= 0; });
-    }
+    if (state.user && state.user.depts && state.user.depts.length) list = list.filter(function (d) { return state.user.depts.indexOf(d.key) >= 0; });
     return list.sort(function (a, b) { return (catOrder(a.extra) - catOrder(b.extra)) || a.key.localeCompare(b.key); });
   }
-
-  function deptCategory(dept) {
-    var d = M('DEPT').filter(function (x) { return x.key === dept; })[0];
-    return d ? d.extra : '';
-  }
-
+  function deptCategory(dept) { var d = M('DEPT').filter(function (x) { return x.key === dept; })[0]; return d ? d.extra : ''; }
   function rolesForDept(dept) {
     var cat = deptCategory(dept);
-    var list = M('CAT_ROLE').filter(function (r) { return r.key === cat; })
-      .sort(function (a, b) { return Number(a.extra) - Number(b.extra); })
-      .map(function (r) { return r.value; });
+    var list = M('CAT_ROLE').filter(function (r) { return r.key === cat; }).sort(function (a, b) { return Number(a.extra) - Number(b.extra); }).map(function (r) { return r.value; });
     return list.length ? list : M('ROLE').map(function (r) { return r.key; });
   }
-
   function deptOptions(depts, selected) {
     var groups = {}, order = [];
-    depts.forEach(function (d) {
-      var g = catLabel(d.extra) || 'Other';
-      if (!groups[g]) { groups[g] = []; order.push(g); }
-      groups[g].push(d);
-    });
+    depts.forEach(function (d) { var g = catLabel(d.extra) || 'Other'; if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(d); });
     return order.map(function (g) {
-      return '<optgroup label="' + esc(g) + '">' + groups[g].map(function (d) {
-        return '<option value="' + esc(d.key) + '"' + (d.key === selected ? ' selected' : '') + '>' + esc(d.key) + '</option>';
-      }).join('') + '</optgroup>';
+      return '<optgroup label="' + esc(g) + '">' + groups[g].map(function (d) { return '<option value="' + esc(d.key) + '"' + (d.key === selected ? ' selected' : '') + '>' + esc(d.key) + '</option>'; }).join('') + '</optgroup>';
     }).join('');
   }
-
-  // ---------- home ----------
-
-  function goHome() {
-    show('home', 'SG Data');
-    $('#in-date').value = state.date;
-    var facs = allowedFactories();
-    if (facs.indexOf(state.factory) < 0) state.factory = facs[0];
-    $('#factory-toggle').innerHTML = facs.map(function (f) {
-      return '<button data-f="' + esc(f) + '" class="' + (f === state.factory ? 'on' : '') + '">FAC' + esc(f) + '</button>';
-    }).join('');
-    $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); });
-    renderQueue();
-    if (screens.checklist) screens.checklist();
+  function slots(shift) { return (state.masters.slots || []).filter(function (s) { return !shift || s.shift === shift; }); }
+  function slotDef(key) { return (state.masters.slots || []).filter(function (s) { return s.key === key; })[0]; }
+  function slotStart(key) { return Number(key.split('-')[0]); }
+  function lineCat() { return deptCategory(state.line); }
+  function hourlyType() { var c = lineCat(); return c === 'STITCH' ? 'STITCH' : c === 'PACKING' ? 'PACKING' : ''; }
+  function ensureLine() {
+    var facs = allowedFactories(); if (facs.indexOf(state.factory) < 0) state.factory = facs[0];
+    var depts = deptsFor(state.factory);
+    if (!depts.some(function (d) { return d.key === state.line; })) state.line = depts.length ? depts[0].key : '';
+    localStorage.setItem('sg_line', state.line); localStorage.setItem('sg_factory', state.factory);
   }
 
-  function pill(s) { return s ? '<span class="pill ' + esc(s) + '">' + esc(s) + '</span>' : ''; }
+  // ---------- today's data (shared cache) ----------
 
-  // ---------- attendance ----------
+  var cache = { key: '', data: null, t: 0, p: null };
+  function invalidate() { cache.data = null; cache.p = null; }
+  function loadToday(force) {
+    var key = [state.date, state.factory, state.line].join('|');
+    if (!force && cache.key === key && cache.data && Date.now() - cache.t < 30000) return Promise.resolve(cache.data);
+    if (cache.key === key && cache.p) return cache.p;
+    cache.key = key; cache.data = null;
+    cache.p = api('line.today', { date: state.date, factory: state.factory, dept: state.line }, { quiet: true })
+      .then(function (d) { cache.data = d; cache.t = Date.now(); cache.p = null; return d; })
+      .catch(function (e) { cache.p = null; throw e; });
+    return cache.p;
+  }
+  function today() { return cache.data; }
+  function lockedType(type) { var s = today() && today().statuses && today().statuses[type]; s = s && s.status; return s === 'Submitted' || s === 'Approved' || s === 'Sent'; }
 
-  var att = { dept: '', shift: 'Final', prefill: false };
+  // ---------- context: line / factory / date ----------
 
-  function openAttendance(dept, shift) {
+  function setLine(d) { state.line = d; localStorage.setItem('sg_line', d); invalidate(); refresh(); }
+  function setFactory(f) { state.factory = f; localStorage.setItem('sg_factory', f); ensureLine(); invalidate(); refresh(); }
+  function setDate(d) { state.date = d || todayStr(); invalidate(); refresh(); }
+
+  function openContext() {
+    var facs = allowedFactories(), depts = deptsFor(state.factory);
+    var html = '';
+    if (facs.length > 1) html += '<label>Factory</label><div class="toggle">' + facs.map(function (f) { return '<button data-f="' + esc(f) + '" class="' + (f === state.factory ? 'on' : '') + '">FAC' + esc(f) + '</button>'; }).join('') + '</div>';
+    html += '<label>Line / Dept</label>';
+    if (depts.length <= 10) html += '<div class="chips" style="flex-wrap:wrap">' + depts.map(function (d) { return '<button data-d="' + esc(d.key) + '" class="' + (d.key === state.line ? 'on' : '') + '">' + esc(d.key) + '</button>'; }).join('') + '</div>';
+    else html += '<select id="ctx-line">' + deptOptions(depts, state.line) + '</select>';
+    html += '<label>Date</label><div class="row"><input id="ctx-date" type="date" value="' + esc(state.date) + '"><button class="btn ghost" data-today="1">Aaj</button></div>';
+    SG.sheet.open('Line · Factory · Date', html);
+    var c = $('#sheet-content');
+    c.onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.f) { setFactory(b.dataset.f); openContext(); }
+      else if (b.dataset.d) { setLine(b.dataset.d); SG.sheet.close(); }
+      else if (b.dataset.today) { setDate(todayStr()); SG.sheet.close(); }
+    };
+    c.onchange = function (e) {
+      if (e.target.id === 'ctx-date') { setDate(e.target.value); SG.sheet.close(); }
+      if (e.target.id === 'ctx-line') { setLine(e.target.value); SG.sheet.close(); }
+    };
+  }
+
+  // ---------- attendance form (pushed screen) ----------
+
+  var att = { dept: '', shift: 'Final' };
+  function openAttendance(shift, dept) {
     var depts = deptsFor(state.factory);
     if (!depts.length) { toast('Is factory ke depts MASTERS me nahi hain', 'bad'); return; }
     if (shift) att.shift = shift;
-    att.dept = dept || att.dept || depts[0].key;
+    att.dept = dept || state.line || depts[0].key;
     if (!depts.some(function (d) { return d.key === att.dept; })) att.dept = depts[0].key;
     $('#att-dept').innerHTML = deptOptions(depts, att.dept);
-    $('#att-shift').innerHTML = state.masters.shifts.map(function (s) {
-      return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>';
-    }).join('');
-    show('att', ctxTitle('Attendance'));
+    $('#att-shift').innerHTML = state.masters.shifts.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('');
+    push('att', (att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
     loadAttendance();
   }
-
-  function shiftDef() {
-    return state.masters.shifts.filter(function (s) { return s.key === att.shift; })[0] || state.masters.shifts[0];
-  }
-
+  function shiftDef() { return state.masters.shifts.filter(function (s) { return s.key === att.shift; })[0] || state.masters.shifts[0]; }
   function loadAttendance() {
-    var banner = $('#att-banner');
-    banner.hidden = true;
+    var banner = $('#att-banner'); banner.hidden = true;
     api('att.get', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift })
       .then(function (d) {
-        att.prefill = d.prefill;
         renderAttRows(d.rows);
-        if (d.prefill) {
-          banner.className = 'banner'; banner.hidden = false;
-          banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo';
-        } else if (d.rows.length) {
-          banner.className = 'banner ok'; banner.hidden = false;
-          banner.textContent = 'Aaj ki entry saved hai (' + d.rows[0].by + ', ' + d.rows[0].at + '). Badal ke phir Save kar sakte ho.';
-        }
+        if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo'; }
+        else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). Badal ke phir Save kar sakte ho.'; }
       })
       .catch(function (e) { toast(e.message, 'bad'); renderAttRows([]); });
   }
-
   function renderAttRows(rows) {
-    var sd = shiftDef();
-    var byRole = {};
+    var sd = shiftDef(), byRole = {};
     rows.forEach(function (r) { byRole[r.role] = r; });
     var roles = rolesForDept(att.dept);
     rows.forEach(function (r) { if (roles.indexOf(r.role) < 0) roles.push(r.role); });
     $('#att-rows').innerHTML = roles.map(function (role) {
-      var r = byRole[role] || { hours: sd.hours, count: 0 };
-      var opts = sd.hourOptions.slice();
+      var r = byRole[role] || { hours: sd.hours, count: 0 }, opts = sd.hourOptions.slice();
       if (opts.indexOf(r.hours) < 0 && r.hours) opts.push(r.hours);
-      return '<tr data-role="' + esc(role) + '" class="' + (r.count ? 'filled' : '') + '">' +
-        '<td>' + esc(role) + '</td>' +
+      return '<tr data-role="' + esc(role) + '" class="' + (r.count ? 'filled' : '') + '"><td>' + esc(role) + '</td>' +
         '<td><select class="att-hrs">' + opts.map(function (h) { return '<option value="' + h + '"' + (h === r.hours ? ' selected' : '') + '>' + h + '</option>'; }).join('') + '</select></td>' +
-        '<td><input class="att-count" type="number" inputmode="numeric" min="0" step="1" value="' + (r.count || '') + '" placeholder="0"></td>' +
-        '</tr>';
+        '<td><input class="att-count" type="number" inputmode="numeric" min="0" step="1" value="' + (r.count || '') + '" placeholder="0"></td></tr>';
     }).join('');
     updateAttTotals();
   }
-
-  function collectAttRows() {
-    return $$('#att-rows tr').map(function (tr) {
-      return { role: tr.getAttribute('data-role'), hours: Number($('.att-hrs', tr).value), count: Number($('.att-count', tr).value || 0) };
-    });
-  }
-
+  function collectAttRows() { return $$('#att-rows tr').map(function (tr) { return { role: tr.dataset.role, hours: Number($('.att-hrs', tr).value), count: Number($('.att-count', tr).value || 0) }; }); }
   function updateAttTotals() {
-    var rows = collectAttRows(), c = 0, h = 0;
-    rows.forEach(function (r) { c += r.count; h += r.count * r.hours; });
-    $('#att-total-count').textContent = c;
-    $('#att-total-hrs').textContent = h;
+    var c = 0, h = 0;
+    collectAttRows().forEach(function (r) { c += r.count; h += r.count * r.hours; });
+    $('#att-total-count').textContent = c; $('#att-total-hrs').textContent = h;
     $$('#att-rows tr').forEach(function (tr) { tr.classList.toggle('filled', Number($('.att-count', tr).value || 0) > 0); });
   }
-
   function saveAttendance() {
     var rows = collectAttRows().filter(function (r) { return r.count > 0; });
-    if (!rows.length && !confirm('Koi count nahi bhara. Is dept ki aaj ki entry khali save karein?')) return;
+    if (!rows.length && !confirm('Koi count nahi bhara. Khali save karein?')) return;
     api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, rows: rows })
-      .then(function (d) {
-        toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok');
-        goHome();
-      })
+      .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidate(); back(); })
       .catch(function (e) { toast(e.message, 'bad'); });
   }
+
+  // ---------- Main tab ----------
+
+  tabs.main = function () {
+    var u = state.user, q = queue();
+    var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : ' · dono factory') + (u.depts && u.depts.length ? ' · ' + u.depts.length + ' dept' : '') + '</div></div></div>';
+    html += '<h2>Setting</h2><div class="menu">';
+    html += '<div class="task" data-m="ctx"><div class="ic">' + icon('home') + '</div><div class="b"><div class="n">Meri line</div><div class="s">' + esc(state.line || '—') + ' · FAC' + esc(state.factory) + '</div></div>' + icon('chev') + '</div>';
+    html += '<div class="task" data-m="endline"><div class="ic">' + icon('qc') + '</div><div class="b"><div class="n">Endline timeline me dikhao</div><div class="s">QC checker ke liye on karo</div></div><span class="v">' + (recall('show_endline') === '1' ? 'On' : 'Off') + '</span></div>';
+    html += '<div class="task" data-m="refresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Loading refresh</div><div class="s">Nayi loading sheet me aayi ho to</div></div>' + icon('chev') + '</div>';
+    html += '<div class="task" data-m="masters"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Masters reload</div><div class="s">Depts / roles badle ho to</div></div>' + icon('chev') + '</div>';
+    html += '</div>';
+    if (q.length) {
+      html += '<h2>Offline pending (' + q.length + ')</h2><div class="list">' + q.map(function (x) {
+        var p = x.payload || {};
+        return '<div class="item"><div><div class="name">' + esc(x.action.replace('.save', '').replace('.slot', ' slot')) + ' · ' + esc(p.dept || '') + (p.srn ? ' · ' + esc(p.srn) : '') + (p.slot ? ' · ' + esc(p.slot) : '') + '</div><div class="sub" style="color:' + (x.error ? 'var(--bad)' : 'var(--muted)') + '">' + esc(x.error || 'Sync ka wait') + '</div></div>' +
+          '<div class="actions-inline"><button class="btn small" data-retry="' + x.id + '">Retry</button><button class="btn danger small" data-drop="' + x.id + '">✕</button></div></div>';
+      }).join('') + '</div>';
+    }
+    html += '<h2>App</h2><div class="menu"><div class="task" data-m="logout"><div class="ic" style="background:var(--bad-soft);color:var(--bad)">' + icon('logout') + '</div><div class="b"><div class="n">Logout</div><div class="s">SG Data v' + VERSION + '</div></div></div></div>';
+    $('#main-body').innerHTML = html;
+  };
+  $('#main-body').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); var t = e.target.closest('[data-m]');
+    if (b && b.dataset.drop) { if (confirm('Ye offline entry hata dein?')) { saveQueue(queue().filter(function (x) { return x.id !== b.dataset.drop; })); tabs.main(); } return; }
+    if (b && b.dataset.retry) { saveQueue(queue().map(function (x) { if (x.id === b.dataset.retry) x.error = ''; return x; })); flushQueue().then(tabs.main); return; }
+    if (!t) return;
+    var m = t.dataset.m;
+    if (m === 'ctx') openContext();
+    else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
+    else if (m === 'refresh') api('orders.refresh').then(function () { toast('Loading refresh ho gayi', 'ok'); invalidate(); }).catch(function (er) { toast(er.message, 'bad'); });
+    else if (m === 'masters') loadMasters().then(function () { ensureLine(); toast('Masters reload ho gaye', 'ok'); }).catch(function (er) { toast(er.message, 'bad'); });
+    else if (m === 'logout') { if (confirm('Logout?')) logout(); }
+  });
 
   // ---------- events ----------
 
   $('#btn-login').addEventListener('click', login);
   $('#in-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
-  $('#btn-logout').addEventListener('click', function () { if (confirm('Logout?')) logout(); });
-  $('#btn-back').addEventListener('click', goHome);
-
-  $('#in-date').addEventListener('change', function () { state.date = this.value || todayStr(); if (screens.checklist) screens.checklist(); });
-  $('#factory-toggle').addEventListener('click', function (e) {
-    var b = e.target.closest('button'); if (!b) return;
-    state.factory = b.getAttribute('data-f'); localStorage.setItem('sg_factory', state.factory);
-    goHome();
-  });
-  $$('.tile').forEach(function (t) {
-    t.addEventListener('click', function () {
-      var go = t.getAttribute('data-go');
-      if (go === 'att') openAttendance();
-      else if (screens[go]) screens[go]();
-      else toast('Ye module abhi banega', '');
-    });
-  });
-
+  $('#hdr-back').addEventListener('click', back);
+  $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
+  $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
   $('#att-dept').addEventListener('change', function () { att.dept = this.value; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
   $('#att-rows').addEventListener('input', updateAttTotals);
   $('#btn-att-save').addEventListener('click', saveAttendance);
 
-  // ---------- shared namespace for modules.js ----------
+  // ---------- shared namespace ----------
 
   window.SG = {
-    state: state, $: $, $$: $$, esc: esc, api: api, show: show, toast: toast, busy: busy, pill: pill,
-    M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory,
-    rolesForDept: rolesForDept, catLabel: catLabel, goHome: goHome, ctxTitle: ctxTitle, todayStr: todayStr, screens: screens,
-    openAttendance: openAttendance
+    state: state, nav: nav, tabs: tabs, screens: screens, VERSION: VERSION,
+    $: $, $$: $$, esc: esc, api: api, toast: toast, busy: busy, pill: pill, icon: icon,
+    M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
+    todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
+    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall,
+    tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, loadToday: loadToday, today: today,
+    setLine: setLine, setDate: setDate, setFactory: setFactory, openContext: openContext, openAttendance: openAttendance, loadMasters: loadMasters
   };
 
   // ---------- boot ----------
 
   function boot() {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(function () {});
-    }
-    renderQueue();
-    if (!API_URL) {
-      show('login');
-      $('#login-msg').textContent = 'docs/config.js me API_URL set karo';
-    } else if (state.token && state.user) {
-      // always refresh masters on open so MASTERS sheet edits reach the phone without re-login
-      api('me').then(loadMasters).then(function () { goHome(); flushQueue(); }).catch(function (e) {
-        if (state.masters && e.message && /Network/.test(e.message)) goHome(); else show('login');
-      });
-    } else {
-      show('login');
-    }
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+    renderQueueBadge();
+    $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); });
+    if (!API_URL) { showOnly('scr-login'); $('#login-msg').textContent = 'docs/config.js me API_URL set karo'; return; }
+    if (state.token && state.user) {
+      if (state.masters) { ensureLine(); home(); }
+      api('me', {}, { quiet: true }).then(function () { return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); if (!nav.sub) tab(nav.tab); flushQueue(); })
+        .catch(function (e) { if (!state.masters || !/Network/.test(e.message || '')) logout(); });
+    } else showOnly('scr-login');
   }
-  // wait for modules.js / home.js to register their screens before the first render
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
 })();

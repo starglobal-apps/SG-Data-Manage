@@ -26,7 +26,7 @@
     $('#hr-types').innerHTML = types.map(function (t) {
       return '<button data-t="' + esc(t.key) + '" class="' + (t.key === hr.type ? 'on' : '') + '">' + esc(t.label) + '</button>';
     }).join('');
-    S.show('hourly', S.ctxTitle('Hourly'));
+    S.push('hourly', 'Hourly table · ' + S.fmtDay(state.date));
     loadHourlyDepts();
   }
 
@@ -143,7 +143,7 @@
                     floor: hr.type === 'STITCH' ? $('#hr-floor').value : '', checker: hr.type === 'ENDLINE' ? $('#hr-checker').value.trim() : '', rows: rows };
     api('hourly.save', payload)
       .then(function (d) {
-        if (d.queued) { toast('Offline me save — baad me sync hoga', 'ok'); S.goHome(); return; }
+        if (d.queued) { toast('Offline me save — baad me sync hoga', 'ok'); S.invalidate(); S.back(); return; }
         toast('Saved · aaj ' + d.total + ' · balance ' + d.balance, 'ok');
         remember('hr_srn_' + hr.type + '_' + hr.dept, hr.srn);
         if (hr.type === 'ENDLINE') remember('hr_checker_' + hr.dept, payload.checker);
@@ -178,7 +178,7 @@
     $('#mp-dept').innerHTML = S.deptOptions(depts, mp.dept);
     $('#mp-event').innerHTML = opt(state.masters.mpEvents || [], null, function (x) { return x.key; }, function (x) { return x.label; });
     renderMpRoles(); mpTimeToggle();
-    S.show('manpower', S.ctxTitle('Manpower'));
+    S.push('manpower', 'Manpower · ' + S.fmtDay(state.date));
     loadMp();
   }
   function renderMpRoles() { $('#mp-role').innerHTML = opt(S.rolesForDept(mp.dept)); }
@@ -192,7 +192,7 @@
         var evs = state.masters.mpEvents || [];
         $('#mp-list').innerHTML = d.events.length ? d.events.map(function (e) {
           var lab = (evs.filter(function (x) { return x.key === e.event; })[0] || {}).label || e.event;
-          return '<div class="item"><div><div class="name">' + esc(e.role) + ' × ' + e.count + '</div><div class="sub">' + esc(lab) + (e.time ? ' @ ' + esc(e.time) : '') + ' → ' + e.eff_hours + ' hrs' + (e.note ? ' · ' + esc(e.note) : '') + '</div></div><button class="danger small" data-del="' + esc(e.id) + '">✕</button></div>';
+          return '<div class="item"><div><div class="name">' + esc(e.role) + ' × ' + e.count + '</div><div class="sub">' + esc(lab) + (e.time ? ' @ ' + esc(e.time) : '') + ' → ' + e.eff_hours + ' hrs' + (e.note ? ' · ' + esc(e.note) : '') + '</div></div><button class="btn danger small" data-del="' + esc(e.id) + '">✕</button></div>';
         }).join('') : '<div class="empty">Aaj koi event nahi</div>';
       })
       .catch(function (e) { $('#mp-list').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
@@ -224,7 +224,7 @@
     $('#dc-dept').innerHTML = '<option value="">— Sab depts —</option>' + S.deptOptions(depts, dept || '');
     $('#dc-out').innerHTML = '';
     $('#btn-dc-submit').disabled = true;
-    S.show('dayclose', S.ctxTitle('Day Close'));
+    S.push('dayclose', 'Day Close · ' + S.fmtDay(state.date));
     if (dept) $('#btn-dc-preview').click();
   }
   function flagsHtml(flags) { return (flags || []).map(function (f) { return '<div class="flag ' + esc(f.level) + '">' + esc(f.msg) + '</div>'; }).join(''); }
@@ -263,7 +263,7 @@
   $('#btn-dc-submit').addEventListener('click', function () {
     if (!confirm('Submit karein? Iske baad is din ki entry lock ho jayegi.')) return;
     api('day.submit', { date: state.date, factory: state.factory, dept: $('#dc-dept').value })
-      .then(function (d) { toast('Submitted: ' + d.submitted + ' rows', 'ok'); S.goHome(); })
+      .then(function (d) { toast('Submitted: ' + d.submitted + ' rows', 'ok'); S.invalidate(); S.back(); })
       .catch(function (e) { toast(e.message, 'bad', 6000); });
   });
 
@@ -273,8 +273,6 @@
   var rv = { items: [] };
   function openReview() {
     if (!S.isManager()) { toast('Sirf manager', 'bad'); return; }
-    $('#rv-date').value = '';
-    S.show('review', 'Review · FAC' + state.factory);
     loadReview();
   }
   function loadReview() {
@@ -308,7 +306,7 @@
     if (action === 'reject') { remark = prompt('Reject ka reason:'); if (!remark) return; }
     else if (hasBlock) { remark = prompt('Block flag hai. Override karke approve karna hai to reason likho:'); if (!remark) return; override = true; }
     api('review.decide', { ids: ids, action: action, remark: remark, override: override })
-      .then(function (d) { toast(action + ': ' + d.done + (d.skipped.length ? ' · skipped ' + d.skipped.length + ': ' + d.skipped[0] : ''), d.skipped.length ? '' : 'ok', 6000); loadReview(); })
+      .then(function (d) { toast(action + ': ' + d.done + (d.skipped.length ? ' · skipped ' + d.skipped.length + ': ' + d.skipped[0] : ''), d.skipped.length ? '' : 'ok', 6000); S.invalidate(); loadReview(); })
       .catch(function (e) { toast(e.message, 'bad'); });
   }
   $('#rv-status').addEventListener('change', loadReview);
@@ -329,5 +327,5 @@
   S.screens.hourly = openHourly;
   S.screens.manpower = openManpower;
   S.screens.dayclose = openDayClose;
-  S.screens.review = openReview;
+  S.tabs.review = openReview;
 })();
