@@ -120,31 +120,42 @@ CFG.MP_EVENTS = [
   { key: 'EXTRA',     label: 'Extra aaya (add)',       eff: 8,    needsTime: false, add: true }
 ];
 
-// The 5 manpower-type columns (23-27) of the FAC666 stitching source sheet, in order.
-// PLACEHOLDER until diagFinalTargets() confirms the real headers.
-CFG.STITCH_ROLE_COLS = ['Operator', 'Helper', 'Thread cutter', 'End Line Checker', 'Feeder'];
+// The 5 manpower-type columns of the stitching source sheets (cols 23-27 on FAC666 'Data', 12-16 on FAC117), in order.
+// Verified by diagFinalTargets(): Helper | Paster | Threadcutter | Endline qc | Hand nidle operator
+CFG.STITCH_ROLE_COLS = ['Helper', 'Paster', 'Thread cutter', 'End Line Checker', 'Hand needle'];
+
+// Packing sheet manpower columns (Press Man 14, Cheker 16, Thread Cutter 17, Helper 18) <- attendance roles
+CFG.PACK_ROLE_COLS = { pressman: 'Press Man', checker: 'Checker', threadcutter: 'Thread cutter', helper: 'Helper' };
+
+// Endline sheet hourly pass/fail pairs: slot -> Pass column (Fail = +1). Header has 09-10 .. 4-5 only.
+CFG.ENDLINE_SLOT_COLS = { '09-10': 13, '10-11': 15, '11-12': 17, '12-13': 19, '13-14': 21, '14-15': 23, '15-16': 25, '16-17': 27 };
 
 // Where "Send to Final" appends rows. cols = { sheetColumnNumber: payloadField }.
 // keyCol = column used to find the next empty row. minRow = first data row.
-// Column positions come from Import.js ranges; run diagFinalTargets() to verify against real headers.
+// Verified against real headers with diagFinalTargets() on 2026-09-04. Columns fed by ARRAYFORMULA
+// (Data!B LINE NO; attendance year/month/manhours) are deliberately NOT mapped.
 CFG.FINAL_TARGETS = {
-  STITCH_666: { srcKey: 'ATT', sheet: 'Data', keyCol: 1, minRow: 2,
-    cols: { 1: 'date', 2: 'line', 3: 'dept', 4: 'srn', 5: 'floor', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
+  STITCH_666: { srcKey: 'ATT', sheet: 'Data', keyCol: 3, minRow: 2,
+    cols: { 1: 'date', 3: 'dept', 4: 'srn', 5: 'floor', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
             10: 'supervisor', 11: 'incharge', 23: 'r1', 24: 'r2', 25: 'r3', 26: 'r4', 27: 'r5' } },
   STITCH_117: { srcKey: 'STITCH117', sheet: 'FAC117-Stitching Output', keyCol: 1, minRow: 2,
     cols: { 1: 'date', 2: 'floor', 3: 'line', 4: 'dept', 5: 'srn', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
-            10: 'supervisor', 11: 'incharge', 12: 'r1' } },
+            10: 'supervisor', 11: 'incharge', 12: 'r1', 13: 'r2', 14: 'r3', 15: 'r4', 16: 'r5' } },
   ENDLINE:    { srcKey: 'ENDLINE', sheet: 'Quality Endline data', keyCol: 1, minRow: 3,
     cols: { 1: 'entryDate', 2: 'factoryName', 3: 'date', 4: 'srn', 5: 'item', 6: 'dept', 7: 'qfloor', 8: 'checker',
-            9: 'hours', 10: 'checked', 11: 'pass', 12: 'reject' } },
+            9: 'hours', 10: 'checked', 11: 'pass', 12: 'reject',
+            13: 'p0910', 14: 'f0910', 15: 'p1011', 16: 'f1011', 17: 'p1112', 18: 'f1112', 19: 'p1213', 20: 'f1213',
+            21: 'p1314', 22: 'f1314', 23: 'p1415', 24: 'f1415', 25: 'p1516', 26: 'f1516', 27: 'p1617', 28: 'f1617' } },
   PACKING:    { srcKey: 'PACKING', sheet: 'Finishing_Res', keyCol: 2, minRow: 2,
-    cols: { 2: 'srn', 3: 'date', 5: 'qty', 6: 'cartons', 7: 'pcs_per_ctn', 9: 'factory', 15: 'supervisor', 19: 'hours', 23: 'floor' } },
-  ATT_666:    { srcKey: 'ATT', sheet: ' karigar att_666', keyCol: 3, minRow: 2,
-    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count' } },
+    cols: { 1: 'entryTs', 2: 'srn', 3: 'date', 5: 'qty', 6: 'cartons', 7: 'pcs_per_ctn', 9: 'factory',
+            14: 'pressman', 15: 'supervisor', 16: 'checker', 17: 'threadcutter', 18: 'helper', 19: 'hours', 23: 'floor', 24: 'item' } },
+  ATT_666:    { srcKey: 'ATT', sheet: ' karigar att_666', keyCol: 3, minRow: 1,
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count', 10: 'supervisor' } },
   ATT_117:    { srcKey: 'ATT', sheet: '117', keyCol: 3, minRow: 2,
-    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count', 9: 'manhours' } },
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count' } },
+  // not verified (quota hit during diag) — inferred from Import.js range C:J = [date, factory, dept, OT, role, hrs, count, manhours]
   ATT_OT:     { srcKey: 'ATT', sheet: 'OT att', keyCol: 3, minRow: 2,
-    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'ot', 7: 'role', 8: 'hours', 9: 'count', 10: 'manhours' } }
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 7: 'role', 8: 'hours', 9: 'count' } }
 };
 
 CFG.STATUS = { DRAFT: 'Draft', SUBMITTED: 'Submitted', APPROVED: 'Approved', REJECTED: 'Rejected', SENT: 'Sent' };

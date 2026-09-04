@@ -80,10 +80,16 @@ function dayBuild_(req, user) {
     if (onlyDept && dept !== onlyDept) return;
     var info = L.srnInfo[srn] || {};
     var floorName = str_(g[0].floor) || (lineFloor[dept] ? lineFloor[dept].value : '');
+    var slotMap = {}, slotSet = {};
+    g.forEach(function(r) {
+      var sk = str_(r.slot); slotSet[sk] = true;
+      if (!slotMap[sk]) slotMap[sk] = { pass: 0, reject: 0 };
+      slotMap[sk].pass += num_(r.pass); slotMap[sk].reject += num_(r.reject);
+    });
     var payload = {
       entryDate: date, factoryName: 'FAC' + factory, date: date, srn: srn, item: info.item || '', dept: dept,
-      qfloor: floorName.replace(/Stitching/i, 'Quality'), checker: checker, hours: shiftHours_(shift),
-      checked: sum_(g, 'checked'), pass: sum_(g, 'pass'), reject: sum_(g, 'reject'), shift: shift
+      qfloor: floorName.replace(/Stitching/i, 'Quality'), checker: checker, hours: Object.keys(slotSet).length,
+      checked: sum_(g, 'checked'), pass: sum_(g, 'pass'), reject: sum_(g, 'reject'), shift: shift, slots: slotMap
     };
     var flags = [];
     if (!checker) flags.push({ level: 'warn', msg: 'Checker ka naam nahi' });
@@ -103,9 +109,15 @@ function dayBuild_(req, user) {
     if (onlyDept && dept !== onlyDept) return;
     var staff = lineStaff[dept] || {};
     var cartons = sum_(g, 'cartons'), qty = sum_(g, 'qty');
+    var effP = effectiveAttendance_(date, factory, dept, shift, att, events), byRoleP = {};
+    effP.forEach(function(r) { byRoleP[r.role] = (byRoleP[r.role] || 0) + r.count; });
+    var info = L.srnInfo[srn] || {};
     var payload = { srn: srn, date: date, qty: qty, cartons: cartons, pcs_per_ctn: cartons ? Math.round(qty / cartons) : num_(g[0].pcs_per_ctn),
-                    factory: shift === 'Final' ? factory : 'OT-' + factory, supervisor: staff.value || '', hours: shiftHours_(shift), floor: dept, shift: shift };
+                    factory: shift === 'Final' ? factory : 'OT-' + factory, supervisor: staff.value || '', hours: shiftHours_(shift), floor: dept, shift: shift,
+                    item: info.item || '', manpower: sum_(effP, 'count') };
+    Object.keys(CFG.PACK_ROLE_COLS).forEach(function(f) { payload[f] = byRoleP[CFG.PACK_ROLE_COLS[f]] || 0; });
     var flags = [];
+    if (!payload.manpower) flags.push({ level: 'warn', msg: 'Is packing dept ki ' + shift + ' attendance nahi hai' });
     var chk = chainCheck_(L, 'PACKING', dept, srn, 0);
     if (!chk.ok) flags.push({ level: 'block', msg: chk.msg });
     rows.push({ date: date, factory: factory, line: '', dept: dept, type: 'PACKING', srn: srn, shift: shift, payload: payload, flags: flags });
@@ -238,6 +250,7 @@ function reviewDecide_(req, user) {
 function fmtSheetDate_(iso, style) {
   var d = parseDate_(iso); if (!d) return iso;
   if (style === 'us') return Utilities.formatDate(d, tz_(), 'M/d/yyyy');
+  if (style === 'dd') return Utilities.formatDate(d, tz_(), 'dd-MMM-yyyy');
   return Utilities.formatDate(d, tz_(), 'd-MMM-yyyy');
 }
 
@@ -252,18 +265,25 @@ function finalRow_(r, p) {
     return { target: t, rows: [row] };
   }
   if (type === 'ENDLINE') {
-    return { target: 'ENDLINE', rows: [{ entryDate: fmtSheetDate_(nowStr_().slice(0, 10)), factoryName: p.factoryName, date: fmtSheetDate_(p.date),
-             srn: p.srn, item: p.item, dept: p.dept, qfloor: p.qfloor, checker: p.checker, hours: p.hours, checked: p.checked, pass: p.pass, reject: p.reject }] };
+    var row2 = { entryDate: fmtSheetDate_(todayStr_()), factoryName: p.factoryName, date: fmtSheetDate_(p.date),
+             srn: p.srn, item: p.item, dept: p.dept, qfloor: p.qfloor, checker: p.checker, hours: p.hours, checked: p.checked, pass: p.pass, reject: p.reject };
+    Object.keys(CFG.ENDLINE_SLOT_COLS).forEach(function(sk) {
+      var sv = (p.slots || {})[sk], tag = sk.replace('-', '');
+      row2['p' + tag] = sv ? sv.pass : ''; row2['f' + tag] = sv ? sv.reject : '';
+    });
+    return { target: 'ENDLINE', rows: [row2] };
   }
   if (type === 'PACKING') {
-    return { target: 'PACKING', rows: [{ srn: p.srn, date: fmtSheetDate_(p.date), qty: p.qty, cartons: p.cartons, pcs_per_ctn: p.pcs_per_ctn,
-             factory: p.factory, supervisor: p.supervisor, hours: p.hours, floor: p.floor }] };
+    return { target: 'PACKING', rows: [{ entryTs: nowStr_(), srn: p.srn, date: p.date, qty: p.qty, cartons: p.cartons, pcs_per_ctn: p.pcs_per_ctn,
+             factory: p.factory, pressman: p.pressman, supervisor: p.supervisor, checker: p.checker, threadcutter: p.threadcutter, helper: p.helper,
+             hours: p.hours, floor: p.floor, item: p.item }] };
   }
   if (type === 'ATT') {
     var t2 = shift !== 'Final' ? 'ATT_OT' : (factory === '117' ? 'ATT_117' : 'ATT_666');
+    var staff = masterMap_('LINE_STAFF')[r.dept] || {};
     var rows = (p.rows || []).map(function(x) {
-      return { date: fmtSheetDate_(r.date), factory: shift !== 'Final' ? 'OT-' + factory : (factory === '117' ? 117 : 666), dept: r.dept,
-               ot: 'OT', role: x.role, hours: x.hours, count: x.count, manhours: x.hours * x.count };
+      return { date: fmtSheetDate_(r.date, 'dd'), factory: Number(factory), dept: r.dept, role: x.role, hours: x.hours, count: x.count,
+               manhours: x.hours * x.count, supervisor: staff.value || '' };
     });
     return { target: t2, rows: rows };
   }
@@ -341,10 +361,12 @@ function appendFinal_(T, rows) {
 }
 
 // Logs the header rows + last data row of every final target so the column mapping can be verified.
-function diagFinalTargets() {
+function diagFinalTargets(onlyKey) {
   var lines = [];
   Object.keys(CFG.FINAL_TARGETS).forEach(function(tk) {
+    if (onlyKey && tk !== onlyKey) return;
     var T = CFG.FINAL_TARGETS[tk];
+    Utilities.sleep(1500); // Sheets read quota is per minute
     try {
       var id = srcId_(T.srcKey);
       var colNums = Object.keys(T.cols).map(Number);
@@ -366,3 +388,5 @@ function diagFinalTargets() {
   Logger.log(out);
   return out;
 }
+
+function diagAttOT() { return diagFinalTargets('ATT_OT'); }
