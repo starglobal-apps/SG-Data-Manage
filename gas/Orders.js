@@ -11,9 +11,8 @@ function addTo_(map, key, n) { map[key] = (map[key] || 0) + num_(n); }
 
 // { loaded: {dept|srn: qty}, loadedSrn: {srn: qty}, srnInfo: {srn: {item, buyer, orderQty, factory, line}} }
 function loadingAgg_() {
-  var cache = CacheService.getScriptCache();
-  var hit = cache.get('loading_agg');
-  if (hit) return JSON.parse(hit);
+  var hit = cacheGetBig_('loading_agg');
+  if (hit) return hit;
 
   var out = { loaded: {}, loadedSrn: {}, srnInfo: {}, deptSrns: {} };
   var res = Sheets.Spreadsheets.Values.get(srcId_(LOADING_JOB.srcKey),
@@ -33,15 +32,14 @@ function loadingAgg_() {
                            factory: str_(r[3]).replace(/^FAC/, ''), line: str_(r[6]) };
     }
   });
-  try { cache.put('loading_agg', JSON.stringify(out), 600); } catch (e) {}
+  cachePutBig_('loading_agg', out, 900);
   return out;
 }
 
 // MASTER DATA rows dated before APP_START_DATE, aggregated. Cached 30 min.
 function historyAgg_() {
-  var cache = CacheService.getScriptCache();
-  var hit = cache.get('hist_agg');
-  if (hit) return JSON.parse(hit);
+  var hit = cacheGetBig_('hist_agg');
+  if (hit) return hit;
 
   var out = { stitched: {}, endChecked: {}, endPass: {}, endPassSrn: {}, packed: {} };
   var ss = getSS_();
@@ -64,7 +62,7 @@ function historyAgg_() {
       }
     });
   }
-  try { cache.put('hist_agg', JSON.stringify(out), 1800); } catch (e) {}
+  cachePutBig_('hist_agg', out, 21600); // history only changes when MASTER DATA is re-imported
   return out;
 }
 
@@ -73,6 +71,7 @@ function dateKey_(v) { var d = parseDate_(v); return d ? fmtDate_(d) : '9999-12-
 // HOURLY_LOG rows on/after APP_START_DATE, aggregated the same way. Optionally exclude one entry key
 // (date|factory|type|dept|srn) so a re-save of that key is not counted twice.
 function appAgg_(excludeKey) {
+  if (!excludeKey) { var hit = cacheGetBig_('app_agg'); if (hit) return hit; }
   var out = { stitched: {}, endChecked: {}, endPass: {}, endPassSrn: {}, packed: {} };
   readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
     if (str_(r.date) < CFG.APP_START_DATE) return;
@@ -85,8 +84,10 @@ function appAgg_(excludeKey) {
       addTo_(out.endPassSrn, srn, r.pass);
     } else if (t === 'PACKING') addTo_(out.packed, srn, r.qty);
   });
+  if (!excludeKey) cachePutBig_('app_agg', out, 120);
   return out;
 }
+function invalidateAppAgg_() { cacheDelBig_('app_agg'); }
 
 function hourlyKey_(r) { return [str_(r.date), str_(r.factory), str_(r.type), str_(r.dept), str_(r.srn)].join('|'); }
 
@@ -156,7 +157,7 @@ function ordersActive_(req, user) {
 }
 
 function ordersRefresh_(req, user) {
-  CacheService.getScriptCache().removeAll(['loading_agg', 'hist_agg']);
+  cacheDelBig_('loading_agg'); cacheDelBig_('hist_agg'); cacheDelBig_('app_agg');
   var L = loadingAgg_();
   return { ok: true, srns: Object.keys(L.loadedSrn).length };
 }

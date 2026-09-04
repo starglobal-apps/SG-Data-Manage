@@ -20,6 +20,7 @@ function setupAppSheets() {
   }
 
   var masters = readTab_(CFG.TABS.MASTERS);
+  invalidateMasters_();
   if (!masters.length) {
     var seeded = seedMasters_();
     log.push('MASTERS : seeded ' + seeded + ' rows');
@@ -105,6 +106,7 @@ function reseedMasters() {
   var sh = tab_(CFG.TABS.MASTERS, true);
   if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).clearContent();
   var n = seedMasters_();
+  invalidateMasters_();
   var out = 'MASTERS : reseeded ' + n + ' rows';
   Logger.log(out);
   return out;

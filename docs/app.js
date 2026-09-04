@@ -67,8 +67,8 @@
     document.body.classList.add('has-nav');
     $('#nav').hidden = false;
     $$('#nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
-    if (name === 'home') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory', false);
-    else if (name === 'entry' || name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
+    if (name === 'home' || name === 'hourly') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory', false);
+    else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
     else setHeader('Main', state.user.name, false);
     if (tabs[name]) tabs[name]();
@@ -178,7 +178,7 @@
   function catOrder(cat) { var cats = (state.masters && state.masters.categories) || []; for (var i = 0; i < cats.length; i++) if (cats[i].key === cat) return i; return cats.length; }
   function catLabel(cat) { var c = ((state.masters && state.masters.categories) || []).filter(function (x) { return x.key === cat; })[0]; return c ? c.label : (cat || ''); }
   function deptsFor(factory, cat) {
-    var list = M('DEPT').filter(function (d) { return d.factory === factory && (!cat || d.extra === cat); });
+    var list = M('DEPT').filter(function (d) { return d.factory === factory && (!cat || d.extra === cat) && (d.extra === 'STITCH' || d.extra === 'PACKING'); });
     if (state.user && state.user.depts && state.user.depts.length) list = list.filter(function (d) { return state.user.depts.indexOf(d.key) >= 0; });
     return list.sort(function (a, b) { return (catOrder(a.extra) - catOrder(b.extra)) || a.key.localeCompare(b.key); });
   }
@@ -210,7 +210,7 @@
   // ---------- today's data (shared cache) ----------
 
   var cache = { key: '', data: null, t: 0, p: null };
-  function invalidate() { cache.data = null; cache.p = null; }
+  function invalidate() { cache.data = null; cache.p = null; fcache.t = 0; }
   function loadToday(force) {
     var key = [state.date, state.factory, state.line].join('|');
     if (!force && cache.key === key && cache.data && Date.now() - cache.t < 30000) return Promise.resolve(cache.data);
@@ -222,6 +222,22 @@
     return cache.p;
   }
   function today() { return cache.data; }
+
+  // factory.today: instant render from the last copy, then refresh from the server
+  var fcache = { key: '', data: null, t: 0, p: null };
+  function fkey() { return state.date + '|' + state.factory; }
+  function factoryData() { if (fcache.key !== fkey()) return parse(localStorage.getItem('sg_ft_' + fkey())); return fcache.data; }
+  function loadFactory(force) {
+    var key = fkey();
+    if (!force && fcache.key === key && fcache.data && Date.now() - fcache.t < 20000) return Promise.resolve(fcache.data);
+    if (fcache.key === key && fcache.p) return fcache.p;
+    fcache.key = key;
+    fcache.p = api('factory.today', { date: state.date, factory: state.factory }, { quiet: true })
+      .then(function (d) { fcache.data = d; fcache.t = Date.now(); fcache.p = null; try { localStorage.setItem('sg_ft_' + key, JSON.stringify(d)); } catch (e) {} return d; })
+      .catch(function (e) { fcache.p = null; throw e; });
+    return fcache.p;
+  }
+  function invalidateAll() { invalidate(); fcache.data = null; fcache.t = 0; }
   function lockedType(type) { var s = today() && today().statuses && today().statuses[type]; s = s && s.status; return s === 'Submitted' || s === 'Approved' || s === 'Sent'; }
 
   // ---------- context: line / factory / date ----------
@@ -254,7 +270,21 @@
 
   // ---------- attendance form (pushed screen) ----------
 
-  var att = { dept: '', shift: 'Final' };
+  var att = { dept: '', shift: 'Final', srn: '', srns: [] };
+  function attType() { var c = deptCategory(att.dept); return c === 'PACKING' ? 'PACKING' : 'STITCH'; }
+  function renderAttSrns() {
+    var box = $('#att-srn'), list = att.srns || [];
+    if (att.srn && !list.some(function (x) { return x.srn === att.srn; })) list = [{ srn: att.srn, balance: '' }].concat(list);
+    box.innerHTML = list.length ? list.map(function (x) { return '<button data-srn="' + esc(x.srn) + '" class="' + (x.srn === att.srn ? 'on' : '') + '">' + esc(x.srn) + (x.balance !== '' ? '<small>bal ' + x.balance + '</small>' : '') + '</button>'; }).join('')
+      : '<span class="muted" style="font-size:12px">' + (attType() === 'PACKING' ? 'Koi SRN nahi jiska endline-pass balance ho' : 'Is line par loading nahi mili') + '</span>';
+  }
+  function loadAttSrns() {
+    att.srns = []; renderAttSrns();
+    api('orders.active', { factory: state.factory, dept: att.dept, type: attType() }, { quiet: true })
+      .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0]) att.srn = d.srns[0].srn; renderAttSrns(); })
+      .catch(function () {});
+  }
+  $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
   function openAttendance(shift, dept) {
     var depts = deptsFor(state.factory);
     if (!depts.length) { toast('Is factory ke depts MASTERS me nahi hain', 'bad'); return; }
@@ -264,13 +294,14 @@
     $('#att-dept').innerHTML = deptOptions(depts, att.dept);
     $('#att-shift').innerHTML = state.masters.shifts.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('');
     push('att', (att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
-    loadAttendance();
+    att.srn = ''; loadAttendance();
   }
   function shiftDef() { return state.masters.shifts.filter(function (s) { return s.key === att.shift; })[0] || state.masters.shifts[0]; }
   function loadAttendance() {
     var banner = $('#att-banner'); banner.hidden = true;
     api('att.get', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift })
       .then(function (d) {
+        att.srn = d.srn || ''; loadAttSrns();
         renderAttRows(d.rows);
         if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo'; }
         else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). Badal ke phir Save kar sakte ho.'; }
@@ -301,8 +332,9 @@
   function saveAttendance() {
     var rows = collectAttRows().filter(function (r) { return r.count > 0; });
     if (!rows.length && !confirm('Koi count nahi bhara. Khali save karein?')) return;
-    api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, rows: rows })
-      .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidate(); back(); })
+    if (!att.srn && (att.srns || []).length) { toast('Pehle SRN chuno', 'bad'); return; }
+    api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, rows: rows })
+      .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidateAll(); back(); })
       .catch(function (e) { toast(e.message, 'bad'); });
   }
 
@@ -347,7 +379,7 @@
   $('#hdr-back').addEventListener('click', back);
   $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
-  $('#att-dept').addEventListener('change', function () { att.dept = this.value; loadAttendance(); });
+  $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
   $('#att-rows').addEventListener('input', updateAttTotals);
   $('#btn-att-save').addEventListener('click', saveAttendance);
@@ -360,7 +392,8 @@
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
     lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall,
-    tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, loadToday: loadToday, today: today,
+    tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
+    loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine,
     setLine: setLine, setDate: setDate, setFactory: setFactory, openContext: openContext, openAttendance: openAttendance, loadMasters: loadMasters
   };
 

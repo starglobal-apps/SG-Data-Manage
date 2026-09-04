@@ -25,14 +25,26 @@ function srnOptions_(L, dept, type) {
 }
 
 function writableDepts_(user, factory) {
-  return readTab_(CFG.TABS.MASTERS).filter(function(r) {
-    return str_(r.type) === 'DEPT' && isTrue_(r.active) && str_(r.factory) === factory && canWrite_(user, factory, str_(r.key));
+  return mastersRows_().filter(function(r) {
+    return str_(r.type) === 'DEPT' && isTrue_(r.active) && str_(r.factory) === factory &&
+           CFG.ACTIVE_CATS.indexOf(str_(r.extra)) >= 0 && canWrite_(user, factory, str_(r.key));
   }).map(function(r) { return { dept: str_(r.key), cat: str_(r.extra) }; });
+}
+
+// SRN chosen at attendance time, per dept (Final shift first, then OT)
+function attSrnMap_(date, factory) {
+  var m = {};
+  readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || !str_(r.srn)) return;
+    var d = str_(r.dept);
+    if (!m[d] || str_(r.shift) === 'Final') m[d] = str_(r.srn);
+  });
+  return m;
 }
 
 function statusMap_(date, factory) {
   var m = {}, order = ['Sent', 'Approved', 'Submitted', 'Rejected', 'Draft'];
-  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+  readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory) return;
     var k = str_(r.dept) + '|' + str_(r.type), s = str_(r.status);
     if (!m[k] || order.indexOf(s) < order.indexOf(m[k])) m[k] = s;
@@ -47,10 +59,10 @@ function hourGet_(req, user) {
   if (!slotDef_(slot)) return fail_('SLOT', 'Slot galat');
   var L = ledger_();
   var depts = writableDepts_(user, factory).filter(function(d) { return d.cat === 'STITCH' || d.cat === 'PACKING'; });
-  var st = statusMap_(date, factory);
+  var st = statusMap_(date, factory), attSrn = attSrnMap_(date, factory);
 
   var rowsBy = {}, lastSrn = {}, lastChecker = {}, lastFloor = {};
-  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
+  readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory) return;
     var dept = str_(r.dept), t = str_(r.type), at = str_(r.entered_at);
     var lk = dept + '|' + t;
@@ -65,12 +77,14 @@ function hourGet_(req, user) {
 
   var out = depts.map(function(d) {
     var types = d.cat === 'STITCH' ? ['STITCH', 'ENDLINE'] : ['PACKING'];
-    var o = { dept: d.dept, cat: d.cat, srns: {}, rows: {}, lastSrn: {}, locked: {}, checker: lastChecker[d.dept] ? lastChecker[d.dept].v : '',
+    var o = { dept: d.dept, cat: d.cat, srns: {}, rows: {}, lastSrn: {}, locked: {}, attSrn: attSrn[d.dept] || '',
+              checker: lastChecker[d.dept] ? lastChecker[d.dept].v : '',
               floor: lastFloor[d.dept] ? lastFloor[d.dept].v : (lineFloor[d.dept] ? lineFloor[d.dept].value : '') };
     types.forEach(function(t) {
       o.srns[t] = srnOptions_(L, d.dept, t);
       o.rows[t] = rowsBy[d.dept + '|' + t] || [];
-      o.lastSrn[t] = lastSrn[d.dept + '|' + t] ? lastSrn[d.dept + '|' + t].srn : '';
+      // default SRN: what attendance said the line is running today, else the last one used
+      o.lastSrn[t] = attSrn[d.dept] || (lastSrn[d.dept + '|' + t] ? lastSrn[d.dept + '|' + t].srn : '');
       var s = st[d.dept + '|' + t]; if (isLocked_(s)) o.locked[t] = s;
     });
     return o;
@@ -133,7 +147,7 @@ function slotUpsert_(p, user, ctx) {
 }
 
 function batchCtx_(date, factory) {
-  return { L: ledger_(), rows: readTab_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory) };
+  return { L: ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory) };
 }
 
 // { date, factory, slot, items: [{type, dept, srn, qty|checked,pass,reject,checker|qty,cartons, floor}] }
@@ -155,6 +169,7 @@ function hourSave_(req, user) {
       results.push({ type: str_(it.type), dept: str_(it.dept), srn: str_(it.srn), ok: r.ok, skipped: !!r.skipped, message: r.message || '', balance: r.balance });
     });
   });
+  invalidateAppAgg_();
   audit_(user, 'hour.save', date + '|' + factory + '|' + slot, { saved: saved, failed: failed });
   return { ok: true, saved: saved, failed: failed, results: results };
 }
@@ -164,20 +179,23 @@ function factoryToday_(req, user) {
   var date = str_(req.date), factory = str_(req.factory);
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
   var depts = writableDepts_(user, factory);
-  var att = {};
-  readTab_(CFG.TABS.ATT_DAILY).forEach(function(r) {
+  var att = {}, attSrn = {};
+  readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory) return;
     var k = str_(r.dept) + '|' + str_(r.shift);
     att[k] = (att[k] || 0) + num_(r.count);
+    if (str_(r.srn) && (str_(r.shift) === 'Final' || !attSrn[str_(r.dept)])) attSrn[str_(r.dept)] = str_(r.srn);
   });
   var slots = {};
-  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
+  readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory) return;
     var sk = str_(r.slot), t = str_(r.type), dept = str_(r.dept);
     if (!slots[sk]) slots[sk] = { STITCH: {}, ENDLINE: {}, PACKING: {} };
     var amt = t === 'ENDLINE' ? num_(r.pass) : num_(r.qty);
     slots[sk][t][dept] = (slots[sk][t][dept] || 0) + amt;
   });
-  var events = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; }).length;
-  return { ok: true, depts: depts, att: att, slots: slots, statuses: statusMap_(date, factory), events: events, serverTime: nowStr_() };
+  var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; }).length;
+  var pending = 0;
+  if (isManager_(user)) readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Submitted' && str_(r.factory) === factory) pending++; });
+  return { ok: true, depts: depts, att: att, attSrn: attSrn, slots: slots, statuses: statusMap_(date, factory), events: events, pending: pending, serverTime: nowStr_() };
 }

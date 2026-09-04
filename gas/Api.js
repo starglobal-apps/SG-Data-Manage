@@ -134,10 +134,11 @@ function canWrite_(user, factory, dept) {
 // ---------- masters ----------
 
 function getMasters_(req, user) {
-  var rows = readTab_(CFG.TABS.MASTERS).filter(function(r) { return isTrue_(r.active); });
+  var rows = mastersRows_().filter(function(r) { return isTrue_(r.active); });
   var m = {};
   rows.forEach(function(r) {
     var t = str_(r.type);
+    if (t === 'DEPT' && CFG.ACTIVE_CATS.indexOf(str_(r.extra)) < 0) return;
     if (!m[t]) m[t] = [];
     m[t].push({ key: str_(r.key), value: str_(r.value), factory: str_(r.factory), extra: str_(r.extra) });
   });

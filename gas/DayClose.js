@@ -4,7 +4,7 @@
 
 function masterMap_(type) {
   var m = {};
-  readTab_(CFG.TABS.MASTERS).forEach(function(r) { if (str_(r.type) === type && isTrue_(r.active)) m[str_(r.key)] = { value: str_(r.value), extra: str_(r.extra) }; });
+  mastersRows_().forEach(function(r) { if (str_(r.type) === type && isTrue_(r.active)) m[str_(r.key)] = { value: str_(r.value), extra: str_(r.extra) }; });
   return m;
 }
 
@@ -324,7 +324,7 @@ function reviewSend_(req, user) {
       sh.getRange(r._row, cs).setValue('Sent'); sh.getRange(r._row, cb).setValue(user.user_id); sh.getRange(r._row, ca).setValue(stamp);
     });
   });
-  CacheService.getScriptCache().removeAll(['hist_agg']);
+  cacheDelBig_('hist_agg'); cacheDelBig_('app_agg');
   audit_(user, 'review.send', sentIds.join(','), log);
   return { ok: true, sent: sentIds.length, log: log, skipped: skipped };
 }

@@ -12,7 +12,7 @@ function typeDef_(key) {
 
 // Day summary status for (date, factory, dept, type). Submitted/Approved/Sent lock further hourly edits.
 function dayStatus_(date, factory, dept, type) {
-  var rows = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
+  var rows = readDaily_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
     return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.type) === type;
   });
   var order = ['Sent', 'Approved', 'Submitted', 'Rejected', 'Draft'];
@@ -91,6 +91,7 @@ function hourlySave_(req, user) {
     }));
     return { replaced: existing.length, saved: clean.length };
   });
+  invalidateAppAgg_();
   // a Rejected day being re-entered goes back to Draft so it can be resubmitted
   if (status === 'Rejected') setDayStatus_(date, factory, dept, type, 'Draft', user, 'Re-entered after reject');
   audit_(user, 'hourly.save', key, { total: total, slots: clean.length });
@@ -101,7 +102,7 @@ function hourlySave_(req, user) {
 function lineOf_(dept) {
   var m = str_(dept).match(/Line\s*\d+/i);
   if (m) return m[0].replace(/\s+/, ' ');
-  var hit = readTab_(CFG.TABS.MASTERS).filter(function(r) { return str_(r.type) === 'LINE' && str_(r.value) === dept; })[0];
+  var hit = mastersRows_().filter(function(r) { return str_(r.type) === 'LINE' && str_(r.value) === dept; })[0];
   return hit ? str_(hit.key) : '';
 }
 
@@ -110,7 +111,7 @@ function hourlyDay_(req, user) {
   var date = str_(req.date), factory = str_(req.factory);
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
   var agg = {};
-  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
+  readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory) return;
     var k = str_(r.dept) + '|' + str_(r.type);
     if (!agg[k]) agg[k] = { dept: str_(r.dept), type: str_(r.type), qty: 0, slots: 0, srns: {} };
@@ -217,6 +218,7 @@ function hourlySlot_(req, user) {
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
   if (CFG.FACTORIES.indexOf(factory) < 0) return fail_('FACTORY', 'Factory galat');
   var r = withLock_(function() { return slotUpsert_(req, user, batchCtx_(date, factory)); });
+  invalidateAppAgg_();
   if (!r.ok) return r;
   var key = [date, factory, str_(req.type), str_(req.dept), str_(req.srn)].join('|'), total = 0;
   readTab_(CFG.TABS.HOURLY_LOG).forEach(function(x) { if (hourlyKey_(x) === key) total += str_(req.type) === 'ENDLINE' ? num_(x.checked) : num_(x.qty); });
@@ -232,16 +234,16 @@ function lineToday_(req, user) {
   if (!dept) return fail_('DEPT', 'Line chuno');
 
   var att = {};
-  readTab_(CFG.TABS.ATT_DAILY).forEach(function(r) {
+  readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept) return;
     var s = str_(r.shift);
-    if (!att[s]) att[s] = { manpower: 0, manhours: 0, by: str_(r.entered_by), at: str_(r.entered_at), rows: [] };
+    if (!att[s]) att[s] = { manpower: 0, manhours: 0, by: str_(r.entered_by), at: str_(r.entered_at), rows: [], srn: str_(r.srn) };
     att[s].manpower += num_(r.count); att[s].manhours += num_(r.count) * num_(r.hours);
     att[s].rows.push({ role: str_(r.role), hours: num_(r.hours), count: num_(r.count) });
   });
 
   var slots = {}, totals = {};
-  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
+  readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept) return;
     var t = str_(r.type), sk = str_(r.slot);
     if (!slots[t]) { slots[t] = {}; totals[t] = { qty: 0, checked: 0, pass: 0, reject: 0, cartons: 0, slots: 0 }; }
@@ -251,11 +253,11 @@ function lineToday_(req, user) {
     totals[t].qty += num_(r.qty); totals[t].checked += num_(r.checked); totals[t].pass += num_(r.pass); totals[t].reject += num_(r.reject); totals[t].cartons += num_(r.cartons);
   });
 
-  var events = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept; })
+  var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept; })
     .map(function(r) { return { id: str_(r.id), role: str_(r.role), event: str_(r.event), count: num_(r.count), time: str_(r.time), eff_hours: num_(r.eff_hours), note: str_(r.note) }; });
 
   var statuses = {}, order = ['Sent', 'Approved', 'Submitted', 'Rejected', 'Draft'];
-  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+  readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept) return;
     var t = str_(r.type), s = str_(r.status);
     if (!statuses[t] || order.indexOf(s) < order.indexOf(statuses[t].status)) statuses[t] = { status: s, remark: str_(r.remark) };

@@ -8,18 +8,18 @@ function attGet_(req, user) {
   if (!isDateStr_(date)) return fail_('DATE', 'Date yyyy-mm-dd me bhejo');
   if (!dept) return fail_('DEPT', 'Dept chuno');
 
-  var all = readTab_(CFG.TABS.ATT_DAILY).filter(function(r) {
+  var all = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) {
     return str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === shift;
   });
 
   var today = all.filter(function(r) { return str_(r.date) === date; });
-  if (today.length) return { ok: true, rows: today.map(attRowOut_), prefill: false, prefillDate: '' };
+  if (today.length) return { ok: true, rows: today.map(attRowOut_), srn: str_(today[0].srn), prefill: false, prefillDate: '' };
 
   var earlier = all.filter(function(r) { return str_(r.date) < date; });
-  if (!earlier.length) return { ok: true, rows: [], prefill: false, prefillDate: '' };
+  if (!earlier.length) return { ok: true, rows: [], srn: '', prefill: false, prefillDate: '' };
   var latest = earlier.reduce(function(a, r) { return str_(r.date) > a ? str_(r.date) : a; }, '');
-  var rows = earlier.filter(function(r) { return str_(r.date) === latest; }).map(attRowOut_);
-  return { ok: true, rows: rows, prefill: true, prefillDate: latest };
+  var rows = earlier.filter(function(r) { return str_(r.date) === latest; });
+  return { ok: true, rows: rows.map(attRowOut_), srn: str_(rows[0].srn), prefill: true, prefillDate: latest };
 }
 
 function attRowOut_(r) {
@@ -48,15 +48,15 @@ function attSave_(req, user) {
     clean.push({ role: role, hours: hours, count: count });
   }
 
-  var stamp = nowStr_();
+  var srn = str_(req.srn), stamp = nowStr_();
   var result = withLock_(function() {
-    var existing = readTab_(CFG.TABS.ATT_DAILY).filter(function(r) {
+    var existing = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) {
       return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === shift;
     });
     deleteRows_(CFG.TABS.ATT_DAILY, existing.map(function(r) { return r._row; }));
     appendRows_(CFG.TABS.ATT_DAILY, clean.map(function(c) {
       return { id: uuid_(), date: date, factory: factory, dept: dept, shift: shift, role: c.role,
-               hours: c.hours, count: c.count, entered_by: user.user_id, entered_at: stamp };
+               hours: c.hours, count: c.count, entered_by: user.user_id, entered_at: stamp, srn: srn };
     }));
     return { replaced: existing.length, saved: clean.length };
   });
@@ -71,10 +71,10 @@ function attStatus_(req, user) {
   var date = str_(req.date), factory = str_(req.factory);
   if (!isDateStr_(date)) return fail_('DATE', 'Date yyyy-mm-dd me bhejo');
   var agg = {};
-  readTab_(CFG.TABS.ATT_DAILY).forEach(function(r) {
+  readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory) return;
     var k = str_(r.dept) + '|' + str_(r.shift);
-    if (!agg[k]) agg[k] = { dept: str_(r.dept), shift: str_(r.shift), manpower: 0, manhours: 0, by: str_(r.entered_by), at: str_(r.entered_at) };
+    if (!agg[k]) agg[k] = { dept: str_(r.dept), shift: str_(r.shift), manpower: 0, manhours: 0, by: str_(r.entered_by), at: str_(r.entered_at), srn: str_(r.srn) };
     agg[k].manpower += num_(r.count);
     agg[k].manhours += num_(r.count) * num_(r.hours);
     if (str_(r.entered_at) > agg[k].at) { agg[k].at = str_(r.entered_at); agg[k].by = str_(r.entered_by); }

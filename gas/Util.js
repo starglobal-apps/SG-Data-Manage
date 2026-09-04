@@ -112,3 +112,64 @@ function fail_(code, msg) { return { ok: false, error: code, message: msg || cod
 function num_(v) { var n = Number(v); return isNaN(n) ? 0 : n; }
 function str_(v) { return (v === undefined || v === null) ? '' : String(v).trim(); }
 function csv_(v) { return str_(v).split(',').map(function(s) { return s.trim(); }).filter(String); }
+
+// ---------- chunked CacheService (values > 100 KB) ----------
+function cachePutBig_(key, obj, ttl) {
+  try {
+    var json = JSON.stringify(obj), size = 90000, parts = [];
+    for (var i = 0; i < json.length; i += size) parts.push(json.slice(i, i + size));
+    var c = CacheService.getScriptCache(), map = { };
+    parts.forEach(function(pt, i) { map[key + '#' + i] = pt; });
+    map[key + '#n'] = String(parts.length);
+    c.putAll(map, ttl || 600);
+  } catch (e) {}
+}
+function cacheGetBig_(key) {
+  try {
+    var c = CacheService.getScriptCache(), n = Number(c.get(key + '#n') || 0);
+    if (!n) return null;
+    var keys = []; for (var i = 0; i < n; i++) keys.push(key + '#' + i);
+    var got = c.getAll(keys), json = '';
+    for (var j = 0; j < n; j++) { if (!got[key + '#' + j]) return null; json += got[key + '#' + j]; }
+    return JSON.parse(json);
+  } catch (e) { return null; }
+}
+function cacheDelBig_(key) {
+  try {
+    var c = CacheService.getScriptCache(), n = Number(c.get(key + '#n') || 0), keys = [key + '#n'];
+    for (var i = 0; i < n; i++) keys.push(key + '#' + i);
+    c.removeAll(keys);
+  } catch (e) {}
+}
+
+// Last `n` rows of a tab (daily tabs grow chronologically, so recent rows are all a day view needs)
+function readRecent_(name, n) {
+  var sh = tab_(name, false);
+  if (!sh) return [];
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var head = CFG.HEADERS[name], start = Math.max(2, last - n + 1);
+  var vals = sh.getRange(start, 1, last - start + 1, head.length).getValues();
+  var out = [];
+  for (var i = 0; i < vals.length; i++) {
+    var row = vals[i], o = { _row: start + i }, empty = true;
+    for (var j = 0; j < head.length; j++) {
+      var v = row[j];
+      if (v !== '' && v !== null) empty = false;
+      o[head[j]] = (v instanceof Date) ? fmtDate_(v) : v;
+    }
+    if (!empty) out.push(o);
+  }
+  return out;
+}
+function readDaily_(name) { return readRecent_(name, 3000); }
+
+// MASTERS rows, cached 10 min (invalidated by setup/reseed)
+function mastersRows_() {
+  var hit = cacheGetBig_('masters_rows');
+  if (hit) return hit;
+  var rows = readTab_(CFG.TABS.MASTERS);
+  cachePutBig_('masters_rows', rows, 600);
+  return rows;
+}
+function invalidateMasters_() { cacheDelBig_('masters_rows'); }
