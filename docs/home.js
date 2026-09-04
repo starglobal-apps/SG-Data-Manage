@@ -8,10 +8,10 @@
   function hhmm(h) { var H = Math.floor(h), ap = H >= 12 ? 'PM' : 'AM', h12 = H % 12 || 12; return h12 + ':00 ' + ap; }
 
   S.tabs.home = function () {
-    if (!state.line) { $('#home-now').innerHTML = '<div class="now warn"><div class="k">Setup</div><div class="t">Apni line chuno</div><div class="s">Upar title par tap karo</div><button class="btn" data-go="ctx">Line chuno</button></div>'; $('#home-timeline').innerHTML = ''; return; }
-    $('#home-now').innerHTML = '<div class="now"><div class="k">Loading…</div><div class="t">&nbsp;</div></div>';
+    if (!state.line) { $('#home-now').innerHTML = '<div class="nowcard warn"><div class="k">Setup</div><div class="t">Apni line chuno</div><div class="s">Upar title par tap karo</div><button class="btn" data-go="ctx">Line chuno</button></div>'; $('#home-timeline').innerHTML = ''; return; }
+    $('#home-now').innerHTML = '<div class="nowcard"><div class="k">Loading…</div><div class="t">&nbsp;</div></div>';
     if (S.isManager()) S.api('review.count', { factory: state.factory }, { quiet: true }).then(function (r) { var b = $('#nav-rv-count'); b.hidden = !r.count; b.textContent = r.count; }).catch(function () {});
-    S.loadToday().then(render).catch(function (e) { $('#home-now').innerHTML = '<div class="now warn"><div class="k">Error</div><div class="t">' + esc(e.message) + '</div><button class="btn" data-go="retry">Dobara try</button></div>'; $('#home-timeline').innerHTML = ''; });
+    S.loadToday().then(render).catch(function (e) { $('#home-now').innerHTML = '<div class="nowcard warn"><div class="k">Error</div><div class="t">' + esc(e.message) + '</div><button class="btn" data-go="retry">Dobara try</button></div>'; $('#home-timeline').innerHTML = ''; });
   };
 
   function render(d) {
@@ -55,7 +55,7 @@
     else if (now >= 18 && !current) nowCard = { cls: '', k: 'Shaam', t: 'Sab bhar gaya — din band karo', s: 'Preview dekho, submit karo. OT laga ho to pehle OT slots bharo.', btn: 'Din band karo', go: 'dayclose' };
     else nowCard = { cls: 'done', k: 'Sab up to date', t: type ? sum(flat(sl), 'qty') + ' pcs aaj tak' : d.att.Final.manpower + ' mp', s: upcoming ? 'Agla: ' + hhmm(S.slotStart(upcoming.key) + 1) + ' par ' + upcoming.label + ' ka output' : 'Shaam ko din band karna hai', btn: upcoming ? 'Pehle se bharna ho to' : 'Data dekho', go: upcoming ? 'slot:' + type + ':' + upcoming.key : 'data' };
 
-    $('#home-now').innerHTML = '<div class="now ' + nowCard.cls + '"><div class="k">' + esc(nowCard.k) + '</div><div class="t">' + esc(nowCard.t) + '</div><div class="s">' + esc(nowCard.s) + '</div>' +
+    $('#home-now').innerHTML = '<div class="nowcard ' + nowCard.cls + '"><div class="k">' + esc(nowCard.k) + '</div><div class="t">' + esc(nowCard.t) + '</div><div class="s">' + esc(nowCard.s) + '</div>' +
       '<button class="btn" data-go="' + esc(nowCard.go) + '">' + esc(nowCard.btn) + '</button>' +
       '<div class="prog"><i style="width:' + pct + '%"></i></div><div class="meta"><span>' + done + '/' + total + ' kaam</span><span>' + (type ? sum(flat(sl), 'qty') + ' pcs' : '') + (d.att.Final ? ' · ' + d.att.Final.manpower + ' mp' : '') + '</span></div></div>';
 

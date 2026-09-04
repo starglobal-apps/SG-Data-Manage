@@ -80,17 +80,17 @@ svg { width: 24px; height: 24px; fill: currentColor; }
 .login input { font-size: 24px; text-align: center; letter-spacing: .3em; margin-top: 16px; min-height: 58px; }
 
 /* NOW card */
-.now { background: linear-gradient(135deg, var(--primary), #3b82f6); color: #fff; border-radius: 18px; padding: 16px; margin-bottom: 14px; box-shadow: 0 6px 20px rgba(26,86,219,.25); }
-.now.done { background: linear-gradient(135deg, #15803d, #22c55e); box-shadow: 0 6px 20px rgba(22,163,74,.25); }
-.now.warn { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 6px 20px rgba(217,119,6,.25); }
-.now .k { font-size: 12px; opacity: .85; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
-.now .t { font-size: 22px; font-weight: 800; margin: 4px 0 2px; }
-.now .s { font-size: 14px; opacity: .9; }
-.now .btn { background: #fff; color: var(--primary); margin-top: 12px; width: 100%; min-height: 50px; font-size: 16px; }
-.now.done .btn { color: var(--ok); } .now.warn .btn { color: var(--warn); }
-.now .prog { height: 6px; background: rgba(255,255,255,.3); border-radius: 999px; margin-top: 12px; overflow: hidden; }
-.now .prog i { display: block; height: 100%; background: #fff; border-radius: 999px; }
-.now .meta { display: flex; justify-content: space-between; font-size: 12px; opacity: .9; margin-top: 6px; }
+.nowcard { background: linear-gradient(135deg, var(--primary), #3b82f6); color: #fff; border-radius: 18px; padding: 16px; margin-bottom: 14px; box-shadow: 0 6px 20px rgba(26,86,219,.25); }
+.nowcard.done { background: linear-gradient(135deg, #15803d, #22c55e); box-shadow: 0 6px 20px rgba(22,163,74,.25); }
+.nowcard.warn { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 6px 20px rgba(217,119,6,.25); }
+.nowcard .k { font-size: 12px; opacity: .85; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.nowcard .t { font-size: 22px; font-weight: 800; margin: 4px 0 2px; }
+.nowcard .s { font-size: 14px; opacity: .9; }
+.nowcard .btn { background: #fff; color: var(--primary); margin-top: 12px; width: 100%; min-height: 50px; font-size: 16px; }
+.nowcard.done .btn { color: var(--ok); } .nowcard.warn .btn { color: var(--warn); }
+.nowcard .prog { height: 6px; background: rgba(255,255,255,.3); border-radius: 999px; margin-top: 12px; overflow: hidden; }
+.nowcard .prog i { display: block; height: 100%; background: #fff; border-radius: 999px; }
+.nowcard .meta { display: flex; justify-content: space-between; font-size: 12px; opacity: .9; margin-top: 6px; }
 
 /* timeline */
 .tl { position: relative; padding-left: 58px; }
@@ -187,7 +187,7 @@ body.has-nav .sticky-bottom { bottom: var(--nav-h); }
 .sheet { position: fixed; inset: 0; z-index: 25; }
 .sheet-bg { position: absolute; inset: 0; background: rgba(17,24,39,.45); }
 .sheet-body { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card); border-radius: 18px 18px 0 0; padding: 14px 14px max(16px, env(safe-area-inset-bottom)); max-height: 88vh; overflow-y: auto; animation: up .2s ease-out; }
-@keyframes up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes up { from { transform: translateY(40px); } to { transform: none; } }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 17px; }
 .bigin { width: 100%; font-size: 30px; font-weight: 800; text-align: center; padding: 12px; min-height: 64px; border: 2px solid var(--line); border-radius: 14px; }
 .bigin:focus { border-color: var(--primary); outline: 0; }
