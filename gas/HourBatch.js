@@ -202,7 +202,14 @@ function factoryToday_(req, user) {
     var amt = t === 'ENDLINE' ? num_(r.pass) : num_(r.qty);
     slots[sk][t][dept] = (slots[sk][t][dept] || 0) + amt;
   });
-  var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; }).length;
+  var evRows = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  var events = evRows.length;
+  var eventList = evRows.map(function(r) { return { dept: str_(r.dept), role: str_(r.role), event: str_(r.event), count: num_(r.count), time: str_(r.time), eff_hours: num_(r.eff_hours), note: str_(r.note), by: str_(r.entered_by) }; });
+  // manpower right now per dept (attendance + events up to the current hour)
+  var attRowsAll = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  var nowH = new Date(Utilities.formatDate(new Date(), tz_(), "yyyy/MM/dd HH:mm:ss")).getHours();
+  var nowKey = ('0' + nowH).slice(-2) + '-' + ('0' + ((nowH + 1) % 24)).slice(-2), mpNow = {};
+  depts.forEach(function(d) { mpNow[d.dept] = mpAtSlot_(attRowsAll, evRows, d.dept, nowKey); });
   var pending = 0;
   if (user.role === 'Admin') readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Submitted' && str_(r.factory) === factory) pending++; });
   var mine = {}; depts.forEach(function(d) { mine[d.dept] = true; });
@@ -213,7 +220,7 @@ function factoryToday_(req, user) {
     if (mine[t.to_dept]) transfers.incoming.push(t);
     if (mine[t.from_dept]) transfers.outgoing.push(t);
   });
-  return { ok: true, depts: depts, att: att, attSrn: attSrn, attRoles: attRoles, slots: slots, statuses: statusMap_(date, factory), events: events, pending: pending, transfers: transfers, serverTime: nowStr_() };
+  return { ok: true, depts: depts, att: att, attSrn: attSrn, attRoles: attRoles, slots: slots, statuses: statusMap_(date, factory), events: events, eventList: eventList, mpNow: mpNow, pending: pending, transfers: transfers, serverTime: nowStr_() };
 }
 
 // ---------- manpower transfer between lines / floors ----------

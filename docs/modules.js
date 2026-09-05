@@ -204,7 +204,7 @@
     if (payload.count < 1) { toast('Count 1 ya zyada', 'bad'); return; }
     if (!$('#mp-time-wrap').hidden && !payload.time) { toast('Time daalo', 'bad'); return; }
     api('manpower.save', payload)
-      .then(function (d) { toast(d.queued ? 'Offline me save' : 'Added (' + d.eff_hours + ' hrs)', 'ok'); $('#mp-note').value = ''; $('#mp-count').value = 1; loadMp(); })
+      .then(function (d) { toast(d.queued ? 'Offline me save' : 'Added (' + d.eff_hours + ' hrs)', 'ok'); $('#mp-note').value = ''; $('#mp-count').value = 1; loadMp(); S.invalidateAll(); if (!d.queued) setTimeout(function () { S.offerGroup('Manpower change group me bhejein?'); }, 400); })
       .catch(function (e) { toast(e.message, 'bad'); });
   }
   $('#mp-dept').addEventListener('change', function () { mp.dept = this.value; renderMpRoles(); loadMp(); });

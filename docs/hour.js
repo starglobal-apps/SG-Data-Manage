@@ -138,7 +138,7 @@
       var ev = $('#m-ev').value, needs = (evs.filter(function (x) { return x.key === ev; })[0] || {}).needsTime;
       var p = { date: state.date, factory: state.factory, dept: d.dept, role: $('#m-role').value, event: ev, count: num($('#m-count').value), time: needs ? $('#m-time').value : '', note: $('#m-note').value.trim() };
       if (p.count < 1) { toast('Count 1 ya zyada', 'bad'); return; }
-      api('manpower.save', p).then(function (r) { toast('Saved (' + r.eff_hours + ' hrs)', 'ok'); S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); load(true); }).catch(function (er) { toast(er.message, 'bad'); });
+      api('manpower.save', p).then(function (r) { toast('Saved (' + r.eff_hours + ' hrs)', 'ok'); S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); load(true); setTimeout(function () { S.offerGroup('Manpower change group me bhejein?'); }, 400); }).catch(function (er) { toast(er.message, 'bad'); });
     };
   }
 

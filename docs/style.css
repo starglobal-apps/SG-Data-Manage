@@ -340,3 +340,6 @@ h2 { color: #4b5563; }
 .rv-pms { display: flex; gap: 6px; margin-top: 4px; font-size: 11px; }
 .rv-pms span { background: #f3f4f6; border-radius: 6px; padding: 2px 6px; } .rv-pms span b { font-size: 12px; } .rv-pms span.bad { background: #fee2e2; color: #991b1b; }
 .wa { background: #25d366 !important; }
+
+.wa-prev { white-space: pre-wrap; word-break: break-word; background: #e7f7ec; border-radius: 12px; padding: 12px; font: 13px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0 0 8px; max-height: 45vh; overflow-y: auto; }
+a.btn { color: #fff; }

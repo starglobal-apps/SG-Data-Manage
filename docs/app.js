@@ -389,31 +389,69 @@
     if (!rows.length && !confirm('Koi count nahi bhara. Khali save karein?')) return;
     if (!att.srn && (att.srns || []).length) { toast('Pehle SRN chuno', 'bad'); return; }
     api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, rows: rows })
-      .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidateAll(); back(); })
+      .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidateAll(); back(); if (!d.queued) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400); })
       .catch(function (e) { toast(e.message, 'bad'); });
   }
 
   // ---------- WhatsApp: attendance summary for the group ----------
-  var ROLE_SHORT = { Operator: 'Op', Helper: 'Hlp', Supervisor: 'Sup', Incharge: 'Inch', Feeder: 'Fdr', 'Data Collector': 'DC', 'Thread cutter': 'TC', 'End Line Checker': 'ELC', 'Hand needle': 'HN', Paster: 'Pst', Checker: 'Chk', 'Press Man': 'Press', 'Line Qc.': 'QC', 'Final Checker': 'FC' };
+  var ROLE_SHORT = { Operator: 'Op', Helper: 'Hlp', Supervisor: 'Sup', Incharge: 'Inch', Feeder: 'Fdr', 'Data Collector': 'DC', 'Thread cutter': 'TC', 'End Line Checker': 'ELC', 'Hand needle': 'HN', Paster: 'Pst', Checker: 'Chk', 'Press Man': 'Press', 'Line Qc.': 'QC', 'Final Checker': 'FC', 'Cutting master': 'CM', 'Die cutter': 'Die', 'Layer cutter': 'Layer', Assistant: 'Asst' };
+  var EV_LABEL = { HALF_DAY: 'half day', LEFT_AT: 'chhutti gaya', LATE_JOIN: 'late aaya', ABSENT: 'absent', EXTRA: 'extra aaya', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer se aaya' };
+  function longDate(iso) {
+    var p = iso.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] + ', ' + pad(d.getDate()) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function ampm(hhmm) { var m = (hhmm || '').match(/^(\d{1,2}):(\d{2})/); if (!m) return hhmm || ''; var h = +m[1]; return (h % 12 || 12) + ':' + m[2] + ' ' + (h >= 12 ? 'PM' : 'AM'); }
   function waAttendanceText(d, shift) {
     shift = shift || 'Final';
-    var lines = [], total = 0;
+    var out = [], total = 0, nLines = 0, nPack = 0, now = new Date();
+    out.push('🏭 *FAC' + state.factory + ' — ' + (shift === 'Final' ? 'ATTENDANCE' : shift.toUpperCase() + ' ATTENDANCE') + '*');
+    out.push('📅 ' + longDate(state.date) + '   ⏰ ' + (now.getHours() % 12 || 12) + ':' + pad(now.getMinutes()) + ' ' + (now.getHours() >= 12 ? 'PM' : 'AM'));
+    out.push('');
     d.depts.forEach(function (x) {
       var mp = d.att[x.dept + '|' + shift]; if (!mp) return;
-      total += mp;
+      total += mp; if (x.cat === 'PACKING') nPack++; else nLines++;
       var roles = (d.attRoles && d.attRoles[x.dept + '|' + shift]) || {};
-      var rs = Object.keys(roles).map(function (r) { return (ROLE_SHORT[r] || r) + ' ' + roles[r]; }).join(', ');
-      lines.push('▪ ' + shortLine(x.dept) + (d.attSrn && d.attSrn[x.dept] ? ' · ' + d.attSrn[x.dept] : '') + ' — *' + mp + ' mp*' + (rs ? ' (' + rs + ')' : ''));
+      var rs = Object.keys(roles).map(function (r) { return (ROLE_SHORT[r] || r) + ' ' + roles[r]; }).join(' · ');
+      out.push('*' + shortLine(x.dept) + '*' + (d.attSrn && d.attSrn[x.dept] ? '  ·  ' + d.attSrn[x.dept] : ''));
+      out.push('👥 *' + mp + '*' + (rs ? '   |   ' + rs : ''));
+      out.push('');
     });
-    if (!lines.length) return '';
-    return '*' + (shift === 'Final' ? 'Attendance' : shift + ' Attendance') + ' · FAC' + state.factory + ' · ' + fmtDay(state.date) + '*\n' + lines.join('\n') + '\n*Total: ' + total + ' mp*\n— ' + (state.user.name || '');
+    if (!total) return '';
+    out.push('━━━━━━━━━━━━━━');
+    out.push('*TOTAL: ' + total + ' manpower*   (' + nLines + ' line' + (nLines !== 1 ? 's' : '') + (nPack ? ' + ' + nPack + ' packing' : '') + ')');
+    var evs = (d.eventList || []);
+    if (shift === 'Final' && evs.length) {
+      out.push('');
+      out.push('⚠️ *Changes today*');
+      var byDept = {};
+      evs.forEach(function (e) { (byDept[e.dept] = byDept[e.dept] || []).push(e); });
+      Object.keys(byDept).forEach(function (dept) {
+        var parts = byDept[dept].map(function (e) { return e.count + ' ' + (ROLE_SHORT[e.role] || e.role) + ' ' + (EV_LABEL[e.event] || e.event) + (e.time ? ' (' + ampm(e.time) + ')' : ''); });
+        var nowMp = d.mpNow && d.mpNow[dept];
+        out.push('• *' + shortLine(dept) + '*: ' + parts.join(', ') + (nowMp !== undefined ? ' → ab *' + nowMp + '*' : ''));
+      });
+    }
+    out.push('');
+    out.push('— ' + (state.user.name || ''));
+    return out.join('\n');
   }
+  // fresh data -> preview sheet -> WhatsApp (the button click is the user gesture that opens the app)
   function sendToGroup(shift) {
-    var d = factoryData(); if (!d) { toast('Pehle data load hone do', 'bad'); return; }
-    var text = waAttendanceText(d, shift);
-    if (!text) { toast('Abhi koi attendance nahi bhari', 'bad'); return; }
-    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+    busy(true);
+    loadFactory(true).then(function (d) {
+      busy(false);
+      var text = waAttendanceText(d, shift);
+      if (!text) { toast('Abhi koi attendance nahi bhari', 'bad'); return; }
+      SG.sheet.open('Group me bhejo', '<pre class="wa-prev">' + esc(text) + '</pre>' +
+        '<a class="btn big wa" id="wa-open" href="https://wa.me/?text=' + encodeURIComponent(text) + '" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none">' + icon('wa') + ' WhatsApp me bhejo</a>' +
+        '<button class="btn ghost big" id="wa-copy">Copy text</button>');
+      $('#sheet-content').onclick = function (e) {
+        if (e.target.closest('#wa-copy')) { try { navigator.clipboard.writeText(text); toast('Copy ho gaya', 'ok'); } catch (er) { toast('Copy nahi hua', 'bad'); } }
+        if (e.target.closest('#wa-open')) setTimeout(SG.sheet.close, 300);
+      };
+    }).catch(function (e) { busy(false); toast(e.message, 'bad'); });
   }
+  function offerGroup(msg) { if (confirm(msg || 'Attendance update group me bhejein?')) sendToGroup('Final'); }
 
   // ---------- Main tab ----------
 
@@ -481,7 +519,7 @@
     lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
-    skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText,
+    skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,
     setLine: setLine, setDate: setDate, setFactory: setFactory, openContext: openContext, openAttendance: openAttendance, loadMasters: loadMasters
   };
 
