@@ -186,11 +186,12 @@ function factoryToday_(req, user) {
   var date = str_(req.date), factory = str_(req.factory);
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
   var depts = writableDepts_(user, factory);
-  var att = {}, attSrn = {};
+  var att = {}, attSrn = {}, attRoles = {};
   readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory) return;
     var k = str_(r.dept) + '|' + str_(r.shift);
     att[k] = (att[k] || 0) + num_(r.count);
+    if (!attRoles[k]) attRoles[k] = {}; attRoles[k][str_(r.role)] = (attRoles[k][str_(r.role)] || 0) + num_(r.count);
     if (str_(r.srn) && (str_(r.shift) === 'Final' || !attSrn[str_(r.dept)])) attSrn[str_(r.dept)] = str_(r.srn);
   });
   var slots = {};
@@ -203,7 +204,7 @@ function factoryToday_(req, user) {
   });
   var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; }).length;
   var pending = 0;
-  if (isManager_(user)) readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Submitted' && str_(r.factory) === factory) pending++; });
+  if (user.role === 'Admin') readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Submitted' && str_(r.factory) === factory) pending++; });
   var mine = {}; depts.forEach(function(d) { mine[d.dept] = true; });
   var transfers = { incoming: [], outgoing: [] };
   readDaily_(CFG.TABS.TRANSFERS).forEach(function(r) {
@@ -212,7 +213,7 @@ function factoryToday_(req, user) {
     if (mine[t.to_dept]) transfers.incoming.push(t);
     if (mine[t.from_dept]) transfers.outgoing.push(t);
   });
-  return { ok: true, depts: depts, att: att, attSrn: attSrn, slots: slots, statuses: statusMap_(date, factory), events: events, pending: pending, transfers: transfers, serverTime: nowStr_() };
+  return { ok: true, depts: depts, att: att, attSrn: attSrn, attRoles: attRoles, slots: slots, statuses: statusMap_(date, factory), events: events, pending: pending, transfers: transfers, serverTime: nowStr_() };
 }
 
 // ---------- manpower transfer between lines / floors ----------

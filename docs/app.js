@@ -78,7 +78,7 @@
 
   function tab(name) {
     if (!state.user) return;
-    if (name === 'review' && !isManager()) name = 'home';
+    if (name === 'review' && !isAdmin()) name = 'home';
     if (nav.sub || nav.tab !== name) pushHist({ tab: name });
     nav.tab = name; nav.sub = null;
     showOnly('tab-' + name);
@@ -86,7 +86,7 @@
     $('#nav').hidden = false;
     $$('#nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
     $('#hdr-refresh').hidden = false;
-    if (name === 'home' || name === 'hourly') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory', false);
+    if (name === 'home' || name === 'hourly' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
     else setHeader('Main', state.user.name, false);
@@ -216,6 +216,7 @@
 
   function M(type) { return (state.masters && state.masters.masters && state.masters.masters[type]) || []; }
   function isManager() { return !!state.user && (state.user.role === 'Manager' || state.user.role === 'Admin'); }
+  function isAdmin() { return !!state.user && state.user.role === 'Admin'; }
   function allowedFactories() {
     var all = (state.masters && state.masters.factories) || ['666', '117'];
     return state.user && state.user.factory ? all.filter(function (f) { return f === state.user.factory; }) : all;
@@ -392,6 +393,28 @@
       .catch(function (e) { toast(e.message, 'bad'); });
   }
 
+  // ---------- WhatsApp: attendance summary for the group ----------
+  var ROLE_SHORT = { Operator: 'Op', Helper: 'Hlp', Supervisor: 'Sup', Incharge: 'Inch', Feeder: 'Fdr', 'Data Collector': 'DC', 'Thread cutter': 'TC', 'End Line Checker': 'ELC', 'Hand needle': 'HN', Paster: 'Pst', Checker: 'Chk', 'Press Man': 'Press', 'Line Qc.': 'QC', 'Final Checker': 'FC' };
+  function waAttendanceText(d, shift) {
+    shift = shift || 'Final';
+    var lines = [], total = 0;
+    d.depts.forEach(function (x) {
+      var mp = d.att[x.dept + '|' + shift]; if (!mp) return;
+      total += mp;
+      var roles = (d.attRoles && d.attRoles[x.dept + '|' + shift]) || {};
+      var rs = Object.keys(roles).map(function (r) { return (ROLE_SHORT[r] || r) + ' ' + roles[r]; }).join(', ');
+      lines.push('▪ ' + shortLine(x.dept) + (d.attSrn && d.attSrn[x.dept] ? ' · ' + d.attSrn[x.dept] : '') + ' — *' + mp + ' mp*' + (rs ? ' (' + rs + ')' : ''));
+    });
+    if (!lines.length) return '';
+    return '*' + (shift === 'Final' ? 'Attendance' : shift + ' Attendance') + ' · FAC' + state.factory + ' · ' + fmtDay(state.date) + '*\n' + lines.join('\n') + '\n*Total: ' + total + ' mp*\n— ' + (state.user.name || '');
+  }
+  function sendToGroup(shift) {
+    var d = factoryData(); if (!d) { toast('Pehle data load hone do', 'bad'); return; }
+    var text = waAttendanceText(d, shift);
+    if (!text) { toast('Abhi koi attendance nahi bhari', 'bad'); return; }
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+  }
+
   // ---------- Main tab ----------
 
   tabs.main = function () {
@@ -458,7 +481,7 @@
     lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
-    skipPop: function () { skipPop = true; },
+    skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText,
     setLine: setLine, setDate: setDate, setFactory: setFactory, openContext: openContext, openAttendance: openAttendance, loadMasters: loadMasters
   };
 
@@ -469,10 +492,11 @@
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
     renderQueueBadge();
     $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); });
+    $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); });
     if (!API_URL) { showOnly('scr-login'); $('#login-msg').textContent = 'docs/config.js me API_URL set karo'; return; }
     if (state.token && state.user) {
       if (state.masters) { ensureLine(); home(); }
-      api('me', {}, { quiet: true }).then(function (d) { setUser(d.user); return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); if (!nav.sub) tab(nav.tab); flushQueue(); })
+      api('me', {}, { quiet: true }).then(function (d) { setUser(d.user); return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub) tab(nav.tab); flushQueue(); })
         .catch(function (e) { if (!state.masters || !/Network/.test(e.message || '')) logout(); });
     } else showOnly('scr-login');
   }

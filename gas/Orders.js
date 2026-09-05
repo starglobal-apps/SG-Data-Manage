@@ -14,7 +14,7 @@ function loadingAgg_() {
   var hit = cacheGetBig_('loading_agg');
   if (hit) return hit;
 
-  var out = { loaded: {}, loadedSrn: {}, srnInfo: {}, deptSrns: {} };
+  var out = { loaded: {}, loadedSrn: {}, srnInfo: {}, deptSrns: {}, lastLoad: {} };
   var res = Sheets.Spreadsheets.Values.get(srcId_(LOADING_JOB.srcKey),
     a1_(LOADING_JOB.srcSheet, LOADING_JOB.srcRow, LOADING_JOB.srcCol, LOADING_JOB.cols),
     { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
@@ -24,6 +24,7 @@ function loadingAgg_() {
     if (!srn || !qty) return;
     addTo_(out.loaded, k2_(party, srn), qty);
     addTo_(out.loadedSrn, srn, qty);
+    var ld = dateKey_(r[1]); if (ld !== '9999-12-31' && (!out.lastLoad[k2_(party, srn)] || out.lastLoad[k2_(party, srn)] < ld)) out.lastLoad[k2_(party, srn)] = ld;
     if (!out.deptSrns[party]) out.deptSrns[party] = {};
     out.deptSrns[party][srn] = true;
     if (!out.srnInfo[srn]) {
@@ -101,7 +102,7 @@ function mergeAgg_(a, b) {
 function ledger_(excludeKey) {
   var L = mergeAgg_(historyAgg_(), appAgg_(excludeKey));
   var ld = loadingAgg_();
-  L.loaded = ld.loaded; L.loadedSrn = ld.loadedSrn; L.srnInfo = ld.srnInfo; L.deptSrns = ld.deptSrns;
+  L.loaded = ld.loaded; L.loadedSrn = ld.loadedSrn; L.srnInfo = ld.srnInfo; L.deptSrns = ld.deptSrns; L.lastLoad = ld.lastLoad || {};
   return L;
 }
 
@@ -113,12 +114,15 @@ function chainCheck_(L, type, dept, srn, add) {
     what = 'Loading (' + dept + ' / ' + srn + ')';
     if (!limit) return { ok: false, level: 'block', msg: srn + ' ki loading ' + dept + ' par nahi mili', limit: 0, used: used };
   } else if (type === 'ENDLINE') {
+    // hourly endline is never blocked (user decision 2026-09-05): mismatches show in PMS / review instead
     limit = num_(L.stitched[k2_(dept, srn)]); used = num_(L.endChecked[k2_(dept, srn)]);
-    what = 'Stitching (' + dept + ' / ' + srn + ')';
+    var over = used + num_(add) - limit;
+    return { ok: true, level: over > 0 ? 'warn' : '', msg: over > 0 ? 'Endline stitching (' + limit + ') se ' + over + ' zyada' : '', limit: limit, used: used, balance: limit - used - num_(add) };
   } else if (type === 'PACKING') {
+    // packing is never blocked either; PMS shows the mismatch
     limit = num_(L.endPassSrn[srn]); used = num_(L.packed[srn]);
-    what = 'Endline pass (' + srn + ')';
-    if (!limit) return { ok: true, level: 'warn', msg: srn + ' ka endline data nahi hai — packing bina check ke ja rahi hai', limit: 0, used: used, balance: null };
+    var overP = used + num_(add) - limit;
+    return { ok: true, level: !limit ? 'warn' : overP > 0 ? 'warn' : '', msg: !limit ? srn + ' ka endline data nahi hai' : overP > 0 ? 'Packing endline pass (' + limit + ') se ' + overP + ' zyada' : '', limit: limit, used: used, balance: limit ? limit - used - num_(add) : null };
   } else return { ok: true };
   if (used + num_(add) > limit) {
     return { ok: false, level: 'block', limit: limit, used: used,

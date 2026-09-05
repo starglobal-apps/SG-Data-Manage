@@ -272,7 +272,7 @@
   // =====================================================================
   var rv = { items: [] };
   function openReview() {
-    if (!S.isManager()) { toast('Sirf manager', 'bad'); return; }
+    if (!S.isAdmin()) { toast('Sirf admin', 'bad'); return; }
     loadReview();
   }
   function loadReview() {
@@ -291,6 +291,7 @@
             '<div class="title">' + esc(it.type) + ' · ' + esc(it.dept) + (it.srn ? ' · ' + esc(it.srn) : '') + ' · ' + esc(it.shift) + S.pill(it.status) + '</div>' +
             '<div class="nums">' + esc(it.date) + ' · ' + esc(nums) + ' · by ' + esc(it.submitted_by) + (it.remark ? ' · <i>' + esc(it.remark) + '</i>' : '') + '</div>' +
             flagsHtml(it.flags) +
+            (it.pms ? '<div class="rv-pms"><span>Load <b>' + it.pms.loaded + '</b></span><span' + (it.pms.stitched > it.pms.loaded && it.pms.loaded ? ' class="bad"' : '') + '>Stitch <b>' + it.pms.stitched + '</b></span><span' + (it.pms.endPass > it.pms.stitched ? ' class="bad"' : '') + '>End pass <b>' + it.pms.endPass + '</b></span><span' + (it.pms.endPassSrn && it.pms.packed > it.pms.endPassSrn ? ' class="bad"' : '') + '>Packed <b>' + it.pms.packed + '</b></span></div>' : '') +
             '<details><summary>Final row → ' + esc(it.target) + '</summary><pre>' + esc(JSON.stringify(it.finalRows, null, 1)) + '</pre></details>' +
             '</div></div>';
         }).join('');

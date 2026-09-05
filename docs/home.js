@@ -31,7 +31,7 @@
     var otAttDone = d.depts.filter(function (x) { return d.att[x.dept + '|OT']; }).length;
     var locked = function (dept, t) { var s = d.statuses[dept + '|' + t]; return s === 'Submitted' || s === 'Approved' || s === 'Sent'; };
     var lockedLines = d.depts.filter(function (x) { return locked(x.dept, outType(x.cat) || 'ATT') || locked(x.dept, 'ATT'); }).length;
-    var b = $('#nav-rv-count'); if (S.isManager()) { b.hidden = !d.pending; b.textContent = d.pending || ''; }
+    var b = $('#nav-rv-count'); if (S.isAdmin()) { b.hidden = !d.pending; b.textContent = d.pending || ''; }
 
     var anyOT = S.slots('OT').some(function (s) { return d.slots[s.key]; });
     var showOT = ui.showOT || anyOT || now >= 18;
@@ -72,10 +72,11 @@
     var hour = function (time, dotCls, future, inner) { return '<div class="tl-h' + (future ? ' future' : '') + '"><span class="time' + (dotCls === 'now' ? ' now' : '') + '">' + time + '</span><span class="dotp ' + dotCls + '"></span>' + inner + '</div>'; };
     var html = '';
 
-    if (attDone < nAll || now < 9.5) {
-      var attCls = attDone === nAll ? 'done' : now >= 9 ? 'warn' : '';
-      html += hour('9:00', attCls, false, task({ go: 'attlist:Final', ic: 'att', cls: attCls, n: 'Attendance + SRN', s: attDone + '/' + nAll + ' lines' + (attDone < nAll && now >= 9 ? ' · baaki hai' : ''), v: attMp ? attMp + ' mp' : '' }));
-    }
+    var attCls = attDone === nAll ? 'done' : now >= 9 ? 'warn' : '';
+    var attTask = task({ go: 'attlist:Final', ic: 'att', cls: attCls, n: 'Attendance + SRN', s: attDone + '/' + nAll + ' lines' + (attDone < nAll && now >= 9 ? ' · baaki hai' : ''), v: attMp ? attMp + ' mp' : '' });
+    if (attDone) attTask += task({ go: 'wa:Final', ic: 'wa', sub: true, cls: '', n: 'Send to group', s: 'WhatsApp me ' + attDone + ' lines ka manpower', v: '' });
+    if (attDone < nAll || now < 9.5 || (attDone && now < 11)) html += hour('9:00', attCls, false, attTask);
+    else if (attDone) html += '<button class="lnk tl-more" data-go="wa:Final">' + icon('wa') + ' Attendance group me bhejo</button>';
     pending.forEach(function (p) {
       var cls = p.isNow ? 'now' : p.past ? 'warn' : '';
       var future = !p.past && !p.isNow;
@@ -132,8 +133,12 @@
       var mp = d.att[x.dept + '|' + shift], srn = d.attSrn && d.attSrn[x.dept];
       return '<div class="task ' + (mp ? 'done' : '') + '" data-att="' + esc(x.dept) + '"><div class="ic">' + icon(x.cat === 'PACKING' ? 'box' : 'att') + '</div><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="s">' + esc(srn ? 'SRN ' + srn : S.catLabel(x.cat)) + '</div></div><span class="v ' + (mp ? 'ok' : '') + '">' + (mp ? mp + ' mp' : 'baaki') + '</span><span class="chev">' + icon('chev') + '</span></div>';
     }).join('') + '</div>';
+    html += '<button class="btn big wa" data-wa="' + shift + '" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send to group (WhatsApp)</button>';
     S.sheet.open((shift === 'Final' ? 'Attendance' : 'OT attendance') + ' · line chuno', html);
-    $('#sheet-content').onclick = function (e) { var t = e.target.closest('[data-att]'); if (!t) return; S.sheet.close(); S.openAttendance(shift, t.dataset.att); };
+    $('#sheet-content').onclick = function (e) {
+      var w = e.target.closest('[data-wa]'); if (w) { S.sendToGroup(w.dataset.wa); return; }
+      var t = e.target.closest('[data-att]'); if (!t) return; S.sheet.close(); S.openAttendance(shift, t.dataset.att);
+    };
   }
 
   $('#tab-home').addEventListener('click', function (e) { var el = e.target.closest('[data-go]'); if (el) S.go(el.dataset.go); });
@@ -146,6 +151,7 @@
     else if (go === 'hourly') S.tab('hourly');
     else if (go === 'main') S.tab('main');
     else if (p[0] === 'attlist') attList(p[1] || 'Final');
+    else if (p[0] === 'wa') S.sendToGroup(p[1] || 'Final');
     else if (p[0] === 'transfer') transferSheet(p[1]);
     else if (go === 'noop') return;
     else if (p[0] === 'att') S.openAttendance(p[1]);

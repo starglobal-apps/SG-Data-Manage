@@ -95,6 +95,7 @@ function dayBuild_(req, user) {
     if (!checker) flags.push({ level: 'warn', msg: 'Checker ka naam nahi' });
     var chk = chainCheck_(L, 'ENDLINE', dept, srn, 0);
     if (!chk.ok) flags.push({ level: 'block', msg: chk.msg });
+    else if (chk.level === 'warn') flags.push({ level: 'warn', msg: chk.msg });
     rows.push({ date: date, factory: factory, line: lineOf_(dept), dept: dept, type: 'ENDLINE', srn: srn, shift: shift, payload: payload, flags: flags });
   });
 
@@ -191,8 +192,12 @@ function setDayStatus_(date, factory, dept, type, status, user, remark) {
 
 // ---------- manager review ----------
 
+function isAdmin_(user) { return user.role === 'Admin'; }
+
 function reviewList_(req, user) {
-  if (!isManager_(user)) return fail_('PERM', 'Sirf manager');
+  if (!isAdmin_(user)) return fail_('PERM', 'Sirf admin');
+  var L = ledger_(), stitchedSrn = {};
+  Object.keys(L.stitched).forEach(function(k) { addTo_(stitchedSrn, k.split('|')[1], L.stitched[k]); });
   var date = str_(req.date), factory = str_(req.factory), status = str_(req.status);
   var since = str_(req.since) || fmtDate_(new Date(new Date().getTime() - 14 * 86400000));
   var out = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
@@ -204,7 +209,8 @@ function reviewList_(req, user) {
   }).map(function(r) {
     var payload = parseJsonObj_(r.payload), flags = parseJsonArr_(r.flags);
     var fin = finalRow_(r, payload);
-    return { id: str_(r.id), date: str_(r.date), factory: str_(r.factory), line: str_(r.line), dept: str_(r.dept), type: str_(r.type),
+    var pms = str_(r.srn) ? pmsRow_(L, stitchedSrn, str_(r.dept), str_(r.srn)) : null;
+    return { id: str_(r.id), date: str_(r.date), factory: str_(r.factory), line: str_(r.line), dept: str_(r.dept), type: str_(r.type), pms: pms,
              srn: str_(r.srn), shift: str_(r.shift), status: str_(r.status), payload: payload, flags: flags,
              submitted_by: str_(r.submitted_by), submitted_at: str_(r.submitted_at), reviewed_by: str_(r.reviewed_by), remark: str_(r.remark),
              target: fin ? fin.target : '', finalRows: fin ? fin.rows : [] };
@@ -218,7 +224,7 @@ function parseJsonArr_(v) { try { var a = JSON.parse(v); return Array.isArray(a)
 
 // { ids: [], action: 'approve'|'reject', remark, override }
 function reviewDecide_(req, user) {
-  if (!isManager_(user)) return fail_('PERM', 'Sirf manager');
+  if (!isAdmin_(user)) return fail_('PERM', 'Sirf admin');
   var ids = Array.isArray(req.ids) ? req.ids.map(str_) : [], action = str_(req.action), remark = str_(req.remark), override = !!req.override;
   if (!ids.length) return fail_('IDS', 'Kuch select karo');
   if (action === 'reject' && !remark) return fail_('REMARK', 'Reject ka reason likho');
@@ -296,7 +302,7 @@ function finalRow_(r, p) {
 
 // { ids: [] } -> appends Approved rows to their source sheets, marks them Sent
 function reviewSend_(req, user) {
-  if (!isManager_(user)) return fail_('PERM', 'Sirf manager');
+  if (!isAdmin_(user)) return fail_('PERM', 'Sirf admin');
   var ids = Array.isArray(req.ids) ? req.ids.map(str_) : [];
   if (!ids.length) return fail_('IDS', 'Kuch select karo');
   var items = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return ids.indexOf(str_(r.id)) >= 0; });

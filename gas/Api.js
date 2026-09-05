@@ -50,6 +50,7 @@ function routes_() {
     'transfer.create': transferCreate_,
     'transfer.decide': transferDecide_,
     'cache.clear':    cacheClear_,
+    'pms.get':        pmsGet_,
     'users.list':     usersList_,
     'users.save':     usersSave_,
     'manpower.get':   manpowerGet_,

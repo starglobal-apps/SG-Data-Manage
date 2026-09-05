@@ -268,7 +268,7 @@ function lineToday_(req, user) {
 
 // Pending review count for the manager badge
 function reviewCount_(req, user) {
-  if (!isManager_(user)) return { ok: true, count: 0 };
+  if (user.role !== 'Admin') return { ok: true, count: 0 };
   var n = 0;
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Submitted' && (!req.factory || str_(r.factory) === str_(req.factory))) n++; });
   return { ok: true, count: n };
