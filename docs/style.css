@@ -375,3 +375,17 @@ a.btn { color: #fff; }
 
 .chips button.qc { padding-right: 8px; } .chips button .x { margin-left: 6px; opacity: .6; }
 .staff-add { display: flex; gap: 6px; margin: 6px 0 4px; } .staff-add input { flex: 1; } .staff-add .btn { min-height: 40px; padding: 0 14px; }
+/* Data tab edit mode */
+.dt-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 2px 0 6px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.dt-head .lnk { text-transform: none; letter-spacing: 0; }
+.ed-list { background: var(--card); border-radius: var(--r); overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.ed-row { display: grid; grid-template-columns: 58px 1fr 68px; gap: 6px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; }
+.ed-row.end { grid-template-columns: 58px 1fr 50px 50px 50px; }
+.ed-row.pack { grid-template-columns: 58px 1fr 66px 56px; }
+.ed-row .t { font-weight: 700; font-size: 12px; }
+.ed-row select { min-height: 36px; padding: 4px 6px; font-size: 12px; min-width: 0; }
+.ed-row input { min-height: 36px; padding: 4px; text-align: center; font-weight: 700; font-size: 14px; width: 100%; }
+.ed-row input.e-checker { grid-column: 2 / -1; text-align: left; font-weight: 500; font-size: 13px; min-height: 32px; }
+.ed-row.bad { background: var(--bad-soft); border-left-color: var(--bad); }
+.ed-row .msg { grid-column: 1 / -1; font-size: 11px; color: var(--bad); font-weight: 600; }
+.ed-bar { display: flex; gap: 8px; margin: 10px 0 0; } .ed-bar .btn { flex: 1; margin: 0; }

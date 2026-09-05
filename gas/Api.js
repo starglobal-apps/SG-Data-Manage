@@ -44,6 +44,7 @@ function routes_() {
     'hourly.slot':    hourlySlot_,
     'hour.get':       hourGet_,
     'hour.save':      hourSave_,
+    'line.save':      lineSave_,
     'factory.today':  factoryToday_,
     'line.today':     lineToday_,
     'review.count':   reviewCount_,

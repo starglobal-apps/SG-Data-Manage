@@ -215,6 +215,33 @@ function hourSave_(req, user) {
   return { ok: true, saved: saved, failed: failed, results: results };
 }
 
+// { date, factory, dept, items: [{slot, type, srn, qty|checked,pass,reject,checker|qty,cartons, floor}] }
+// Data tab edit mode: any number of slots of ONE line/floor, saved together (chain checks share one ledger).
+function lineSave_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept);
+  if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
+  if (CFG.FACTORIES.indexOf(factory) < 0) return fail_('FACTORY', 'Factory galat');
+  if (!dept) return fail_('DEPT', 'Line chuno');
+  if (!canWrite_(user, factory, dept)) return fail_('PERM', 'Is line ki permission nahi');
+  var items = Array.isArray(req.items) ? req.items : [];
+  if (!items.length) return fail_('EMPTY', 'Kuch badla nahi');
+  for (var i = 0; i < items.length; i++) if (!slotDef_(str_(items[i].slot))) return fail_('SLOT', 'Slot galat: ' + str_(items[i].slot));
+  var results = [], saved = 0, failed = 0;
+  withLock_(function() {
+    var ctx = batchCtx_(date, factory);
+    items.forEach(function(it) {
+      var p = Object.assign({}, it, { date: date, factory: factory, dept: dept, slot: str_(it.slot) });
+      var r;
+      try { r = slotUpsert_(p, user, ctx); } catch (e) { r = fail_('ERR', String(e && e.message || e)); }
+      if (r.ok && !r.skipped) saved++; else if (!r.ok) failed++;
+      results.push({ slot: p.slot, type: str_(it.type), srn: str_(it.srn), ok: r.ok, skipped: !!r.skipped, message: r.message || '', warn: r.warn || '' });
+    });
+  });
+  invalidateAppAgg_();
+  audit_(user, 'line.save', date + '|' + factory + '|' + dept, { saved: saved, failed: failed });
+  return { ok: true, saved: saved, failed: failed, results: results };
+}
+
 // { date, factory } -> factory-wide picture for the Home timeline
 function factoryToday_(req, user) {
   var date = str_(req.date), factory = str_(req.factory);
