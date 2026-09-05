@@ -9,11 +9,14 @@
 
   // per-slot summary shared with hourly.js
   S.slotInfo = function (d, s) {
-    var sl = d.slots[s.key] || {}, outLines = d.depts.filter(function (x) { return outType(x.cat) && d.att[x.dept + '|Final']; });
+    var sl = d.slots[s.key] || {}, stH = S.slotStart(s.key), closed = d.closed || {};
+    var attLines = d.depts.filter(function (x) { return outType(x.cat) && d.att[x.dept + '|Final']; });
+    // a line closed (band) before this slot starts is not pending for it
+    var outLines = attLines.filter(function (x) { return !(closed[x.dept] && closed[x.dept].hour <= stH + 0.01); });
     var done = 0, pcs = 0, st = 0, pk = 0, pass = 0, eLines = 0;
     outLines.forEach(function (x) { var t = outType(x.cat), v = sl[t] && sl[t][x.dept]; if (v) { done++; pcs += v; if (t === 'PACKING') pk += v; else st += v; } });
     Object.keys(sl.ENDLINE || {}).forEach(function (k) { eLines++; pass += sl.ENDLINE[k]; });
-    return { done: done, total: outLines.length, pcs: pcs, st: st, pk: pk, pass: pass, eLines: eLines, full: outLines.length > 0 && done >= outLines.length };
+    return { done: done, total: outLines.length, closedN: attLines.length - outLines.length, pcs: pcs, st: st, pk: pk, pass: pass, eLines: eLines, full: attLines.length > 0 && done >= outLines.length };
   };
   function triVal(inf) {
     if (!inf.done && !inf.eLines) return '';
@@ -106,7 +109,8 @@
     tr.outgoing.forEach(function (t) {
       html += task({ go: 'noop', ic: 'mp', sub: true, cls: '', n: 'Transfer bheja · ' + esc(S.shortLine(t.from_dept)) + ' se ' + t.count + ' log', s: (t.items || []).map(function (x) { return x.count + ' ' + x.role; }).join(', ') + ' · adjust ka wait', v: '' });
     });
-    if (d.events) html += task({ go: 'manpower', ic: 'mp', sub: true, cls: 'done', n: 'Manpower change', s: d.events + ' event aaj', v: '' });
+    var closedN = Object.keys(d.closed || {}).length;
+    if (d.events) html += task({ go: 'manpower', ic: 'mp', sub: true, cls: 'done', n: 'Manpower change', s: d.events + ' event aaj' + (closedN ? ' · ' + closedN + ' line band' : ''), v: '' });
     else html += '<button class="lnk tl-more" data-go="manpower">+ Manpower change (koi gaya / late aaya)</button>';
     var sub = {}; Object.keys(d.statuses).forEach(function (k) { sub[d.statuses[k]] = (sub[d.statuses[k]] || 0) + 1; });
     html += '<div class="tl-label">Shaam</div>';

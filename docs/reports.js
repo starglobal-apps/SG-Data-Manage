@@ -24,11 +24,13 @@
     if (lines.length) html += S.alertsHtml(alerts) + '<button class="btn primary big" data-all="1" style="margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:8px"' + (blocked ? ' disabled' : '') + '>' + icon('review') + (blocked ? ' Mismatch hai — send band' : alerts === null ? ' Check ho raha hai…' : ' Review & send all reports') + '</button>';
     if (!lines.length) html += '<div class="empty">Is din kisi line ki attendance nahi — report attendance ke baad banti hai</div>';
     lines.forEach(function (x) {
-      var srn = (d.attSrn && d.attSrn[x.dept]) || '', pk = x.cat === 'PACKING';
+      var attS = (d.attSrn && d.attSrn[x.dept]) || '', srn = attS || (d.daySrn && d.daySrn[x.dept]) || '', pk = x.cat === 'PACKING';
+      var closedAt = d.closed && d.closed[x.dept] ? d.closed[x.dept].time : '';
       var st = 0, ep = 0, pkq = 0;
       Object.keys(d.slots || {}).forEach(function (k) { var sl = d.slots[k]; st += (sl.STITCH && sl.STITCH[x.dept]) || 0; ep += (sl.ENDLINE && sl.ENDLINE[x.dept]) || 0; pkq += (sl.PACKING && sl.PACKING[x.dept]) || 0; });
       var myAl = (AL.alerts || []).filter(function (a) { return a.srn === srn && (a.type === 'PACKING' ? pk : a.dept === x.dept); });
-      html += '<div class="rep-card' + (myAl.length ? ' flag' : '') + '"' + (myAl.length ? ' style="border-left:3px solid var(--bad)"' : '') + '><div class="h"><span class="nm">' + esc(S.shortLine(x.dept)) + '</span><span class="srn">' + (srn ? esc(srn) : '<span style="color:var(--warn)">SRN nahi</span>') + ' · ' + d.att[x.dept + '|Final'] + ' mp</span></div>' +
+      html += '<div class="rep-card' + (myAl.length ? ' flag' : '') + '"' + (myAl.length ? ' style="border-left:3px solid var(--bad)"' : '') + '><div class="h"><span class="nm">' + esc(S.shortLine(x.dept)) + '</span><span class="srn">' + (srn ? esc(srn) + (!attS ? ' <small style="color:var(--warn)">hourly se</small>' : '') : '<span style="color:var(--warn)">SRN nahi</span>') + ' · ' + d.att[x.dept + '|Final'] + ' mp' + (closedAt ? ' · band ' + esc(closedAt) : '') + '</span></div>' +
+        (!attS ? '<button class="lnk" data-att="' + esc(x.dept) + '" style="margin:0 0 6px;font-size:12px">' + (srn ? '✎ Attendance me SRN bharo (abhi hourly wala ' + esc(srn) + ' use ho raha hai)' : '✎ SRN bharo — attendance kholo') + '</button>' : '') +
         (myAl.length ? '<div class="flag block" style="margin:0 0 6px">' + myAl.map(function (a) { return esc(a.msg); }).join('<br>') + '</div>' : '') +
         (srn ? '<div class="rep-btns">' + (pk
           ? '<button data-rep="PACKING|' + esc(x.dept) + '|' + esc(srn) + '">' + icon('box') + 'Packing report<small>' + pkq + ' pcs aaj</small></button>'
@@ -53,6 +55,7 @@
 
   $('#tab-reports').addEventListener('click', function (e) {
     var r = e.target.closest('[data-rep]'); if (r) { var p = r.dataset.rep.split('|'); S.report(p[0], p[1], p[2]); return; }
+    var a = e.target.closest('[data-att]'); if (a) { S.openAttendance('Final', a.dataset.att); return; }
     if (e.target.closest('[data-print]')) { S.printSrn(); return; }
     if (e.target.closest('[data-all]')) { S.reportAll(); return; }
     var g = e.target.closest('[data-go]'); if (g) S.go(g.dataset.go);

@@ -161,18 +161,38 @@ function manpowerGet_(req, user) {
 
 // { date, factory, dept, role, event, count, time, note }
 function manpowerSave_(req, user) {
-  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), role = str_(req.role);
+  var date = str_(req.date), factory = str_(req.factory), ev = str_(req.event);
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
-  if (!dept || !role) return fail_('KEY', 'Dept aur role chahiye');
-  if (!canWrite_(user, factory, dept)) return fail_('PERM', 'Permission nahi');
-  var count = num_(req.count); if (count <= 0) return fail_('COUNT', 'Count 1 ya zyada');
-  if (isLocked_(dayStatus_(date, factory, dept, 'ATT'))) return fail_('LOCKED', 'Attendance submit ho chuki — manager se reject karwao');
-  var eff = effHours_(str_(req.event), str_(req.time));
-  var row = { id: uuid_(), date: date, factory: factory, dept: dept, role: role, event: str_(req.event), count: count,
-              time: str_(req.time), eff_hours: eff, note: str_(req.note), entered_by: userName_(user), entered_at: nowStr_() };
-  appendRows_(CFG.TABS.MANPOWER_EVENTS, [row]);
-  audit_(user, 'manpower.save', row.id, row);
-  return { ok: true, id: row.id, eff_hours: eff };
+  var isClose = ev === 'LINE_CLOSED';
+  var depts = Array.isArray(req.depts) && req.depts.length ? req.depts.map(str_).filter(String) : [str_(req.dept)];
+  var role = isClose ? 'ALL' : str_(req.role), count = isClose ? 0 : num_(req.count);
+  if (!depts[0] || !role) return fail_('KEY', 'Dept aur role chahiye');
+  if (!isClose && count <= 0) return fail_('COUNT', 'Count 1 ya zyada');
+  for (var i = 0; i < depts.length; i++) {
+    if (!canWrite_(user, factory, depts[i])) return fail_('PERM', depts[i] + ': permission nahi');
+    if (isLocked_(dayStatus_(date, factory, depts[i], 'ATT'))) return fail_('LOCKED', depts[i] + ': attendance submit ho chuki — manager se reject karwao');
+  }
+  var eff = effHours_(ev, str_(req.time)), stamp = nowStr_(), ids = [];
+  withLock_(function() {
+    if (isClose) {   // one close per line per day: replace an earlier one
+      var old = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.event) === 'LINE_CLOSED' && depts.indexOf(str_(r.dept)) >= 0; });
+      deleteRows_(CFG.TABS.MANPOWER_EVENTS, old.map(function(r) { return r._row; }));
+    }
+    appendRows_(CFG.TABS.MANPOWER_EVENTS, depts.map(function(d) {
+      var id = uuid_(); ids.push(id);
+      return { id: id, date: date, factory: factory, dept: d, role: role, event: ev, count: count,
+               time: str_(req.time), eff_hours: eff, note: str_(req.note), entered_by: userName_(user), entered_at: stamp };
+    }));
+  });
+  audit_(user, 'manpower.save', ids.join(','), { event: ev, depts: depts, role: role, count: count, time: str_(req.time) });
+  return { ok: true, id: ids[0], ids: ids, eff_hours: eff };
+}
+
+// LINE_CLOSED event for a dept that day -> { time, hour, eff } or null
+function lineClose_(events, dept) {
+  var hit = null;
+  events.forEach(function(e) { if (str_(e.event) === 'LINE_CLOSED' && str_(e.dept) === dept) hit = e; });
+  return hit ? { time: str_(hit.time), hour: eventHour_(hit), eff: num_(hit.eff_hours) } : null;
 }
 
 function manpowerDelete_(req, user) {
@@ -199,6 +219,7 @@ function effectiveAttendance_(date, factory, dept, shift, attRows, events) {
     .forEach(function(e) {
       var role = str_(e.role), n = num_(e.count), eff = num_(e.eff_hours);
       var def = CFG.MP_EVENTS.filter(function(d) { return d.key === str_(e.event); })[0] || {};
+      if (def.close) return;   // handled below
       if (def.add) { var ka = role + '|' + eff; out[ka] = out[ka] || { role: role, hours: eff, count: 0 }; out[ka].count += n; return; }
       // take n people out of the fullest bucket for that role and re-add them at eff hours
       var keys = Object.keys(out).filter(function(k) { return out[k].role === role && out[k].count > 0; })
@@ -207,6 +228,16 @@ function effectiveAttendance_(date, factory, dept, shift, attRows, events) {
       keys.forEach(function(k) { if (left <= 0) return; var take = Math.min(left, out[k].count); out[k].count -= take; left -= take; });
       if (eff > 0) { var ke = role + '|' + eff; out[ke] = out[ke] || { role: role, hours: eff, count: 0 }; out[ke].count += n - left; }
     });
+  // line closed early: nobody works past that time
+  var close = lineClose_(events.filter(function(e) { return str_(e.date) === date && str_(e.factory) === factory; }), dept);
+  if (close) {
+    var capped = {};
+    Object.keys(out).forEach(function(k) {
+      var r = out[k], h = Math.min(r.hours, close.eff), kk = r.role + '|' + h;
+      capped[kk] = capped[kk] || { role: r.role, hours: h, count: 0 }; capped[kk].count += r.count;
+    });
+    out = capped;
+  }
   return Object.keys(out).map(function(k) { return out[k]; }).filter(function(r) { return r.count > 0; });
 }
 
@@ -241,6 +272,15 @@ function lineToday_(req, user) {
     att[s].manpower += num_(r.count); att[s].manhours += num_(r.count) * num_(r.hours);
     att[s].rows.push({ role: str_(r.role), hours: num_(r.hours), count: num_(r.count) });
   });
+  // Final shift: man-hours after manpower events (someone left / came late / line closed)
+  var evAll = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  var attAll = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  if (att.Final) {
+    var eff = effectiveAttendance_(date, factory, dept, 'Final', attAll, evAll);
+    att.Final.rawManhours = att.Final.manhours;
+    att.Final.manhours = eff.reduce(function(t, r) { return t + r.count * r.hours; }, 0);
+    var cl = lineClose_(evAll, dept); if (cl) att.Final.closedAt = cl.time;
+  }
 
   var slots = {}, totals = {};
   readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
@@ -287,12 +327,13 @@ function eventAdds_(e) { var d = CFG.MP_EVENTS.filter(function(x) { return x.key
 function mpAtSlot_(attRows, events, dept, slotKey) {
   var base = 0;
   attRows.forEach(function(r) { if (str_(r.dept) === dept && str_(r.shift) === 'Final') base += num_(r.count); });
-  var st = Number(slotKey.split('-')[0]);
+  var st = Number(slotKey.split('-')[0]), closed = false;
   events.forEach(function(e) {
     if (str_(e.dept) !== dept) return;
     var t = eventHour_(e), n = num_(e.count);
+    if (str_(e.event) === 'LINE_CLOSED') { if (t <= st + 0.01) closed = true; return; }
     if (eventAdds_(e)) { if (t < st + 1) base += n; }
     else if (t <= st + 0.01) base -= n;
   });
-  return Math.max(0, base);
+  return closed ? 0 : Math.max(0, base);
 }

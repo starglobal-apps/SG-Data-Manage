@@ -37,11 +37,13 @@
     r = r || {};
     var opts = d.srns[type] || [], sel = r.srn || d.lastSrn[type] || d.attSrn || (type !== 'PACKING' && opts[0] ? opts[0].srn : '');
     var lock = d.locked[type], noSrn = !opts.length && !sel;
-    var cls = lock ? 'lock' : (r.srn ? 'done' : '');
+    var cls = (lock ? 'lock' : (r.srn ? 'done' : '')) + (r.warn ? ' warn' : '');
+    var warnChip = r.warn ? '<button type="button" class="act wchip" data-warn="' + esc(r.warn) + '" title="' + esc(r.warn) + '">⚠</button>' : '';
     var mp = '<span class="mpb' + (d.mp !== d.mpBase ? ' chg' : '') + '" title="Is ghante manpower">' + d.mp + ' mp</span>';
     var acts = type === 'ENDLINE' ? '' : '<button type="button" class="act" data-mp="' + d._i + '" title="Koi gaya / aaya">−</button><button type="button" class="act" data-tr="' + d._i + '" title="Transfer">⇄</button>';
     var nm = '<span class="nm">' + esc(S.shortLine(d.dept)) + (d.attSrn && !r.srn ? '<small>att: ' + esc(d.attSrn) + '</small>' : '<small>' + (d.mpBase ? d.mpBase + ' subah' : 'attendance nahi') + '</small>') + '</span>';
     if (lock) return '<div class="hline lock" data-i="' + d._i + '">' + nm + mp + '<span class="msg" style="color:var(--muted)">' + esc(lock) + ' — edit band</span></div>';
+    if (d.closed && !r.srn) return '<div class="hline lock" data-i="' + d._i + '">' + nm + mp + '<span class="msg" style="color:var(--muted)">Line band ' + esc(d.closed) + ' — is ghante entry nahi</span></div>';
     if (noSrn) return '<div class="hline" data-i="' + d._i + '">' + nm + mp + acts + '<span class="msg" style="color:var(--warn)">' + (type === 'PACKING' ? 'Koi SRN nahi (endline-pass balance 0)' : type === 'ENDLINE' ? 'Pehle stitching output' : 'Loading nahi mili') + '</span></div>';
     var inputs = type === 'ENDLINE'
       ? '<input class="f-chk sm" type="number" inputmode="numeric" placeholder="chk" value="' + (r.checked || '') + '"><input class="f-pass sm" type="number" inputmode="numeric" placeholder="pass" value="' + (r.pass || '') + '"><input class="f-rej sm" type="number" inputmode="numeric" placeholder="rej" value="' + (r.reject || '') + '">'
@@ -52,10 +54,10 @@
       // two lines: [name · mp · actions] / [SRN search · pcs · ctn]
       return '<div class="hline pack ' + cls + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' +
         '<div class="top">' + (extra ? '<span class="nm"><small>+ dusra SRN</small></span>' : nm + mp + acts) + '</div>' +
-        '<div class="bot"><div class="srnp-mount" data-sel="' + esc(sel) + '"></div>' + inputs + '</div></div>';
+        '<div class="bot"><div class="srnp-mount" data-sel="' + esc(sel) + '"></div>' + inputs + warnChip + '</div></div>';
     }
     var nmCell = extra ? '<span class="nm"><small>' + (qcFixed ? '↳ ' + esc(qcFixed) : '+ dusra SRN') + '</small></span>' : nm;
-    return '<div class="hline ' + cls + (checker ? ' wrap' : '') + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' + nmCell + (extra || type === 'ENDLINE' ? '' : mp) + srnSel(opts, sel) + inputs + (extra || type === 'ENDLINE' ? '' : acts) + checker + '</div>';
+    return '<div class="hline ' + cls + (checker ? ' wrap' : '') + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' + nmCell + (extra || type === 'ENDLINE' ? '' : mp) + srnSel(opts, sel) + inputs + warnChip + (extra || type === 'ENDLINE' ? '' : acts) + checker + '</div>';
   }
   // ENDLINE: one row per QC of the line (each QC's checked/pass/reject saved separately)
   function endlineRows(d) {
@@ -117,15 +119,38 @@
     var bad = items.filter(function (it) { return it.type === 'ENDLINE' && it.checked > 0 && (it.pass + it.reject > it.checked || !it.checker); })[0];
     if (bad) { toast(S.shortLine(bad.dept) + ': ' + (!bad.checker ? 'checker ka naam likho' : 'pass + reject > checked'), 'bad'); return; }
     var savedType = H.type;
-    api('hour.save', { date: state.date, factory: state.factory, slot: H.slot, items: items })
+    // only lines whose numbers differ from what is already saved (the server skips the rest too)
+    var unchanged = function (it) {
+      if (it.checker === 'x') return false;
+      var d = H.data.depts.filter(function (x) { return x.dept === it.dept; })[0]; if (!d) return false;
+      var ex = (d.rows[it.type] || []).filter(function (r) { return r.srn === it.srn && (it.type !== 'ENDLINE' || (r.checker || '') === (it.checker || '')); })[0];
+      if (!ex) return false;
+      return it.type === 'ENDLINE' ? (ex.checked === it.checked && ex.pass === it.pass && ex.reject === it.reject)
+        : (ex.qty === it.qty && (it.type !== 'PACKING' || (ex.cartons || 0) === (it.cartons || 0)));
+    };
+    var changed = items.filter(function (it) { return !unchanged(it); });
+    if (!changed.length) { toast('Kuch badla nahi — sab pehle se saved hai', ''); H.dirty = false; return; }
+    api('hour.save', { date: state.date, factory: state.factory, slot: H.slot, items: changed })
       .then(function (d) {
         S.invalidateAll(); S.clearLocalCaches();
-        var fails = d.results.filter(function (r) { return !r.ok; });
-        if (fails.length) { toast(d.saved + ' saved · ' + fails.length + ' nahi: ' + S.shortLine(fails[0].dept) + ' — ' + fails[0].message, 'bad', 8000); H.dirty = false; load(true); return; }
+        var fails = d.results.filter(function (r) { return !r.ok; }), warns = d.results.filter(function (r) { return r.ok && r.warn; });
+        if (fails.length) {
+          // keep what was typed: the blocked line turns red with the reason, the rest is already saved
+          $$('#hour-list .hline[data-type]').forEach(function (row) {
+            var dd = H.data.depts[Number(row.dataset.i)], sel = $('.f-srn', row) || $('.srnp-in', row);
+            var f = fails.filter(function (x) { return x.dept === dd.dept && x.type === row.dataset.type && sel && x.srn === sel.value; })[0];
+            row.classList.toggle('bad', !!f); var m = $('.msg.err', row); if (m) m.remove();
+            if (f) row.insertAdjacentHTML('beforeend', '<span class="msg err">' + esc(f.message) + '</span>');
+          });
+          toast(S.shortLine(fails[0].dept) + ': ' + fails[0].message + (d.saved ? ' · baaki ' + d.saved + ' saved' : ''), 'bad', 9000);
+          H.dirty = true; return;
+        }
         // stay here: move to the next tab that still has empty lines (Stitching -> Endline -> Packing)
         var order = TYPES.map(function (t) { return t.k; }), i = order.indexOf(savedType);
         var nextType = order.slice(i + 1).concat(order.slice(0, i)).filter(function (k) { return deptsOf(k).length && doneCount(k) + (k === savedType ? d.saved : 0) < deptsOf(k).length; })[0];
-        toast('Saved · ' + d.saved + ' lines' + (nextType ? ' → ab ' + TYPES.filter(function (t) { return t.k === nextType; })[0].l : ' · ghanta poora ✓'), 'ok');
+        var what = d.saved ? 'Saved · ' + d.saved + ' line' + (d.saved > 1 ? 's' : '') : 'Kuch badla nahi';
+        toast(what + (nextType ? ' → ab ' + TYPES.filter(function (t) { return t.k === nextType; })[0].l : ' · ghanta poora ✓'), 'ok');
+        if (warns.length) setTimeout(function () { toast('⚠ ' + S.shortLine(warns[0].dept) + ': ' + warns[0].warn + (warns.length > 1 ? ' (+' + (warns.length - 1) + ')' : ''), '', 7000); }, 1500);
         if (nextType) H.type = nextType;
         H.dirty = false; load(true);
       })
@@ -139,19 +164,29 @@
   // ---- manpower change sheet (someone left / came) ----
   function mpSheet(d) {
     var evs = (state.masters.mpEvents || []).filter(function (e) { return e.key !== 'TRANSFER_IN' && e.key !== 'TRANSFER_OUT'; });
-    var html = '<label>Role</label><select id="m-role">' + S.rolesForDept(d.dept).map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>' +
-      '<div class="row"><div class="field"><label>Kya hua</label><select id="m-ev">' + evs.map(function (e) { return '<option value="' + esc(e.key) + '"' + (e.key === 'LEFT_AT' ? ' selected' : '') + '>' + esc(e.label) + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field small"><label>Kitne</label><input id="m-count" type="number" inputmode="numeric" value="1" min="1"></div></div>' +
+    if (!evs.some(function (e) { return e.key === 'LINE_CLOSED'; })) evs.push({ key: 'LINE_CLOSED', label: 'Line band / shift khatam', needsTime: true });
+    var html = '<div class="row"><div class="field"><label>Kya hua</label><select id="m-ev">' + evs.map(function (e) { return '<option value="' + esc(e.key) + '"' + (e.key === 'LEFT_AT' ? ' selected' : '') + '>' + esc(e.label) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field small" id="m-count-wrap"><label>Kitne</label><input id="m-count" type="number" inputmode="numeric" value="1" min="1"></div></div>' +
+      '<div id="m-role-wrap"><label>Role</label><select id="m-role">' + S.rolesForDept(d.dept).map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select></div>' +
+      '<div id="m-close-wrap" hidden><label class="chk"><input type="checkbox" id="m-all"> Sab lines band (poori factory) — ' + H.data.depts.length + ' line</label><p class="hint" style="margin:4px 0 8px">Is time ke baad ke ghante "baaki" nahi dikhenge; man-hours yahin tak ginenge.</p></div>' +
       '<div class="row"><div class="field small"><label>Time</label><input id="m-time" type="time" value="' + (S.isToday() ? nowTime() : slotTime()) + '"></div><div class="field"><label>Note</label><input id="m-note" type="text" placeholder="optional"></div></div>' +
       '<button class="btn primary big" id="m-save">Save</button>';
     S.sheet.open(S.shortLine(d.dept) + ' · manpower change', html);
     var c = $('#sheet-content');
+    var sync = function () { var close = $('#m-ev').value === 'LINE_CLOSED'; $('#m-role-wrap').hidden = close; $('#m-count-wrap').hidden = close; $('#m-close-wrap').hidden = !close; $('#m-save').textContent = close ? 'Line band karo' : 'Save'; };
+    c.onchange = function (e) { if (e.target.id === 'm-ev') sync(); };
     c.onclick = function (e) {
       if (!e.target.closest('#m-save')) return;
-      var ev = $('#m-ev').value, needs = (evs.filter(function (x) { return x.key === ev; })[0] || {}).needsTime;
-      var p = { date: state.date, factory: state.factory, dept: d.dept, role: $('#m-role').value, event: ev, count: num($('#m-count').value), time: needs ? $('#m-time').value : '', note: $('#m-note').value.trim() };
-      if (p.count < 1) { toast('Count 1 ya zyada', 'bad'); return; }
-      api('manpower.save', p).then(function (r) { toast('Saved (' + r.eff_hours + ' hrs)', 'ok'); S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); load(true); setTimeout(function () { S.offerGroup('Manpower change group me bhejein?'); }, 400); }).catch(function (er) { toast(er.message, 'bad'); });
+      var ev = $('#m-ev').value, needs = (evs.filter(function (x) { return x.key === ev; })[0] || {}).needsTime, close = ev === 'LINE_CLOSED';
+      var p = { date: state.date, factory: state.factory, dept: d.dept, role: close ? 'ALL' : $('#m-role').value, event: ev, count: close ? 0 : num($('#m-count').value), time: needs ? $('#m-time').value : '', note: $('#m-note').value.trim() };
+      if (close && $('#m-all').checked) p.depts = H.data.depts.map(function (x) { return x.dept; });
+      if (!close && p.count < 1) { toast('Count 1 ya zyada', 'bad'); return; }
+      if (close && !p.time) { toast('Time daalo', 'bad'); return; }
+      api('manpower.save', p).then(function (r) {
+        toast(close ? 'Line band · ' + p.time + ' (' + r.eff_hours + ' hrs)' + (p.depts ? ' · ' + p.depts.length + ' lines' : '') : 'Saved (' + r.eff_hours + ' hrs)', 'ok');
+        S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); load(true);
+        setTimeout(function () { S.offerGroup(close ? 'Line band — group me bhejein?' : 'Manpower change group me bhejein?'); }, 400);
+      }).catch(function (er) { toast(er.message, 'bad'); });
     };
   }
 
@@ -168,6 +203,7 @@
     return out;
   }
   function trSheet(d) {
+    if (!S.factoryData()) { toast('Data aa raha hai…', ''); S.loadFactory().then(function () { trSheet(d); }).catch(function (e) { toast(e.message, 'bad'); }); return; }
     var avail = availByRole(d), roles = Object.keys(avail).filter(function (r) { return avail[r] > 0; });
     if (!roles.length) roles = S.rolesForDept(d.dept);
     var html = '<div class="hint" style="margin:0 0 6px">Se: <b>' + esc(S.shortLine(d.dept)) + '</b> · abhi ' + d.mp + ' mp</div>' +
@@ -208,6 +244,7 @@
     var b = e.target.closest('button'); if (!b) return;
     if (b.dataset.t) { var sw = function () { H.type = b.dataset.t; render(); }; if (H.dirty && snapshot() !== H.initial) S.ask('Bina save kiye tab badlein?', { ok: 'Haan, badlo', cancel: 'Ruko' }).then(function (ok) { if (ok) sw(); }); else sw(); return; }
     if (b.dataset.done) { S.back(); return; }
+    if (b.dataset.warn) { toast('⚠ ' + b.dataset.warn + ' — Report / Day Close se pehle theek karo', '', 6000); return; }
     if (b.dataset.mp !== undefined) { mpSheet(H.data.depts[Number(b.dataset.mp)]); return; }
     if (b.dataset.tr !== undefined) { trSheet(H.data.depts[Number(b.dataset.tr)]); return; }
     if (b.id === 'hour-add') {

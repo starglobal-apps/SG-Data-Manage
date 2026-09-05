@@ -112,7 +112,29 @@ function staffList_(req, user) {
   });
   readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) { if (str_(r.supervisor)) sup[str_(r.supervisor)] = 1; if (str_(r.incharge)) inc[str_(r.incharge)] = 1; csv_(r.qc_names).forEach(function(n) { qc[n] = 1; }); });
   readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) { if (str_(r.type) === 'ENDLINE' && str_(r.checker)) qc[str_(r.checker)] = 1; });
+  historyCheckers_().forEach(function(n) { qc[n] = 1; });
+  // a name hidden in the app (STAFF row active=FALSE) stays hidden even if history has it
+  mastersRows_().forEach(function(r) { if (str_(r.type) === 'STAFF' && !isTrue_(r.active)) { var k = str_(r.value), n = str_(r.key); if (k === 'Endline QC') delete qc[n]; else if (k === 'Supervisor') delete sup[n]; else if (k === 'Incharge') delete inc[n]; } });
   return { ok: true, supervisors: Object.keys(sup).sort(), incharges: Object.keys(inc).sort(), qcs: Object.keys(qc).sort(), kinds: CFG.STAFF_KINDS };
+}
+
+// Endline checker names from MASTER DATA history (last ~120 days). Cached 6 h.
+function historyCheckers_() {
+  var hit = cacheGetBig_('hist_qc');
+  if (hit) return hit;
+  var names = {}, md = getSS_().getSheetByName(MASTER_SHEET_NAME);
+  if (md && md.getLastRow() >= 3) {
+    var cutoff = fmtDate_(new Date(new Date().getTime() - 120 * 86400000));
+    md.getRange(3, 7, md.getLastRow() - 2, 1).getValues().forEach(function(row) {
+      var e = parseJson_(row[0]);   // [entry, factory, prodDate, srn, item, dept, qfloor, checker, ...]
+      if (!e || !str_(e[7])) return;
+      if (dateKey_(e[2] || e[0]) < cutoff) return;
+      names[str_(e[7]).trim()] = 1;
+    });
+  }
+  var out = Object.keys(names);
+  cachePutBig_('hist_qc', out, 21600);
+  return out;
 }
 
 // { name, kind }  kind = Supervisor | Incharge | Endline QC   (any logged-in user can add; a removed name is set inactive)

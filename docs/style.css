@@ -163,7 +163,7 @@ svg { width: 22px; height: 22px; fill: currentColor; }
 /* review / dayclose */
 .actions { display: flex; gap: 8px; } .actions .btn { flex: 1; margin: 0; }
 .flag { font-size: 12px; margin-top: 4px; padding: 4px 8px; border-radius: 8px; }
-.flag.block { background: var(--bad-soft); color: #991b1b; } .flag.warn { background: var(--warn-soft); color: #92400e; }
+.flag.block { background: var(--bad-soft); color: #991b1b; } .flag.warn { background: var(--warn-soft); color: #92400e; } .flag.info { background: var(--soft); color: var(--muted); }
 .rv-item { background: var(--card); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: flex-start; }
 .rv-item input[type=checkbox] { width: 22px; height: 22px; margin-top: 4px; flex: 0 0 auto; }
 .rv-item .body { flex: 1; min-width: 0; } .rv-item .title { font-weight: 700; } .rv-item .nums { font-size: 14px; color: var(--muted); }
@@ -234,6 +234,9 @@ body.has-nav .sticky-bottom { bottom: var(--nav-h); }
 .hline input { width: 64px; flex: 0 0 auto; padding: 5px; min-height: 36px; text-align: center; font-weight: 700; font-size: 15px; }
 .hline input.sm { width: 50px; font-size: 13px; }
 .hline .msg { width: 100%; font-size: 11px; color: var(--bad); }
+.hline.warn { border-left-color: var(--warn); } .hline .wchip { color: var(--warn); font-weight: 800; }
+.hline.bad { background: var(--bad-soft); } .hline .msg.err { font-weight: 600; }
+label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text); margin: 6px 0 2px; } label.chk input { width: 18px; height: 18px; }
 .hline.wrap { flex-wrap: wrap; }
 .hline .chk-name { width: 100%; display: flex; gap: 6px; align-items: center; }
 .hline .chk-name input { flex: 1; width: auto; text-align: left; font-weight: 500; font-size: 13px; min-height: 32px; }

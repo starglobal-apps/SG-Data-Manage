@@ -15,9 +15,10 @@
     return '<div class="pms' + (any ? ' flag' : '') + '" data-rep="' + esc((r.floor ? 'PACKING' : 'STITCH') + '|' + r.dept + '|' + r.srn) + '"><div class="pms-h"><span class="srn">' + esc(r.srn) + '</span><span class="it">' + esc(r.item) + '</span>' + (r.lastLoad ? '<span class="dt">' + esc(S.fmtDay(r.lastLoad)) + '</span>' : '') + pin + '</div>' +
       '<div class="pms-n"><div' + (b.st ? ' class="bad"' : '') + '><div class="k">Loading</div><div class="v">' + r.loaded + '</div></div>' +
       '<div' + (b.st ? ' class="bad"' : '') + '><div class="k">Stitch</div><div class="v">' + r.stitched + '</div></div>' +
-      '<div' + (b.en ? ' class="bad"' : '') + '><div class="k">End pass</div><div class="v">' + r.endPass + '</div></div>' +
+      '<div' + (b.en || b.pk ? ' class="bad"' : '') + '><div class="k">End pass' + (b.pk && r.endPassSrn !== r.endPass ? ' <small>sab lines</small>' : '') + '</div><div class="v">' + (b.pk && r.endPassSrn !== r.endPass ? r.endPassSrn : r.endPass) + '</div></div>' +
       '<div' + (b.pk ? ' class="bad"' : '') + '><div class="k">Packed</div><div class="v">' + r.packed + '</div></div></div>' +
-      (r.floor ? '<div class="pms-sub">Is floor par packed: <b>' + r.packedHere + '</b> · SRN total: loaded ' + r.loadedSrn + ' · stitched ' + r.stitchedSrn + ' · end pass ' + r.endPassSrn + '</div>' : (r.loadedSrn !== r.loaded || r.endPassSrn !== r.endPass ? '<div class="pms-sub">SRN total (sab lines): loaded ' + r.loadedSrn + ' · stitched ' + r.stitchedSrn + ' · end pass ' + r.endPassSrn + ' · packed ' + r.packed + '</div>' : '')) + '</div>';
+      (b.pk ? '<div class="pms-sub" style="color:var(--bad)">⚠ Packed ' + r.packed + ' (sab floors) &gt; endline pass ' + r.endPassSrn + ' (sab lines) — ' + (r.packed - r.endPassSrn) + ' ka endline data kam</div>' : '') +
+      (r.floor ? '<div class="pms-sub">Is floor par packed: <b>' + r.packedHere + '</b> · SRN total: loaded ' + r.loadedSrn + ' · stitched ' + r.stitchedSrn + ' · end pass ' + r.endPassSrn + '</div>' : (r.loadedSrn !== r.loaded || r.endPassSrn !== r.endPass ? '<div class="pms-sub">' + (b.pk ? 'Is line: end pass ' + r.endPass + ' · ' : '') + 'SRN total (sab lines): loaded ' + r.loadedSrn + ' · stitched ' + r.stitchedSrn + ' · end pass ' + r.endPassSrn + ' · packed ' + r.packed + '</div>' : '')) + '</div>';
   }
 
   S.tabs.pms = function () {

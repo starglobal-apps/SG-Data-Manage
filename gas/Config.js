@@ -122,7 +122,9 @@ CFG.MP_EVENTS = [
   { key: 'ABSENT',    label: 'Absent (attendance ke baad)', eff: 0, needsTime: false },
   { key: 'EXTRA',     label: 'Extra aaya (add)',       eff: 8,    needsTime: false, add: true },
   { key: 'TRANSFER_OUT', label: 'Transfer gaya (dusri line)',  eff: null, needsTime: true, from: 9 },
-  { key: 'TRANSFER_IN',  label: 'Transfer se aaya',           eff: null, needsTime: true, to: 18, add: true }
+  { key: 'TRANSFER_IN',  label: 'Transfer se aaya',           eff: null, needsTime: true, to: 18, add: true },
+  // whole line stops early (shift over / line band): remaining slots are not pending, hours capped at that time
+  { key: 'LINE_CLOSED',  label: 'Line band / shift khatam',   eff: null, needsTime: true, from: 9, close: true }
 ];
 
 // The 5 manpower-type columns of the stitching source sheets (cols 23-27 on FAC666 'Data', 12-16 on FAC117), in order.

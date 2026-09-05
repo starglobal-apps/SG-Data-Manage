@@ -46,6 +46,24 @@ function attSrnMap_(date, factory) {
   return m;
 }
 
+// SRN used in that day's hourly rows per dept (latest entry wins) — fallback when attendance has no SRN
+function hourlySrnMap_(date, factory) {
+  var m = {}, at = {};
+  readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || !str_(r.srn)) return;
+    var d = str_(r.dept), t = str_(r.entered_at);
+    if (!at[d] || at[d] < t) { at[d] = t; m[d] = str_(r.srn); }
+  });
+  return m;
+}
+// { map: {dept: srn}, from: {dept: 'att' | 'hourly'} }
+function daySrnMap_(date, factory) {
+  var att = attSrnMap_(date, factory), hr = hourlySrnMap_(date, factory), map = {}, from = {};
+  Object.keys(hr).forEach(function(d) { map[d] = hr[d]; from[d] = 'hourly'; });
+  Object.keys(att).forEach(function(d) { map[d] = att[d]; from[d] = 'att'; });
+  return { map: map, from: from };
+}
+
 function statusMap_(date, factory) {
   var m = {}, order = ['Sent', 'Approved', 'Submitted', 'Rejected', 'Draft'];
   readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
@@ -83,15 +101,23 @@ function hourGet_(req, user) {
   });
   var lineFloor = masterMap_('LINE_FLOOR');
 
+  var slotStart = Number(slot.split('-')[0]);
+  var rowWarn = function(t, dept, srn) {
+    if (t === 'ENDLINE') { var over = num_(L.endChecked[k2_(dept, srn)]) - num_(L.stitched[k2_(dept, srn)]); return over > 0 ? 'Endline checked stitching se ' + over + ' zyada' : ''; }
+    if (t === 'PACKING') { var lim = num_(L.endPassSrn[srn]), overP = num_(L.packed[srn]) - lim; return !lim ? srn + ' ka endline data nahi' : overP > 0 ? 'Packing endline pass se ' + overP + ' zyada (sab floors)' : ''; }
+    return '';
+  };
   var out = depts.map(function(d) {
     var types = d.cat === 'STITCH' ? ['STITCH', 'ENDLINE'] : ['PACKING'];
+    var cl = lineClose_(events, d.dept);
     var o = { dept: d.dept, cat: d.cat, srns: {}, rows: {}, lastSrn: {}, locked: {}, attSrn: attSrn[d.dept] || '', qcNames: qcOf[d.dept] || [],
+              closed: cl && cl.hour <= slotStart + 0.01 ? cl.time : '',
               mp: mpAtSlot_(attRows, events, d.dept, slot), mpBase: attRows.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === 'Final'; }).reduce(function(t, r) { return t + num_(r.count); }, 0),
               checker: lastChecker[d.dept] ? lastChecker[d.dept].v : '',
               floor: lastFloor[d.dept] ? lastFloor[d.dept].v : (lineFloor[d.dept] ? lineFloor[d.dept].value : '') };
     types.forEach(function(t) {
       o.srns[t] = srnOptions_(L, d.dept, t);
-      o.rows[t] = rowsBy[d.dept + '|' + t] || [];
+      o.rows[t] = (rowsBy[d.dept + '|' + t] || []).map(function(r) { r.warn = rowWarn(t, d.dept, r.srn); return r; });
       // default SRN: what attendance said the line is running today, else the last one used
       o.lastSrn[t] = attSrn[d.dept] || (lastSrn[d.dept + '|' + t] ? lastSrn[d.dept + '|' + t].srn : '');
       var s = st[d.dept + '|' + t]; if (isLocked_(s)) o.locked[t] = s;
@@ -128,6 +154,11 @@ function slotUpsert_(p, user, ctx) {
   var existing = ctx.rows.filter(function(r) { return hourlyKey_(r) === key && str_(r.slot) === slot && (type !== 'ENDLINE' || str_(r.checker) === str_(p.checker)); });
   var oldAmt = 0; existing.forEach(function(r) { oldAmt += type === 'ENDLINE' ? num_(r.checked) : num_(r.qty); });
   if (newAmt === oldAmt && !existing.length) return { ok: true, skipped: true };
+  // unchanged (same numbers as the one saved row) -> nothing to write
+  if (existing.length === 1 && newAmt > 0) {
+    var ex = existing[0], same = ['qty', 'checked', 'pass', 'reject', 'cartons'].every(function(f) { return num_(ex[f]) === row[f]; }) && (!str_(p.floor) || str_(ex.floor) === str_(p.floor));
+    if (same) return { ok: true, skipped: true, unchanged: true };
+  }
 
   var chk = chainCheck_(ctx.L, type, dept, srn, newAmt - oldAmt);
   if (!chk.ok) return { ok: false, error: 'CHAIN', message: chk.msg, limit: chk.limit, used: chk.used };
@@ -153,7 +184,7 @@ function slotUpsert_(p, user, ctx) {
   else if (type === 'ENDLINE') { addTo_(ctx.L.endChecked, k2_(dept, srn), delta); var pd = row.pass - existing.reduce(function(t, r) { return t + num_(r.pass); }, 0); addTo_(ctx.L.endPass, k2_(dept, srn), pd); addTo_(ctx.L.endPassSrn, srn, pd); }
   else addTo_(ctx.L.packed, srn, delta);
   if (status === 'Rejected') { setDayStatus_(date, factory, dept, type, 'Draft', user, 'Re-entered after reject'); ctx.status[dept + '|' + type] = 'Draft'; }
-  return { ok: true, amount: newAmt, balance: chk.balance, limit: chk.limit, at: stamp };
+  return { ok: true, amount: newAmt, balance: chk.balance, limit: chk.limit, at: stamp, warn: chk.level === 'warn' ? chk.msg : '' };
 }
 
 function batchCtx_(date, factory) {
@@ -176,7 +207,7 @@ function hourSave_(req, user) {
       var r;
       try { r = slotUpsert_(p, user, ctx); } catch (e) { r = fail_('ERR', String(e && e.message || e)); }
       if (r.ok && !r.skipped) saved++; else if (!r.ok) failed++;
-      results.push({ type: str_(it.type), dept: str_(it.dept), srn: str_(it.srn), ok: r.ok, skipped: !!r.skipped, message: r.message || '', balance: r.balance });
+      results.push({ type: str_(it.type), dept: str_(it.dept), srn: str_(it.srn), ok: r.ok, skipped: !!r.skipped, unchanged: !!r.unchanged, message: r.message || '', warn: r.warn || '', balance: r.balance });
     });
   });
   invalidateAppAgg_();
@@ -206,7 +237,9 @@ function factoryToday_(req, user) {
     slots[sk][t][dept] = (slots[sk][t][dept] || 0) + amt;
   });
   var evRows = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
-  var events = evRows.length;
+  var events = evRows.length, closed = {};
+  evRows.forEach(function(r) { if (str_(r.event) === 'LINE_CLOSED') closed[str_(r.dept)] = { time: str_(r.time), hour: eventHour_(r) }; });
+  var daySrn = daySrnMap_(date, factory);
   var eventList = evRows.map(function(r) { return { dept: str_(r.dept), role: str_(r.role), event: str_(r.event), count: num_(r.count), time: str_(r.time), eff_hours: num_(r.eff_hours), note: str_(r.note), by: str_(r.entered_by) }; });
   // manpower right now per dept (attendance + events up to the current hour)
   var attRowsAll = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
@@ -234,7 +267,7 @@ function factoryToday_(req, user) {
     var open = Object.keys(attByDay[dd]).filter(function(dept) { return !stAll[dd + '|' + dept]; });
     if (open.length) openDays.push({ date: dd, lines: open.length });
   });
-  return { ok: true, depts: depts, att: att, attSrn: attSrn, attRoles: attRoles, slots: slots, statuses: statusMap_(date, factory), events: events, eventList: eventList, mpNow: mpNow, pending: pending, transfers: transfers, openDays: openDays, serverTime: nowStr_() };
+  return { ok: true, depts: depts, att: att, attSrn: attSrn, daySrn: daySrn.map, srnFrom: daySrn.from, closed: closed, attRoles: attRoles, slots: slots, statuses: statusMap_(date, factory), events: events, eventList: eventList, mpNow: mpNow, pending: pending, transfers: transfers, openDays: openDays, serverTime: nowStr_() };
 }
 
 // ---------- manpower transfer: my line/floor -> another data recorder (who then places them on their lines) ----------

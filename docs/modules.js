@@ -201,7 +201,7 @@
     var ev = $('#mp-event').value;
     var payload = { date: state.date, factory: state.factory, dept: mp.dept, role: $('#mp-role').value, event: ev,
                     count: num($('#mp-count').value), time: $('#mp-time-wrap').hidden ? '' : $('#mp-time').value, note: $('#mp-note').value.trim() };
-    if (payload.count < 1) { toast('Count 1 ya zyada', 'bad'); return; }
+    if (payload.count < 1 && ev !== 'LINE_CLOSED') { toast('Count 1 ya zyada', 'bad'); return; }
     if (!$('#mp-time-wrap').hidden && !payload.time) { toast('Time daalo', 'bad'); return; }
     api('manpower.save', payload)
       .then(function (d) { toast(d.queued ? 'Offline me save' : 'Added (' + d.eff_hours + ' hrs)', 'ok'); $('#mp-note').value = ''; $('#mp-count').value = 1; loadMp(); S.invalidateAll(); if (!d.queued) setTimeout(function () { S.offerGroup('Manpower change group me bhejein?'); }, 400); })
@@ -224,8 +224,9 @@
     $('#dc-out').innerHTML = '';
     $('#btn-dc-submit').disabled = true;
     S.push('dayclose', 'Day Close · ' + S.fmtDay(state.date));
-    if (dept) $('#btn-dc-preview').click();
+    $('#btn-dc-preview').click();   // preview straight away; dept change re-runs it
   }
+  $('#dc-dept').addEventListener('change', function () { $('#btn-dc-preview').click(); });
   function flagsHtml(flags) { return (flags || []).map(function (f) { return '<div class="flag ' + esc(f.level) + '">' + esc(f.msg) + '</div>'; }).join(''); }
   function renderDayRows(rows, locked) {
     var groups = { ATT: [], STITCH: [], ENDLINE: [], PACKING: [] };
@@ -254,6 +255,7 @@
   }
   $('#dc-out').addEventListener('click', function (e) { var b = e.target.closest('[data-rep]'); if (!b) return; var p = b.dataset.rep.split('|'); S.report(p[0], p[1], p[2]); });
   $('#btn-dc-preview').addEventListener('click', function () {
+    $('#dc-out').innerHTML = '<div class="empty">Preview ban raha hai…</div>'; $('#btn-dc-submit').disabled = true;
     api('day.build', { date: state.date, factory: state.factory, dept: $('#dc-dept').value })
       .then(function (d) {
         renderDayRows(d.rows, d.locked);

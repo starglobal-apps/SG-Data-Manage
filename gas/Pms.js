@@ -68,9 +68,9 @@ function reportCheck_(req, user) {
   var factory = str_(req.factory), date = str_(req.date) || todayStr_();
   var L = ledger_(), stitchedSrn = {};
   Object.keys(L.stitched).forEach(function(k) { addTo_(stitchedSrn, k.split('|')[1], L.stitched[k]); });
-  var depts = writableDepts_(user, factory), attSrn = attSrnMap_(date, factory), alerts = [], seen = {};
+  var depts = writableDepts_(user, factory), daySrn = daySrnMap_(date, factory).map, alerts = [], seen = {};
   depts.forEach(function(d) {
-    var srn = attSrn[d.dept]; if (!srn) return;
+    var srn = daySrn[d.dept]; if (!srn) return;   // attendance SRN, else the SRN used in that day's hourly rows
     pmsAlerts_(L, stitchedSrn, d.dept, srn, d.cat).forEach(function(a) {
       var k = a.type === 'PACKING' ? 'P|' + a.srn : a.type + '|' + a.dept + '|' + a.srn;   // packing rule is per SRN, not per floor
       if (seen[k]) return; seen[k] = true; alerts.push(a);

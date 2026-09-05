@@ -287,7 +287,7 @@
     $('#btn-ra-share').disabled = true; $('#btn-ra-dl').disabled = true;
     S.reportAlerts(true).then(function (alerts) { RA.alerts = alerts; return S.loadFactory(); }).then(function (d) {
       var list = [];
-      d.depts.forEach(function (x) { var srn = d.attSrn && d.attSrn[x.dept]; if (!srn) return; if (x.cat === 'PACKING') list.push({ t: 'PACKING', dept: x.dept, srn: srn }); else { list.push({ t: 'STITCH', dept: x.dept, srn: srn }); list.push({ t: 'ENDLINE', dept: x.dept, srn: srn }); } });
+      d.depts.forEach(function (x) { var srn = (d.daySrn && d.daySrn[x.dept]) || (d.attSrn && d.attSrn[x.dept]); if (!srn) return; if (x.cat === 'PACKING') list.push({ t: 'PACKING', dept: x.dept, srn: srn }); else { list.push({ t: 'STITCH', dept: x.dept, srn: srn }); list.push({ t: 'ENDLINE', dept: x.dept, srn: srn }); } });
       if (!list.length) { $('#ra-info').innerHTML = '<div class="empty">Is din kisi line ka SRN / attendance nahi</div>'; return; }
       var seq = Promise.resolve(), done = 0;
       list.forEach(function (x) {
@@ -297,7 +297,7 @@
             var wrap = document.createElement('div'); wrap.className = 'ra-item';
             wrap.innerHTML = '<div class="t"><span>' + esc(S.shortLine(x.dept)) + ' · ' + esc(labelOf(x.t)) + '</span><span class="muted">' + esc(x.srn) + ' · ' + out.rows + ' rows · p' + out.page + '/' + out.pages + '</span></div>';
             wrap.appendChild(out.canvas); $('#ra-list').appendChild(wrap);
-            done++; $('#ra-info').innerHTML = (RA.alerts.length ? S.alertsHtml(RA.alerts) : '') + '<b>' + done + ' / ' + list.length + ' reports</b><div class="muted" style="font-size:12px">' + (RA.alerts.length ? 'Mismatch theek hone tak send band hai — reports sirf dekh sakte ho' : 'Neeche ek-ek karke dekho, phir "Send all" — sab ek saath WhatsApp me') + '</div>';
+            done++; $('#ra-info').innerHTML = (RA.alerts.length ? S.alertsHtml(RA.alerts) : '') + '<b>' + done + ' / ' + list.length + ' reports' + (done < list.length ? ' · agla ban raha hai…' : ' ✓ sab ban gaye') + '</b><div class="muted" style="font-size:12px">' + (RA.alerts.length ? 'Mismatch theek hone tak send band hai — reports sirf dekh sakte ho' : 'Neeche ek-ek karke dekho, phir "Send all" — sab ek saath WhatsApp me') + '</div>';
             return new Promise(function (res) { out.canvas.toBlob(function (b) { RA.files.push(new File([b], name, { type: 'image/png' })); res(); }, 'image/png'); });
           }).catch(function (e) { $('#ra-list').insertAdjacentHTML('beforeend', '<div class="ra-item"><div class="t">' + esc(S.shortLine(x.dept)) + ' · ' + esc(labelOf(x.t)) + '</div><div class="empty">' + esc(e.message) + '</div></div>'); });
         });
@@ -316,7 +316,7 @@
   S.reportPicker = function () {
     S.loadFactory().then(function (d) {
       var list = [];
-      d.depts.forEach(function (x) { var srn = d.attSrn && d.attSrn[x.dept]; if (!srn) return; if (x.cat === 'PACKING') list.push({ t: 'PACKING', dept: x.dept, srn: srn }); else { list.push({ t: 'STITCH', dept: x.dept, srn: srn }); list.push({ t: 'ENDLINE', dept: x.dept, srn: srn }); } });
+      d.depts.forEach(function (x) { var srn = (d.daySrn && d.daySrn[x.dept]) || (d.attSrn && d.attSrn[x.dept]); if (!srn) return; if (x.cat === 'PACKING') list.push({ t: 'PACKING', dept: x.dept, srn: srn }); else { list.push({ t: 'STITCH', dept: x.dept, srn: srn }); list.push({ t: 'ENDLINE', dept: x.dept, srn: srn }); } });
       if (!list.length) { toast('Aaj kisi line ka SRN nahi mila — pehle attendance', 'bad'); return; }
       S.sheet.open('Day report · line chuno', '<div class="rep-list">' + list.map(function (x) { return '<button class="task" data-rep="' + esc(x.t) + '|' + esc(x.dept) + '|' + esc(x.srn) + '" style="border:0;text-align:left;width:100%"><div class="ic">' + S.icon(x.t === 'PACKING' ? 'box' : 'out') + '</div><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="s">' + esc(x.srn) + ' · ' + (x.t === 'PACKING' ? 'Packing Output Report' : x.t === 'ENDLINE' ? 'Endline FTR' : 'Making Output Report') + '</div></div><span class="chev">' + S.icon('chev') + '</span></button>'; }).join('') + '<button class="lnk" id="rep-print">🖨 Ya poora SRN print karo (PDF)</button></div>');
       $('#sheet-content').onclick = function (e) { if (e.target.closest('#rep-print')) { S.sheet.close(); S.printSrn(list[0].srn); return; } var b = e.target.closest('[data-rep]'); if (!b) return; var p = b.dataset.rep.split('|'); S.sheet.close(); S.report(p[0], p[1], p[2]); };

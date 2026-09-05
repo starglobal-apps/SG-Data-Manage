@@ -356,6 +356,7 @@
   function attType() { var c = deptCategory(att.dept); return c === 'PACKING' ? 'PACKING' : 'STITCH'; }
   function renderAttSrns() {
     var box = $('#att-srn'), list = att.srns || [];
+    if (att.srns === null) { box.className = ''; box.innerHTML = '<span class="muted" style="font-size:12px">SRN aa rahe hain…</span>'; return; }
     if (attType() === 'PACKING') {
       box.className = '';
       SG.srnPicker(box, { list: list, value: att.srn, placeholder: 'SRN number likho (jaise 596)', onPick: function (v) { att.srn = v; } });
@@ -367,10 +368,10 @@
       : '<span class="muted" style="font-size:12px">Is line par loading nahi mili</span>';
   }
   function loadAttSrns() {
-    att.srns = []; renderAttSrns();
+    att.srns = null; renderAttSrns();
     api('orders.active', { factory: state.factory, dept: att.dept, type: attType() }, { quiet: true })
       .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all) att.srn = d.srns[0].srn; renderAttSrns(); })
-      .catch(function () {});
+      .catch(function () { att.srns = []; renderAttSrns(); });
   }
   $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('.chips button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
   function openAttendance(shift, dept) {
@@ -465,7 +466,7 @@
 
   // ---------- WhatsApp: attendance summary for the group ----------
   var ROLE_SHORT = { Operator: 'Op', Helper: 'Hlp', Supervisor: 'Sup', Incharge: 'Inch', Feeder: 'Fdr', 'Data Collector': 'DC', 'Thread cutter': 'TC', 'End Line Checker': 'ELC', 'Hand needle': 'HN', Paster: 'Pst', Checker: 'Chk', 'Press Man': 'Press', 'Line Qc.': 'QC', 'Final Checker': 'FC', 'Cutting master': 'CM', 'Die cutter': 'Die', 'Layer cutter': 'Layer', Assistant: 'Asst' };
-  var EV_LABEL = { HALF_DAY: 'half day', LEFT_AT: 'chhutti gaya', LATE_JOIN: 'late aaya', ABSENT: 'absent', EXTRA: 'extra aaya', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer se aaya' };
+  var EV_LABEL = { HALF_DAY: 'half day', LEFT_AT: 'chhutti gaya', LATE_JOIN: 'late aaya', ABSENT: 'absent', EXTRA: 'extra aaya', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer se aaya', LINE_CLOSED: 'line band' };
   function longDate(iso) {
     var p = iso.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]);
     return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] + ', ' + pad(d.getDate()) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + ' ' + d.getFullYear();
@@ -502,7 +503,7 @@
       var byDept = {};
       evs.forEach(function (e) { (byDept[e.dept] = byDept[e.dept] || []).push(e); });
       Object.keys(byDept).forEach(function (dept) {
-        var parts = byDept[dept].map(function (e) { return e.count + ' ' + e.role + ' ' + (EV_LABEL[e.event] || e.event) + (e.time ? ' (' + ampm(e.time) + ')' : ''); });
+        var parts = byDept[dept].map(function (e) { return e.event === 'LINE_CLOSED' ? 'Line band' + (e.time ? ' ' + ampm(e.time) : '') : e.count + ' ' + e.role + ' ' + (EV_LABEL[e.event] || e.event) + (e.time ? ' (' + ampm(e.time) + ')' : ''); });
         var nowMp = d.mpNow && d.mpNow[dept];
         out.push(shortLine(dept) + ' - ' + parts.join(', ') + (nowMp !== undefined ? ' - ab ' + nowMp : ''));
       });
@@ -615,6 +616,7 @@
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,
+    invalidateStaff: function () { att.staff = null; },
     ask: ask, askText: askText, sendTransferToGroup: sendTransferToGroup, setBell: setBell,
     setLine: setLine, setDate: setDate, setFactory: setFactory, openContext: openContext, openAttendance: openAttendance, loadMasters: loadMasters
   };

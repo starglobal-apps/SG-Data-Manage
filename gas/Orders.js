@@ -112,7 +112,7 @@ function chainCheck_(L, type, dept, srn, add) {
   if (type === 'STITCH') {
     limit = num_(L.loaded[k2_(dept, srn)]); used = num_(L.stitched[k2_(dept, srn)]);
     what = 'Loading (' + dept + ' / ' + srn + ')';
-    if (!limit) return { ok: false, level: 'block', msg: srn + ' ki loading ' + dept + ' par nahi mili', limit: 0, used: used };
+    if (!limit) return { ok: false, level: 'block', msg: srn + ' ki loading is line par nahi mili — loading sheet check karo', limit: 0, used: used };
   } else if (type === 'ENDLINE') {
     // hourly endline is never blocked (user decision 2026-09-05): mismatches show in PMS / review instead
     limit = num_(L.stitched[k2_(dept, srn)]); used = num_(L.endChecked[k2_(dept, srn)]);
@@ -125,8 +125,9 @@ function chainCheck_(L, type, dept, srn, add) {
     return { ok: true, level: !limit ? 'warn' : overP > 0 ? 'warn' : '', msg: !limit ? srn + ' ka endline data nahi hai' : overP > 0 ? 'Packing endline pass (' + limit + ') se ' + overP + ' zyada' : '', limit: limit, used: used, balance: limit ? limit - used - num_(add) : null };
   } else return { ok: true };
   if (used + num_(add) > limit) {
+    var left = Math.max(0, limit - used);
     return { ok: false, level: 'block', limit: limit, used: used,
-      msg: what + ' = ' + limit + ', pehle se ' + used + ' ho chuka; +' + add + ' se limit paar (' + (used + num_(add) - limit) + ' zyada)' };
+      msg: srn + ' ki loading ' + limit + ' hai, ' + used + ' ban chuka — ab sirf ' + left + ' aur ho sakta hai (' + (used + num_(add) - limit) + ' zyada bhara)' };
   }
   return { ok: true, limit: limit, used: used, balance: limit - used - num_(add) };
 }

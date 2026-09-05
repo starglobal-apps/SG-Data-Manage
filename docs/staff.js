@@ -28,10 +28,10 @@
     if (b.dataset.add) {
       var inp = $('#staff-body input[data-kind="' + b.dataset.add + '"]'), n = (inp.value || '').trim();
       if (!n) { toast('Naam likho', 'bad'); return; }
-      api('staff.save', { name: n, kind: b.dataset.add }).then(function () { toast('Add: ' + n, 'ok'); load(); }).catch(function (er) { toast(er.message, 'bad'); });
+      api('staff.save', { name: n, kind: b.dataset.add }).then(function () { toast('Add: ' + n, 'ok'); S.invalidateStaff(); load(); }).catch(function (er) { toast(er.message, 'bad'); });
     } else if (b.dataset.rm) {
       var p = b.dataset.rm.split('|');
-      S.ask(p[1] + ' ko ' + p[0] + ' list se hatayein?', { danger: true, ok: 'Hatao' }).then(function (ok) { if (ok) api('staff.remove', { name: p[1], kind: p[0] }).then(load).catch(function (er) { toast(er.message, 'bad'); }); });
+      S.ask(p[1] + ' ko ' + p[0] + ' list se hatayein?', { danger: true, ok: 'Hatao' }).then(function (ok) { if (ok) api('staff.remove', { name: p[1], kind: p[0] }).then(function () { S.invalidateStaff(); load(); }).catch(function (er) { toast(er.message, 'bad'); }); });
     }
   });
   $('#staff-body').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.dataset.kind) { e.preventDefault(); $('#staff-body button[data-add="' + e.target.dataset.kind + '"]').click(); } });

@@ -20,7 +20,8 @@
     var statuses = d.statuses || {}, stKeys = Object.keys(statuses);
     var stats = '<div class="stats">';
     if (type) stats += '<div class="stat"><div class="k">' + (type === 'PACKING' ? 'Packed' : 'Output') + '</div><div class="v">' + out + '<small> pcs</small></div></div>';
-    stats += '<div class="stat"><div class="k">Manpower</div><div class="v">' + mp + '<small> · ' + mh + ' hrs</small></div></div>';
+    var aF = d.att.Final || {}, mhNote = aF.closedAt ? ' · band ' + aF.closedAt : (aF.rawManhours && aF.rawManhours !== mh ? ' · events ke baad' : '');
+    stats += '<div class="stat"><div class="k">Manpower</div><div class="v">' + mp + '<small> · ' + mh + ' hrs' + esc(mhNote) + '</small></div></div>';
     if (type) stats += '<div class="stat"><div class="k">Pcs / man-hr</div><div class="v">' + (mh ? (out / mh).toFixed(1) : '—') + '</div></div>';
     if (cat === 'STITCH') stats += '<div class="stat"><div class="k">Endline pass</div><div class="v">' + (eChk ? Math.round(ePass / eChk * 100) + '<small>%</small>' : '—') + '</div></div>';
     if (type === 'PACKING') stats += '<div class="stat"><div class="k">Cartons</div><div class="v">' + sum(flat(sl), 'cartons') + '</div></div>';
