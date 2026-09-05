@@ -118,6 +118,7 @@ function chainCheck_(L, type, dept, srn, add) {
   } else if (type === 'PACKING') {
     limit = num_(L.endPassSrn[srn]); used = num_(L.packed[srn]);
     what = 'Endline pass (' + srn + ')';
+    if (!limit) return { ok: true, level: 'warn', msg: srn + ' ka endline data nahi hai — packing bina check ke ja rahi hai', limit: 0, used: used, balance: null };
   } else return { ok: true };
   if (used + num_(add) > limit) {
     return { ok: false, level: 'block', limit: limit, used: used,
@@ -134,12 +135,16 @@ function ordersActive_(req, user) {
   var L = ledger_();
   var list = [];
   if (type === 'PACKING') {
-    Object.keys(L.endPassSrn).forEach(function(srn) {
+    var seen = {};
+    [L.srnInfo, L.endPassSrn, L.packed].forEach(function(m) { Object.keys(m || {}).forEach(function(k) { seen[k] = true; }); });
+    Object.keys(seen).forEach(function(srn) {
+      if (!/^SRN/i.test(srn)) return;
       var pass = num_(L.endPassSrn[srn]), packed = num_(L.packed[srn]);
-      if (pass - packed <= 0) return;
       var info = L.srnInfo[srn] || {};
-      list.push({ srn: srn, item: info.item || '', limit: pass, used: packed, balance: pass - packed });
+      list.push({ srn: srn, item: info.item || '', buyer: info.buyer || '', limit: pass, used: packed, balance: pass ? pass - packed : null, endline: pass > 0 });
     });
+    list.sort(function(a, b) { return b.srn.localeCompare(a.srn); }); // newest SRN first
+    return { ok: true, srns: list, all: true };
   } else {
     var srns = L.deptSrns[dept] || {};
     Object.keys(srns).forEach(function(srn) {

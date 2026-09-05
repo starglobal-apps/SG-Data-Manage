@@ -21,6 +21,34 @@
   $('#sheet-close').addEventListener('click', S.sheet.close);
   $('#sheet-bg').addEventListener('click', S.sheet.close);
 
+  // Searchable SRN picker: type digits ("596") -> matching SRNs appear; nothing is listed until something is typed.
+  // Keeps a hidden <input class="f-srn"> with the chosen value so existing collectors keep working.
+  S.srnPicker = function (mount, o) {
+    var list = o.list || [], value = o.value || '';
+    function fmt(x) { return esc(x.srn) + (x.item ? ' <small>' + esc(x.item.slice(0, 26)) + '</small>' : '') + (x.balance !== null && x.balance !== undefined ? ' <b>' + x.balance + '</b>' : (x.endline === false ? ' <i>no endline</i>' : '')); }
+    function draw() {
+      mount.innerHTML = value
+        ? '<div class="srnp"><input type="hidden" class="f-srn" value="' + esc(value) + '"><button type="button" class="srnp-chip">' + esc(value) + ' <span>✕</span></button></div>'
+        : '<div class="srnp open"><input type="hidden" class="f-srn" value=""><input type="text" class="srnp-in" inputmode="numeric" placeholder="' + esc(o.placeholder || 'SRN number likho…') + '" autocomplete="off"><div class="srnp-list" hidden></div></div>';
+      if (!value && o.autofocus) { var i = $('.srnp-in', mount); if (i) setTimeout(function () { i.focus(); }, 60); }
+    }
+    mount.onclick = function (e) {
+      var b = e.target.closest('.srnp-chip'); if (b) { value = ''; draw(); var i = $('.srnp-in', mount); if (i) i.focus(); if (o.onPick) o.onPick(''); return; }
+      var it = e.target.closest('.srnp-item'); if (it) { value = it.dataset.srn; draw(); if (o.onPick) o.onPick(value); }
+    };
+    mount.oninput = function (e) {
+      if (!e.target.classList.contains('srnp-in')) return;
+      var q = e.target.value.replace(/\D/g, ''), box = $('.srnp-list', mount);
+      if (!q) { box.hidden = true; box.innerHTML = ''; return; }
+      var hits = list.filter(function (x) { return x.srn.replace(/\D/g, '').indexOf(q) >= 0; }).slice(0, 25);
+      box.innerHTML = hits.length ? hits.map(function (x) { return '<div class="srnp-item" data-srn="' + esc(x.srn) + '">' + fmt(x) + '</div>'; }).join('') : '<div class="srnp-none">Koi SRN nahi mila</div>';
+      box.hidden = false;
+    };
+    mount.onkeydown = function (e) { if (e.key === 'Enter' && e.target.classList.contains('srnp-in')) { e.preventDefault(); var f = $('.srnp-item', mount); if (f) f.click(); } };
+    draw();
+    return { get: function () { return value; }, set: function (v) { value = v; draw(); } };
+  };
+
   var typeLabel = { STITCH: 'Stitching output', ENDLINE: 'Endline checking', PACKING: 'Packing' };
   S.typeLabel = function (t) { return typeLabel[t] || t; };
 
@@ -76,7 +104,8 @@
       html += '<div class="banner">' + (q.type === 'STITCH' ? 'Is line par koi loading nahi mili. Loading sheet me entry hone ke baad refresh dabao.' : q.type === 'ENDLINE' ? 'Is line par stitching output nahi hai — pehle stitching bharo.' : 'Koi SRN nahi jiska endline-pass balance ho.') + '</div><button class="btn primary big" data-refresh="1">Loading refresh</button>';
       $('#sheet-content').innerHTML = html; bind(); return;
     }
-    html += '<label>SRN</label><div class="chips" id="q-srns">' + srns.map(function (x) { return '<button data-srn="' + esc(x.srn) + '" class="' + (x.srn === q.srn ? 'on' : '') + '">' + esc(x.srn) + '<small>bal ' + x.balance + '</small></button>'; }).join('') + '</div>';
+    if (q.type === 'PACKING') html += '<label>SRN</label><div id="q-srnp"></div>';
+    else html += '<label>SRN</label><div class="chips" id="q-srns">' + srns.map(function (x) { return '<button data-srn="' + esc(x.srn) + '" class="' + (x.srn === q.srn ? 'on' : '') + '">' + esc(x.srn) + '<small>bal ' + x.balance + '</small></button>'; }).join('') + '</div>';
     html += '<div id="q-fields"></div>';
     if (rows.length) html += '<div class="exist list">' + rows.map(function (r) {
       var v = q.type === 'ENDLINE' ? 'chk ' + r.checked + ' · pass ' + r.pass + ' · rej ' + r.reject : r.qty + ' pcs' + (r.cartons ? ' · ' + r.cartons + ' ctn' : '');
@@ -84,6 +113,7 @@
     }).join('') + '</div>';
     html += '<button class="btn primary big" id="q-save">Save</button>';
     $('#sheet-content').innerHTML = html;
+    if (q.type === 'PACKING') S.srnPicker($('#q-srnp'), { list: srns, value: rows.length ? q.srn : '', autofocus: !rows.length, onPick: function (v) { q.srn = v; renderFields(srns); } });
     renderFields(srns); bind();
   }
 

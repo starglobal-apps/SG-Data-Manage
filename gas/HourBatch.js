@@ -5,12 +5,16 @@
 function srnOptions_(L, dept, type) {
   var list = [];
   if (type === 'PACKING') {
-    Object.keys(L.endPassSrn).forEach(function(srn) {
+    var seen = {};
+    [L.srnInfo, L.endPassSrn, L.packed].forEach(function(m) { Object.keys(m || {}).forEach(function(k) { seen[k] = true; }); });
+    Object.keys(seen).forEach(function(srn) {
+      if (!/^SRN/i.test(srn)) return;
       var pass = num_(L.endPassSrn[srn]), packed = num_(L.packed[srn]);
-      if (pass - packed <= 0) return;
       var info = L.srnInfo[srn] || {};
-      list.push({ srn: srn, item: info.item || '', limit: pass, used: packed, balance: pass - packed });
+      list.push({ srn: srn, item: info.item || '', limit: pass, used: packed, balance: pass ? pass - packed : null, endline: pass > 0 });
     });
+    list.sort(function(a, b) { return b.srn.localeCompare(a.srn); });
+    return list;
   } else {
     Object.keys(L.deptSrns[dept] || {}).forEach(function(srn) {
       var loaded = num_(L.loaded[k2_(dept, srn)]), stitched = num_(L.stitched[k2_(dept, srn)]), checked = num_(L.endChecked[k2_(dept, srn)]);

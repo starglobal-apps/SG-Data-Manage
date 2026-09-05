@@ -35,7 +35,7 @@
 
   function lineRow(d, type, r, extra) {
     r = r || {};
-    var opts = d.srns[type] || [], sel = r.srn || d.lastSrn[type] || d.attSrn || (opts[0] ? opts[0].srn : '');
+    var opts = d.srns[type] || [], sel = r.srn || d.lastSrn[type] || d.attSrn || (type !== 'PACKING' && opts[0] ? opts[0].srn : '');
     var lock = d.locked[type], noSrn = !opts.length && !sel;
     var cls = lock ? 'lock' : (r.srn ? 'done' : '');
     var mp = '<span class="mpb' + (d.mp !== d.mpBase ? ' chg' : '') + '" title="Is ghante manpower">' + d.mp + ' mp</span>';
@@ -47,7 +47,19 @@
       ? '<input class="f-chk sm" type="number" inputmode="numeric" placeholder="chk" value="' + (r.checked || '') + '"><input class="f-pass sm" type="number" inputmode="numeric" placeholder="pass" value="' + (r.pass || '') + '"><input class="f-rej sm" type="number" inputmode="numeric" placeholder="rej" value="' + (r.reject || '') + '">'
       : '<input class="f-qty" type="number" inputmode="numeric" placeholder="' + (type === 'PACKING' ? 'pcs' : 'qty') + '" value="' + (r.qty || '') + '">' + (type === 'PACKING' ? '<input class="f-ctn sm" type="number" inputmode="numeric" placeholder="ctn" value="' + (r.cartons || '') + '">' : '');
     var checker = type === 'ENDLINE' ? '<div class="chk-name">' + icon('qc') + '<input class="f-checker" type="text" placeholder="checker ka naam" value="' + esc(r.checker || d.checker || '') + '"></div>' : '';
+    if (type === 'PACKING') {
+      // two lines: [name · mp · actions] / [SRN search · pcs · ctn]
+      return '<div class="hline pack ' + cls + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' +
+        '<div class="top">' + (extra ? '<span class="nm"><small>+ dusra SRN</small></span>' : nm + mp + acts) + '</div>' +
+        '<div class="bot"><div class="srnp-mount" data-sel="' + esc(sel) + '"></div>' + inputs + '</div></div>';
+    }
     return '<div class="hline ' + cls + (checker ? ' wrap' : '') + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' + (extra ? '<span class="nm"><small>+ dusra SRN</small></span>' : nm) + (extra || type === 'ENDLINE' ? '' : mp) + srnSel(opts, sel) + inputs + (extra || type === 'ENDLINE' ? '' : acts) + checker + '</div>';
+  }
+  function mountPickers() {
+    $$('#hour-list .srnp-mount').forEach(function (m) {
+      var row = m.closest('.hline'), d = H.data.depts[Number(row.dataset.i)];
+      S.srnPicker(m, { list: d.srns.PACKING || [], value: m.dataset.sel, placeholder: 'SRN no.', onPick: function () { H.dirty = true; } });
+    });
   }
 
   function render() {
@@ -65,6 +77,7 @@
       html += '<button class="lnk" id="hour-add">+ kisi line me dusra SRN</button>';
     }
     $('#hour-list').innerHTML = html;
+    mountPickers();
     H.initial = snapshot(); H.dirty = false;
     $('#btn-hour-save').disabled = !depts.length;
     var first = $('#hour-list .hline:not(.done) input[type=number]'); if (first) setTimeout(function () { first.focus(); }, 80);
@@ -167,7 +180,7 @@
         var x = ev.target.closest('button[data-i]'); if (!x) return;
         var d = H.data.depts[Number(x.dataset.i)], rows = $$('#hour-list .hline[data-i="' + d._i + '"]'), last = rows[rows.length - 1];
         last.insertAdjacentHTML('afterend', lineRow(d, H.type, { srn: '' }, true));
-        H.dirty = true; S.sheet.close();
+        mountPickers(); H.dirty = true; S.sheet.close();
       };
     }
   });

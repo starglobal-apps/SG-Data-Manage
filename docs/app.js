@@ -319,17 +319,23 @@
   function attType() { var c = deptCategory(att.dept); return c === 'PACKING' ? 'PACKING' : 'STITCH'; }
   function renderAttSrns() {
     var box = $('#att-srn'), list = att.srns || [];
+    if (attType() === 'PACKING') {
+      box.className = '';
+      SG.srnPicker(box, { list: list, value: att.srn, placeholder: 'SRN number likho (jaise 596)', onPick: function (v) { att.srn = v; } });
+      return;
+    }
+    box.className = 'chips';
     if (att.srn && !list.some(function (x) { return x.srn === att.srn; })) list = [{ srn: att.srn, balance: '' }].concat(list);
     box.innerHTML = list.length ? list.map(function (x) { return '<button data-srn="' + esc(x.srn) + '" class="' + (x.srn === att.srn ? 'on' : '') + '">' + esc(x.srn) + (x.balance !== '' ? '<small>bal ' + x.balance + '</small>' : '') + '</button>'; }).join('')
-      : '<span class="muted" style="font-size:12px">' + (attType() === 'PACKING' ? 'Koi SRN nahi jiska endline-pass balance ho' : 'Is line par loading nahi mili') + '</span>';
+      : '<span class="muted" style="font-size:12px">Is line par loading nahi mili</span>';
   }
   function loadAttSrns() {
     att.srns = []; renderAttSrns();
     api('orders.active', { factory: state.factory, dept: att.dept, type: attType() }, { quiet: true })
-      .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0]) att.srn = d.srns[0].srn; renderAttSrns(); })
+      .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all) att.srn = d.srns[0].srn; renderAttSrns(); })
       .catch(function () {});
   }
-  $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
+  $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('.chips button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
   function openAttendance(shift, dept) {
     var depts = deptsFor(state.factory);
     if (!depts.length) { toast('Is factory ke depts MASTERS me nahi hain', 'bad'); return; }
@@ -366,7 +372,7 @@
       if (opts.indexOf(r.hours) < 0 && r.hours) opts.push(r.hours);
       return '<tr data-role="' + esc(role) + '" class="' + (r.count ? 'filled' : '') + '"><td>' + esc(role) + '</td>' +
         '<td><select class="att-hrs">' + opts.map(function (h) { return '<option value="' + h + '"' + (h === r.hours ? ' selected' : '') + '>' + h + '</option>'; }).join('') + '</select></td>' +
-        '<td><input class="att-count" type="number" inputmode="numeric" min="0" step="1" value="' + (r.count || '') + '" placeholder="0"></td></tr>';
+        '<td><div class="step"><button type="button" class="st-dec" tabindex="-1">−</button><input class="att-count" type="number" inputmode="numeric" min="0" step="1" value="' + (r.count || '') + '" placeholder="0"><button type="button" class="st-inc" tabindex="-1">+</button></div></td></tr>';
     }).join('');
     updateAttTotals();
   }
@@ -435,6 +441,11 @@
   $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
   $('#att-rows').addEventListener('input', updateAttTotals);
+  $('#att-rows').addEventListener('click', function (e) {
+    var b = e.target.closest('.st-dec, .st-inc'); if (!b) return;
+    var inp = $('.att-count', b.parentNode), v = Number(inp.value || 0) + (b.classList.contains('st-inc') ? 1 : -1);
+    inp.value = v > 0 ? v : ''; updateAttTotals();
+  });
   $('#btn-att-save').addEventListener('click', saveAttendance);
 
   // ---------- shared namespace ----------

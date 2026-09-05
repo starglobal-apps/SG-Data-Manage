@@ -120,6 +120,7 @@ function dayBuild_(req, user) {
     if (!payload.manpower) flags.push({ level: 'warn', msg: 'Is packing dept ki ' + shift + ' attendance nahi hai' });
     var chk = chainCheck_(L, 'PACKING', dept, srn, 0);
     if (!chk.ok) flags.push({ level: 'block', msg: chk.msg });
+    else if (chk.level === 'warn') flags.push({ level: 'warn', msg: chk.msg });
     rows.push({ date: date, factory: factory, line: '', dept: dept, type: 'PACKING', srn: srn, shift: shift, payload: payload, flags: flags });
   });
 
