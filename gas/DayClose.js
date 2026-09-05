@@ -38,8 +38,9 @@ function dayBuild_(req, user) {
     var eff = effectiveAttendance_(date, factory, dept, shift, att, events);
     var flags = [];
     if (!eff.length) flags.push({ level: 'warn', msg: 'Attendance khali' });
+    var nm = attNames_(att, dept, shift);
     rows.push({ date: date, factory: factory, line: lineOf_(dept), dept: dept, type: 'ATT', srn: '', shift: shift,
-                payload: { rows: eff, manpower: sum_(eff, 'count'), manhours: eff.reduce(function(t, r) { return t + r.count * r.hours; }, 0) }, flags: flags });
+                payload: { rows: eff, manpower: sum_(eff, 'count'), manhours: eff.reduce(function(t, r) { return t + r.count * r.hours; }, 0), supervisor: nm.supervisor, incharge: nm.incharge }, flags: flags });
   });
 
   // ---- STITCH: per dept + srn + shift
@@ -53,12 +54,12 @@ function dayBuild_(req, user) {
     if (onlyDept && dept !== onlyDept) return;
     var effAtt = effectiveAttendance_(date, factory, dept, shift, att, events);
     var byRole = {}; effAtt.forEach(function(r) { byRole[r.role] = (byRole[r.role] || 0) + r.count; });
-    var staff = lineStaff[dept] || {};
+    var names = attNames_(att, dept, shift === 'Final' ? 'Final' : '');
     var payload = {
       date: date, line: lineOf_(dept), dept: dept, srn: srn,
       floor: str_(g[0].floor) || (lineFloor[dept] ? lineFloor[dept].value : ''),
       shift: shift, manpower: sum_(effAtt, 'count'), hours: shiftHours_(shift), output: sum_(g, 'qty'),
-      supervisor: staff.value || '', incharge: staff.extra || '', slots: g.length
+      supervisor: names.supervisor, incharge: names.incharge, slots: g.length
     };
     CFG.STITCH_ROLE_COLS.forEach(function(role, i) { payload['r' + (i + 1)] = byRole[role] || 0; });
     var flags = [];
@@ -108,13 +109,13 @@ function dayBuild_(req, user) {
   Object.keys(groups).forEach(function(k) {
     var p = k.split('|'), dept = p[0], srn = p[1], shift = p[2], g = groups[k];
     if (onlyDept && dept !== onlyDept) return;
-    var staff = lineStaff[dept] || {};
+    var staff = attNames_(att, dept, shift === 'Final' ? 'Final' : '');
     var cartons = sum_(g, 'cartons'), qty = sum_(g, 'qty');
     var effP = effectiveAttendance_(date, factory, dept, shift, att, events), byRoleP = {};
     effP.forEach(function(r) { byRoleP[r.role] = (byRoleP[r.role] || 0) + r.count; });
     var info = L.srnInfo[srn] || {};
     var payload = { srn: srn, date: date, qty: qty, cartons: cartons, pcs_per_ctn: cartons ? Math.round(qty / cartons) : num_(g[0].pcs_per_ctn),
-                    factory: shift === 'Final' ? factory : 'OT-' + factory, supervisor: staff.value || '', hours: shiftHours_(shift), floor: dept, shift: shift,
+                    factory: shift === 'Final' ? factory : 'OT-' + factory, supervisor: staff.supervisor || '', hours: shiftHours_(shift), floor: dept, shift: shift,
                     item: info.item || '', manpower: sum_(effP, 'count') };
     Object.keys(CFG.PACK_ROLE_COLS).forEach(function(f) { payload[f] = byRoleP[CFG.PACK_ROLE_COLS[f]] || 0; });
     var flags = [];
@@ -271,7 +272,7 @@ function finalRow_(r, p) {
     var t = factory === '117' ? 'STITCH_117' : 'STITCH_666';
     var row = { date: fmtSheetDate_(p.date, factory === '117' ? 'us' : ''), line: p.line, dept: p.dept, srn: p.srn, floor: p.floor,
                 shift: shift === 'Final' ? 'Final' : 'OT', manpower: p.manpower, hours: p.hours, output: p.output,
-                supervisor: p.supervisor, incharge: p.incharge, r1: p.r1, r2: p.r2, r3: p.r3, r4: p.r4, r5: p.r5 };
+                master: p.incharge, supervisor: p.supervisor, r1: p.r1, r2: p.r2, r3: p.r3, r4: p.r4, r5: p.r5 };
     return { target: t, rows: [row] };
   }
   if (type === 'ENDLINE') {
@@ -290,10 +291,10 @@ function finalRow_(r, p) {
   }
   if (type === 'ATT') {
     var t2 = shift !== 'Final' ? 'ATT_OT' : (factory === '117' ? 'ATT_117' : 'ATT_666');
-    var staff = masterMap_('LINE_STAFF')[r.dept] || {};
+    var staffA = lineStaffOf_(r.dept);
     var rows = (p.rows || []).map(function(x) {
       return { date: fmtSheetDate_(r.date, 'dd'), factory: Number(factory), dept: r.dept, role: x.role, hours: x.hours, count: x.count,
-               manhours: x.hours * x.count, supervisor: staff.value || '' };
+               manhours: x.hours * x.count, supervisor: p.incharge || staffA.incharge || '' };
     });
     return { target: t2, rows: rows };
   }

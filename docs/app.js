@@ -357,7 +357,7 @@
     $('#att-dept').innerHTML = deptOptions(depts, att.dept);
     $('#att-shift').innerHTML = state.masters.shifts.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('');
     push('att', (att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
-    $('#att-sup-wrap').hidden = attType() === 'PACKING';
+    $('#att-inc-wrap').hidden = attType() === 'PACKING';
     att.srn = ''; loadStaff(); loadAttendance();
   }
   function shiftDef() { return state.masters.shifts.filter(function (s) { return s.key === att.shift; })[0] || state.masters.shifts[0]; }
@@ -400,8 +400,8 @@
     if (!att.srn && (att.srns || []).length) { toast('Pehle SRN chuno', 'bad'); return; }
     var sup = $('#att-sup').value.trim(), inc = $('#att-inc').value.trim();
     if (rows.length && att.shift === 'Final') {
-      if (attType() !== 'PACKING' && !sup) { toast('Supervisor ka naam likho', 'bad'); $('#att-sup').focus(); return; }
-      if (!inc) { toast('Incharge ka naam likho', 'bad'); $('#att-inc').focus(); return; }
+      if (!sup) { toast('Supervisor ka naam likho', 'bad'); $('#att-sup').focus(); return; }
+      if (attType() !== 'PACKING' && !inc) { toast('Incharge ka naam likho', 'bad'); $('#att-inc').focus(); return; }
     }
     api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, rows: rows })
       .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidateAll(); back(); if (!d.queued) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400); })
@@ -480,6 +480,7 @@
     var u = state.user, q = queue();
     var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : ' · dono factory') + (u.depts && u.depts.length ? ' · ' + u.depts.length + ' dept' : '') + '</div></div></div>';
     if (u.role === 'Admin') html += '<h2>Admin</h2><div class="menu"><div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users & access</div><div class="s">Naya user, PIN, lines / floors, active</div></div>' + icon('chev') + '</div></div>';
+    html += '<h2>Reports</h2><div class="menu"><div class="task" data-m="print"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Print SRN report (PDF)</div><div class="s">SRN chuno → saari lines, saare pages</div></div>' + icon('chev') + '</div></div>';
     html += '<h2>Setting</h2><div class="menu">';
     html += '<div class="task" data-m="ctx"><div class="ic">' + icon('home') + '</div><div class="b"><div class="n">Entry / Data ki line</div><div class="s">' + esc(state.line || '—') + ' · FAC' + esc(state.factory) + '</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="endline"><div class="ic">' + icon('qc') + '</div><div class="b"><div class="n">Endline timeline me dikhao</div><div class="s">QC checker ke liye on karo</div></div><span class="v">' + (recall('show_endline') === '1' ? 'On' : 'Off') + '</span></div>';
@@ -506,6 +507,7 @@
     if (m === 'ctx') openContext();
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
+    else if (m === 'print') SG.printSrn();
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
     else if (m === 'refresh') api('orders.refresh').then(function () { toast('Loading refresh ho gayi', 'ok'); invalidate(); }).catch(function (er) { toast(er.message, 'bad'); });
     else if (m === 'masters') loadMasters().then(function () { ensureLine(); toast('Masters reload ho gaye', 'ok'); }).catch(function (er) { toast(er.message, 'bad'); });
@@ -520,7 +522,7 @@
   $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
   $('#hdr-refresh').addEventListener('click', hardRefresh);
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
-  $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; $('#att-sup-wrap').hidden = attType() === 'PACKING'; loadAttendance(); });
+  $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; $('#att-inc-wrap').hidden = attType() === 'PACKING'; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
   $('#att-rows').addEventListener('input', updateAttTotals);
   $('#att-rows').addEventListener('click', function (e) {

@@ -72,6 +72,7 @@
   $('#tab-pms').addEventListener('click', function (e) {
     var b = e.target.closest('button');
     if (!b) { var card = e.target.closest('[data-rep]'); if (card && card.dataset.rep.split('|')[1]) { var p = card.dataset.rep.split('|'); S.report(p[0], p[1], p[2]); } return; }
+    if (b.id === 'pms-print') { S.printSrn(P.q ? (P.rows && P.rows[0] ? P.rows[0].srn : '') : ''); return; }
     if (b.dataset.clear) { P.q = ''; $('#pms-q').value = ''; load(); }
     else if (b.dataset.pin) { if (P.watch.indexOf(b.dataset.pin) < 0) P.watch.push(b.dataset.pin); saveWatch(); S.toast('Watch list me add · PMS tab me neeche dikhega', 'ok'); }
     else if (b.dataset.unpin) { P.watch = P.watch.filter(function (k) { return k !== b.dataset.unpin; }); saveWatch(); load(); }

@@ -41,8 +41,8 @@ function reportLine_(req, user) {
   if (md && md.getLastRow() >= 3) {
     md.getRange(3, 4, md.getLastRow() - 2, 2).getValues().forEach(function(row) {
       var s = parseJson_(row[0]), s7 = parseJson_(row[1]);
-      var a = s && str_(s[2]) === dept && str_(s[3]) === srn ? { date: dateKey_(s[0]), shift: s[5], mp: s[6], hrs: s[7], out: s[8], sup: s[9], inc: s[10], helper: s[11], paster: s[12], tc: s[13], eqc: s[14], hn: s[15] }
-            : s7 && str_(s7[3]) === dept && str_(s7[4]) === srn ? { date: dateKey_(s7[0]), shift: s7[5], mp: s7[6], hrs: s7[7], out: s7[8], sup: s7[9], inc: s7[10], helper: s7[11], paster: s7[12], tc: s7[13], eqc: s7[14], hn: s7[15] } : null;
+      var a = s && str_(s[2]) === dept && str_(s[3]) === srn ? { date: dateKey_(s[0]), shift: s[5], mp: s[6], hrs: s[7], out: s[8], inc: s[9], sup: s[10], helper: s[11], paster: s[12], tc: s[13], eqc: s[14], hn: s[15] }
+            : s7 && str_(s7[3]) === dept && str_(s7[4]) === srn ? { date: dateKey_(s7[0]), shift: s7[5], mp: s7[6], hrs: s7[7], out: s7[8], inc: s7[9], sup: s7[10], helper: s7[11], paster: s7[12], tc: s7[13], eqc: s7[14], hn: s7[15] } : null;
       if (!a || a.date >= start || a.date === '9999-12-31') return;
       var others = num_(a.helper) + num_(a.paster) + num_(a.tc) + num_(a.eqc) + num_(a.hn);
       rows.push({ date: a.date, op: opOf_(a.shift), output: num_(a.out), operator: Math.max(0, num_(a.mp) - others), helper: num_(a.helper), paster: num_(a.paster),
@@ -91,7 +91,7 @@ function reportPacking_(req, user) {
       var d = dateKey_(p[1]); if (d >= start || d === '9999-12-31') return;
       if (str_(p[21]) && str_(p[21]) !== dept) return;                 // another floor
       var op = /^OT/i.test(str_(p[7])) ? 'OT' : 'Final';
-      rows.push({ date: d, op: op, pcs: num_(p[3]), box: num_(p[4]), checker: num_(p[14]), tc: num_(p[15]), helper: num_(p[16]), pressman: num_(p[12]), hours: num_(p[17]), incharge: str_(p[13]), recorder: '', floorKnown: !!str_(p[21]) });
+      rows.push({ date: d, op: op, pcs: num_(p[3]), box: num_(p[4]), checker: num_(p[14]), tc: num_(p[15]), helper: num_(p[16]), pressman: num_(p[12]), hours: num_(p[17]), supervisor: str_(p[13]), recorder: '', floorKnown: !!str_(p[21]) });
       if (num_(p[5])) pcsPerBox = num_(p[5]);
     });
   }
@@ -107,10 +107,28 @@ function reportPacking_(req, user) {
   Object.keys(grp).forEach(function(k) {
     var g = grp[k], ac = attRoleCounts_(att, dept, g.date, g.op === 'Final' ? 'Final' : g.op), m = ac.roles;
     rows.push({ date: g.date, op: g.op, pcs: g.pcs, box: g.box, checker: num_(m['Checker']), tc: num_(m['Thread cutter']), helper: num_(m['Helper']), pressman: num_(m['Press Man']),
-                hours: g.op === 'Final' ? shiftHours_('Final') : g.slots, incharge: ac.incharge, recorder: g.recorder, floorKnown: true });
+                hours: g.op === 'Final' ? shiftHours_('Final') : g.slots, supervisor: ac.supervisor, recorder: g.recorder, floorKnown: true });
   });
   rows.sort(function(a, b) { return a.date.localeCompare(b.date) || OP_ORDER_[a.op] - OP_ORDER_[b.op]; });
-  var staff = lineStaffOf_(dept), last = rows.filter(function(r) { return r.incharge; }).slice(-1)[0] || {};
+  var staff = lineStaffOf_(dept), last = rows.filter(function(r) { return r.supervisor; }).slice(-1)[0] || {};
   var info = (loadingAgg_().srnInfo || {})[srn] || {};
-  return { ok: true, header: { factory: 'FAC' + factory, srn: srn, item: info.item || '', floor: dept, pcsPerBox: pcsPerBox, incharge: last.incharge || staff.incharge || staff.supervisor }, rows: rows };
+  return { ok: true, header: { factory: 'FAC' + factory, srn: srn, item: info.item || '', floor: dept, pcsPerBox: pcsPerBox, supervisor: last.supervisor || staff.supervisor || staff.incharge }, rows: rows };
+}
+
+// { factory, srn } -> every line / floor that has data for this SRN (for the print-all PDF)
+function reportSrn_(req, user) {
+  var factory = str_(req.factory), srn = str_(req.srn);
+  if (!srn) return fail_('VAL', 'SRN chahiye');
+  var L = ledger_(), lines = {}, floors = {};
+  Object.keys(L.loaded).forEach(function(k) { var p = k.split('|'); if (p[1] === srn) lines[p[0]] = 1; });
+  Object.keys(L.stitched).forEach(function(k) { var p = k.split('|'); if (p[1] === srn) lines[p[0]] = 1; });
+  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) { if (str_(r.srn) !== srn) return; if (str_(r.type) === 'PACKING') floors[str_(r.dept)] = 1; else lines[str_(r.dept)] = 1; });
+  var md = getSS_().getSheetByName(MASTER_SHEET_NAME);
+  if (md && md.getLastRow() >= 3) md.getRange(3, 6, md.getLastRow() - 2, 1).getValues().forEach(function(row) { var p = parseJson_(row[0]); if (p && str_(p[0]) === srn && str_(p[21])) floors[str_(p[21])] = 1; });
+  var deptFac = {}; mastersRows_().forEach(function(r) { if (str_(r.type) === 'DEPT') deptFac[str_(r.key)] = str_(r.factory); });
+  var out = [];
+  Object.keys(lines).sort().forEach(function(d) { if (!factory || !deptFac[d] || deptFac[d] === factory) out.push({ dept: d, type: 'STITCH' }); });
+  Object.keys(floors).sort().forEach(function(d) { if (!factory || !deptFac[d] || deptFac[d] === factory) out.push({ dept: d, type: 'PACKING' }); });
+  var info = (L.srnInfo || {})[srn] || {};
+  return { ok: true, srn: srn, item: info.item || '', targets: out };
 }

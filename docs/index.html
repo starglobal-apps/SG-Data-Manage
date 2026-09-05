@@ -99,6 +99,7 @@
     <div class="card" style="padding:8px 10px">
       <div id="pms-search"></div>
       <div id="pms-hint" class="hint">Number likho (jaise 597) → us SRN ke saare variants, kisi bhi line par</div>
+      <button class="lnk" id="pms-print">🖨 Print SRN report (PDF)</button>
     </div>
     <div id="pms-list"></div>
   </section>
@@ -116,8 +117,8 @@
       </div>
       <div id="att-srn-wrap"><label>Aaj is line par kaunsa SRN?</label><div id="att-srn" class="chips"></div></div>
       <div class="row">
-        <div class="field" id="att-sup-wrap"><label>Supervisor *</label><input id="att-sup" type="text" list="staff-sup" placeholder="naam" autocomplete="off"></div>
-        <div class="field"><label>Incharge *</label><input id="att-inc" type="text" list="staff-inc" placeholder="naam" autocomplete="off"></div>
+        <div class="field"><label>Supervisor *</label><input id="att-sup" type="text" list="staff-sup" placeholder="naam" autocomplete="off"></div>
+        <div class="field" id="att-inc-wrap"><label>Incharge *</label><input id="att-inc" type="text" list="staff-inc" placeholder="naam" autocomplete="off"></div>
       </div>
       <datalist id="staff-sup"></datalist><datalist id="staff-inc"></datalist>
       <div id="att-banner" class="banner" hidden></div>

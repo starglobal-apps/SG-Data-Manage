@@ -52,8 +52,8 @@ function attSave_(req, user) {
   var srn = str_(req.srn), supervisor = str_(req.supervisor), incharge = str_(req.incharge), stamp = nowStr_();
   var cat = deptCategory_(dept);
   if (clean.length && shift === 'Final') {
-    if (!incharge) return fail_('VAL', 'Incharge ka naam zaroori hai');
-    if (cat === 'STITCH' && !supervisor) return fail_('VAL', 'Supervisor ka naam zaroori hai');
+    if (!supervisor) return fail_('VAL', 'Supervisor ka naam zaroori hai');
+    if (cat === 'STITCH' && !incharge) return fail_('VAL', 'Incharge ka naam zaroori hai');
   }
   var result = withLock_(function() {
     var existing = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) {
@@ -88,9 +88,17 @@ function attStatus_(req, user) {
   return { ok: true, depts: Object.keys(agg).map(function(k) { return agg[k]; }) };
 }
 
+// LINE_STAFF rows come from the stitching sheet: value = "MASTER NAME" (= Incharge), extra = "SUPERVISOR NAME".
 function lineStaffOf_(dept) {
   var hit = mastersRows_().filter(function(r) { return str_(r.type) === 'LINE_STAFF' && str_(r.key) === dept; })[0];
-  return { supervisor: hit ? str_(hit.value) : '', incharge: hit ? str_(hit.extra) : '' };
+  return { incharge: hit ? str_(hit.value) : '', supervisor: hit ? str_(hit.extra) : '' };
+}
+// Names entered with the day's attendance for a dept (+shift), falling back to LINE_STAFF
+function attNames_(attRows, dept, shift) {
+  var sup = '', inc = '';
+  attRows.forEach(function(r) { if (str_(r.dept) !== dept || (shift && str_(r.shift) !== shift)) return; if (str_(r.supervisor)) sup = str_(r.supervisor); if (str_(r.incharge)) inc = str_(r.incharge); });
+  var staff = lineStaffOf_(dept);
+  return { supervisor: sup || staff.supervisor, incharge: inc || staff.incharge };
 }
 
 // Names to suggest for supervisor / incharge: LINE_STAFF masters + whatever was typed in attendance recently

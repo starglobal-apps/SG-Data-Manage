@@ -54,6 +54,7 @@ function routes_() {
     'staff.list':     staffList_,
     'report.line':    reportLine_,
     'report.packing': reportPacking_,
+    'report.srn':     reportSrn_,
     'users.list':     usersList_,
     'users.save':     usersSave_,
     'manpower.get':   manpowerGet_,

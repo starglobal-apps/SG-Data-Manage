@@ -142,10 +142,10 @@ CFG.ENDLINE_SLOT_COLS = { '09-10': 13, '10-11': 15, '11-12': 17, '12-13': 19, '1
 CFG.FINAL_TARGETS = {
   STITCH_666: { srcKey: 'ATT', sheet: 'Data', keyCol: 3, minRow: 2,
     cols: { 1: 'date', 3: 'dept', 4: 'srn', 5: 'floor', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
-            10: 'supervisor', 11: 'incharge', 23: 'r1', 24: 'r2', 25: 'r3', 26: 'r4', 27: 'r5' } },
+            10: 'master', 11: 'supervisor', 23: 'r1', 24: 'r2', 25: 'r3', 26: 'r4', 27: 'r5' } },
   STITCH_117: { srcKey: 'STITCH117', sheet: 'FAC117-Stitching Output', keyCol: 1, minRow: 2,
     cols: { 1: 'date', 2: 'floor', 3: 'line', 4: 'dept', 5: 'srn', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
-            10: 'supervisor', 11: 'incharge', 12: 'r1', 13: 'r2', 14: 'r3', 15: 'r4', 16: 'r5' } },
+            10: 'master', 11: 'supervisor', 12: 'r1', 13: 'r2', 14: 'r3', 15: 'r4', 16: 'r5' } },
   ENDLINE:    { srcKey: 'ENDLINE', sheet: 'Quality Endline data', keyCol: 1, minRow: 3,
     cols: { 1: 'entryDate', 2: 'factoryName', 3: 'date', 4: 'srn', 5: 'item', 6: 'dept', 7: 'qfloor', 8: 'checker',
             9: 'hours', 10: 'checked', 11: 'pass', 12: 'reject',
