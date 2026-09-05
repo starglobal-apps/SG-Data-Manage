@@ -127,8 +127,48 @@ function reportSrn_(req, user) {
   if (md && md.getLastRow() >= 3) md.getRange(3, 6, md.getLastRow() - 2, 1).getValues().forEach(function(row) { var p = parseJson_(row[0]); if (p && str_(p[0]) === srn && str_(p[21])) floors[str_(p[21])] = 1; });
   var deptFac = {}; mastersRows_().forEach(function(r) { if (str_(r.type) === 'DEPT') deptFac[str_(r.key)] = str_(r.factory); });
   var out = [];
-  Object.keys(lines).sort().forEach(function(d) { if (!factory || !deptFac[d] || deptFac[d] === factory) out.push({ dept: d, type: 'STITCH' }); });
+  Object.keys(lines).sort().forEach(function(d) { if (!factory || !deptFac[d] || deptFac[d] === factory) { out.push({ dept: d, type: 'STITCH' }); out.push({ dept: d, type: 'ENDLINE' }); } });
   Object.keys(floors).sort().forEach(function(d) { if (!factory || !deptFac[d] || deptFac[d] === factory) out.push({ dept: d, type: 'PACKING' }); });
   var info = (L.srnInfo || {})[srn] || {};
   return { ok: true, srn: srn, item: info.item || '', targets: out };
+}
+
+// { factory, dept, srn } -> Quality Department - Endline FTR data (per date: line output, checked / pass / fail, checkers)
+function reportEndline_(req, user) {
+  var factory = str_(req.factory), dept = str_(req.dept), srn = str_(req.srn);
+  if (!dept || !srn) return fail_('VAL', 'Line aur SRN chahiye');
+  var start = CFG.APP_START_DATE, byDate = {}, outByDate = {};
+  var get = function(d) { return byDate[d] = byDate[d] || { date: d, checked: 0, pass: 0, fail: 0, hours: 0, checkers: {}, mp: 0 }; };
+  var md = getSS_().getSheetByName(MASTER_SHEET_NAME);
+  if (md && md.getLastRow() >= 3) {
+    md.getRange(3, 4, md.getLastRow() - 2, 4).getValues().forEach(function(row) {
+      var s = parseJson_(row[0]); if (s && str_(s[2]) === dept && str_(s[3]) === srn) { var d1 = dateKey_(s[0]); if (d1 < start) addTo_(outByDate, d1, s[8]); }
+      var e = parseJson_(row[3]); if (!e || str_(e[5]) !== dept || str_(e[3]) !== srn) return;
+      var d = dateKey_(e[2] || e[0]); if (d >= start || d === '9999-12-31') return;
+      var g = get(d); g.checked += num_(e[9]); g.pass += num_(e[10]); g.fail += num_(e[11]); g.hours = Math.max(g.hours, num_(e[8])); if (str_(e[7])) g.checkers[str_(e[7])] = 1;
+    });
+  }
+  var att = readTab_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.dept) === dept && str_(r.date) >= start; });
+  var slotsByDate = {};
+  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
+    if (str_(r.dept) !== dept || str_(r.srn) !== srn || str_(r.date) < start) return;
+    var d = str_(r.date);
+    if (str_(r.type) === 'STITCH') addTo_(outByDate, d, r.qty);
+    if (str_(r.type) !== 'ENDLINE') return;
+    var g = get(d); g.checked += num_(r.checked); g.pass += num_(r.pass); g.fail += num_(r.reject); if (str_(r.checker)) g.checkers[str_(r.checker)] = 1;
+    (slotsByDate[d] = slotsByDate[d] || {})[str_(r.slot)] = 1;
+  });
+  Object.keys(slotsByDate).forEach(function(d) { get(d).hours = Object.keys(slotsByDate[d]).length; });
+  var ipqc = {}, incharge = '';
+  var rows = Object.keys(byDate).sort().map(function(d) {
+    var g = byDate[d], ac = attRoleCounts_(att, dept, d, 'Final');
+    var qmp = num_(ac.roles['End Line Checker']) + num_(ac.roles['Line Qc.']) + num_(ac.roles['Final Checker']) || Object.keys(g.checkers).length;
+    if (ac.incharge) incharge = ac.incharge;
+    Object.keys(g.checkers).forEach(function(c) { ipqc[c] = (ipqc[c] || 0) + 1; });
+    return { date: d, output: num_(outByDate[d]), mp: qmp, hours: g.hours, checked: g.checked, pass: g.pass, fail: g.fail, qc: Object.keys(g.checkers).join(', ') };
+  });
+  var staff = lineStaffOf_(dept), lf = masterMap_('LINE_FLOOR')[dept], floor = lf ? lf.value.replace(/^.*Stitching\s*/i, '') : '';
+  var top = Object.keys(ipqc).sort(function(a, b) { return ipqc[b] - ipqc[a]; })[0] || '';
+  var info = (loadingAgg_().srnInfo || {})[srn] || {};
+  return { ok: true, header: { factory: 'FAC' + factory, srn: srn, item: info.item || '', line: dept, floor: floor ? floor + ' Floor' : '', incharge: incharge || staff.incharge, ipqc: top }, rows: rows };
 }

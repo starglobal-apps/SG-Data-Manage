@@ -347,3 +347,13 @@ a.btn { color: #fff; }
 .rep-wrap { background: #e5e7eb; border-radius: 12px; padding: 8px; overflow: auto; }
 .rep-wrap canvas { width: 100%; height: auto; display: block; background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .rep-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+
+.task .v.tri { display: flex; flex-direction: column; align-items: flex-end; font-size: 11px; font-weight: 700; line-height: 1.25; color: var(--muted); }
+.task .v.tri b { font-size: 12px; color: var(--text); }
+.task .v.tri .st b { color: var(--ok); }
+.rep-card { background: var(--card); border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(17,24,39,.05); }
+.rep-card .h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.rep-card .h .nm { font-weight: 800; font-size: 14px; } .rep-card .h .srn { font-size: 12px; color: var(--muted); }
+.rep-btns { display: flex; gap: 6px; }
+.rep-btns button { flex: 1; border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 8px 4px; font-weight: 700; font-size: 12px; color: var(--primary); display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.rep-btns button small { font-weight: 500; color: var(--muted); font-size: 10px; }

@@ -142,14 +142,56 @@
     return { canvas: cv, page: page, pages: pages, rows: rows.length, total: cum, loaded: null };
   }
 
+  // ---------- Quality Department - Endline FTR ----------
+  var ECOLS = [
+    { k: 'date', t: 'Date', w: 104 }, { k: 'output', t: 'Line Output', w: 100 }, { k: 'ocum', t: 'Total Output', w: 110 }, { k: 'mp', t: 'Quality Manpower', w: 110 }, { k: 'hours', t: 'Working Hour', w: 96 },
+    { k: 'checked', t: 'Check PCS', w: 96 }, { k: 'ccum', t: 'Total Check Pcs', w: 118 }, { k: 'pass', t: 'Pass PCS', w: 96 }, { k: 'pcum', t: 'Total Pass PCS', w: 118 }, { k: 'fail', t: 'Fail PCS', w: 90 }, { k: 'fcum', t: 'Total Fail PCS', w: 110 },
+    { k: 'qc', t: 'Qc Sign', w: 200 }, { k: 'sheet', t: 'Sheet Code', w: 100 }
+  ];
+  function drawEndline(d, page) {
+    var rows = d.rows.map(function (r) { return Object.assign({}, r); }), oc = 0, cc = 0, pc = 0, fc = 0;
+    rows.forEach(function (r) { oc += r.output; cc += r.checked; pc += r.pass; fc += r.fail; r.ocum = oc; r.ccum = cc; r.pcum = pc; r.fcum = fc; });
+    var pages = Math.max(1, Math.ceil(rows.length / ROWS)); page = page || pages;
+    var pageRows = rows.slice((page - 1) * ROWS, page * ROWS);
+    if (page > 1) { var a = { output: 0, checked: 0, pass: 0, fail: 0 }; rows.slice(0, (page - 1) * ROWS).forEach(function (r) { a.output += r.output; a.checked += r.checked; a.pass += r.pass; a.fail += r.fail; }); pageRows = [{ cf: true, date: 'C/F', output: a.output, ocum: a.output, checked: a.checked, ccum: a.checked, pass: a.pass, pcum: a.pass, fail: a.fail, fcum: a.fail }].concat(pageRows.slice(0, ROWS - 1)); }
+    var totalW = ECOLS.reduce(function (t, c) { return t + c.w; }, 0), pad = Math.round((W - totalW) / 2);
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var p = painter(cv);
+    p.text('STAR GLOBAL', W / 2, 52, { bold: true, size: 40, align: 'center' });
+    p.text('Quality Department - Endline FTR', W / 2, 98, { bold: true, size: 30, align: 'center' });
+    var hy = 140, hh = 56, cw = Math.floor((W - 2 * pad) / 3);
+    var box = function (col, i, k, v, big) { var x = pad + col * cw; p.rect(x, hy + i * hh, 150, hh, '#f3f4f6'); p.text(k, x + 12, hy + i * hh + hh / 2, { bold: true, size: 22 }); p.rect(x + 150, hy + i * hh, cw - 150, hh); p.fit(v, x + 162, hy + i * hh + hh / 2, cw - 162, { size: 26, bold: !!big }); };
+    box(0, 0, 'SRN', d.header.srn + (d.header.item ? '  —  ' + d.header.item : ''), true); box(0, 1, 'Line Code', d.header.line);
+    box(1, 0, 'Factory', d.header.factory); box(1, 1, 'Floor', d.header.floor);
+    box(2, 0, 'Incharge', d.header.incharge); box(2, 1, 'IP QC', d.header.ipqc);
+    var y = hy + 2 * hh + 40, x = pad;
+    ECOLS.forEach(function (c) { p.rect(x, y, c.w, 48, '#f3f4f6'); p.wrap(c.t, x + 4, y, c.w, 48, { bold: true, size: 17 }); x += c.w; });
+    y += 48;
+    var rowH = Math.floor((H - y - 70) / ROWS);
+    for (var r = 0; r < ROWS; r++) {
+      var row = pageRows[r], x2 = pad;
+      ECOLS.forEach(function (c) {
+        p.rect(x2, y, c.w, rowH, row && row.cf ? '#fef3c7' : null);
+        if (row) { var v = row[c.k]; if (c.k === 'date' && !row.cf) v = d2(row.date); if (c.k === 'sheet') v = ''; if (v !== undefined && v !== null && v !== '') { if (c.k === 'qc') p.wrap(v, x2 + 6, y, c.w, rowH, { size: 17 }); else p.fit(v, x2 + c.w / 2, y + rowH / 2, c.w, { size: 22, bold: /cum$/.test(c.k) || !!row.cf, align: 'center' }); } }
+        x2 += c.w;
+      });
+      y += rowH;
+    }
+    p.text('Page ' + page + ' / ' + pages + (page > 1 ? '   ·   C/F = page ' + (page - 1) + ' tak ka total' : '') + '   ·   SG Data · ' + stamp(), W / 2, y + 34, { size: 18, color: '#6b7280', align: 'center' });
+    return { canvas: cv, page: page, pages: pages, rows: rows.length, total: pc, loaded: null };
+  }
+  function drawBy(type, d, page) { return type === 'PACKING' ? drawPacking(d, page) : type === 'ENDLINE' ? drawEndline(d, page) : drawLine(d, page); }
+  function actionOf(type) { return type === 'PACKING' ? 'report.packing' : type === 'ENDLINE' ? 'report.endline' : 'report.line'; }
+  function labelOf(type) { return type === 'PACKING' ? 'Packing' : type === 'ENDLINE' ? 'Endline FTR' : 'Making'; }
+
   // ---------- single report screen (latest page, share PNG) ----------
   S.report = function (type, dept, srn) {
-    S.push('report', (type === 'PACKING' ? 'Packing' : 'Making') + ' report · ' + srn);
+    S.push('report', labelOf(type) + ' report · ' + srn);
     $('#report-info').innerHTML = '<div class="empty">Data aa raha hai…</div>'; $('#report-canvas-wrap').innerHTML = '';
-    api(type === 'PACKING' ? 'report.packing' : 'report.line', { factory: state.factory, dept: dept, srn: srn })
+    api(actionOf(type), { factory: state.factory, dept: dept, srn: srn })
       .then(function (d) {
-        var out = type === 'PACKING' ? drawPacking(d) : drawLine(d);
-        R.canvas = out.canvas; R.name = (type === 'PACKING' ? 'Packing' : 'Making') + '_' + S.shortLine(dept).replace(/\s+/g, '') + '_' + srn + '_' + state.date + '.png';
+        var out = drawBy(type, d);
+        R.canvas = out.canvas; R.name = labelOf(type).replace(/\s+/g, '') + '_' + S.shortLine(dept).replace(/\s+/g, '') + '_' + srn + '_' + state.date + '.png';
         $('#report-info').innerHTML = '<b>' + esc(S.shortLine(dept)) + ' · ' + esc(srn) + '</b><div class="muted" style="font-size:12px">' + out.rows + ' rows · page ' + out.page + '/' + out.pages + (out.pages > 1 ? ' (pehli row C/F)' : '') + ' · total ' + out.total + (out.loaded !== null ? ' · loaded ' + out.loaded : '') + ' · A4</div>';
         $('#report-canvas-wrap').innerHTML = ''; $('#report-canvas-wrap').appendChild(out.canvas);
         R.blob = null; out.canvas.toBlob(function (b) { R.blob = b; }, 'image/png');
@@ -215,9 +257,10 @@
       var seq = Promise.resolve(), pages = [];
       d.targets.forEach(function (t) {
         seq = seq.then(function () {
-          return api(t.type === 'PACKING' ? 'report.packing' : 'report.line', { factory: state.factory, dept: t.dept, srn: srn }, { quiet: true }).then(function (rd) {
-            var first = t.type === 'PACKING' ? drawPacking(rd, 1) : drawLine(rd, 1), all = [first.canvas];
-            for (var pg = 2; pg <= first.pages; pg++) all.push((t.type === 'PACKING' ? drawPacking(rd, pg) : drawLine(rd, pg)).canvas);
+          return api(actionOf(t.type), { factory: state.factory, dept: t.dept, srn: srn }, { quiet: true }).then(function (rd) {
+            if (!rd.rows.length) return;
+            var first = drawBy(t.type, rd, 1), all = [first.canvas];
+            for (var pg = 2; pg <= first.pages; pg++) all.push(drawBy(t.type, rd, pg).canvas);
             return Promise.all(all.map(canvasJpeg)).then(function (js) { js.forEach(function (j) { pages.push(j); }); });
           });
         });
@@ -236,9 +279,9 @@
   S.reportPicker = function () {
     S.loadFactory().then(function (d) {
       var list = [];
-      d.depts.forEach(function (x) { var srn = d.attSrn && d.attSrn[x.dept]; var t = x.cat === 'PACKING' ? 'PACKING' : 'STITCH'; if (srn) list.push({ t: t, dept: x.dept, srn: srn }); });
+      d.depts.forEach(function (x) { var srn = d.attSrn && d.attSrn[x.dept]; if (!srn) return; if (x.cat === 'PACKING') list.push({ t: 'PACKING', dept: x.dept, srn: srn }); else { list.push({ t: 'STITCH', dept: x.dept, srn: srn }); list.push({ t: 'ENDLINE', dept: x.dept, srn: srn }); } });
       if (!list.length) { toast('Aaj kisi line ka SRN nahi mila — pehle attendance', 'bad'); return; }
-      S.sheet.open('Day report · line chuno', '<div class="rep-list">' + list.map(function (x) { return '<button class="task" data-rep="' + esc(x.t) + '|' + esc(x.dept) + '|' + esc(x.srn) + '" style="border:0;text-align:left;width:100%"><div class="ic">' + S.icon(x.t === 'PACKING' ? 'box' : 'out') + '</div><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="s">' + esc(x.srn) + ' · ' + (x.t === 'PACKING' ? 'Packing Output Report' : 'Making Output Report') + '</div></div><span class="chev">' + S.icon('chev') + '</span></button>'; }).join('') + '<button class="lnk" id="rep-print">🖨 Ya poora SRN print karo (PDF)</button></div>');
+      S.sheet.open('Day report · line chuno', '<div class="rep-list">' + list.map(function (x) { return '<button class="task" data-rep="' + esc(x.t) + '|' + esc(x.dept) + '|' + esc(x.srn) + '" style="border:0;text-align:left;width:100%"><div class="ic">' + S.icon(x.t === 'PACKING' ? 'box' : 'out') + '</div><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="s">' + esc(x.srn) + ' · ' + (x.t === 'PACKING' ? 'Packing Output Report' : x.t === 'ENDLINE' ? 'Endline FTR' : 'Making Output Report') + '</div></div><span class="chev">' + S.icon('chev') + '</span></button>'; }).join('') + '<button class="lnk" id="rep-print">🖨 Ya poora SRN print karo (PDF)</button></div>');
       $('#sheet-content').onclick = function (e) { if (e.target.closest('#rep-print')) { S.sheet.close(); S.printSrn(list[0].srn); return; } var b = e.target.closest('[data-rep]'); if (!b) return; var p = b.dataset.rep.split('|'); S.sheet.close(); S.report(p[0], p[1], p[2]); };
     }).catch(function (e) { toast(e.message, 'bad'); });
   };

@@ -86,7 +86,7 @@
     $('#nav').hidden = false;
     $$('#nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
     $('#hdr-refresh').hidden = false;
-    if (name === 'home' || name === 'hourly' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
+    if (name === 'home' || name === 'reports' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : name === 'reports' ? 'Reports · ' + (isToday() ? 'aaj' : 'is din ke') : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
     else setHeader('Main', state.user.name, false);

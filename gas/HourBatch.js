@@ -62,9 +62,11 @@ function hourGet_(req, user) {
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
   if (!slotDef_(slot)) return fail_('SLOT', 'Slot galat');
   var L = ledger_();
-  var depts = writableDepts_(user, factory).filter(function(d) { return d.cat === 'STITCH' || d.cat === 'PACKING'; });
   var st = statusMap_(date, factory), attSrn = attSrnMap_(date, factory);
   var attRows = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  var hasAtt = {}; attRows.forEach(function(r) { hasAtt[str_(r.dept)] = true; });
+  // only lines / floors whose attendance was entered that day
+  var depts = writableDepts_(user, factory).filter(function(d) { return (d.cat === 'STITCH' || d.cat === 'PACKING') && hasAtt[d.dept]; });
   var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
 
   var rowsBy = {}, lastSrn = {}, lastChecker = {}, lastFloor = {};
@@ -220,7 +222,17 @@ function factoryToday_(req, user) {
     if (mine[t.to_dept]) transfers.incoming.push(t);
     if (mine[t.from_dept]) transfers.outgoing.push(t);
   });
-  return { ok: true, depts: depts, att: att, attSrn: attSrn, attRoles: attRoles, slots: slots, statuses: statusMap_(date, factory), events: events, eventList: eventList, mpNow: mpNow, pending: pending, transfers: transfers, serverTime: nowStr_() };
+  // earlier days (last 4) that have attendance for my lines but were never closed -> the recorder can still update them
+  var openDays = [], mineMap = {}; depts.forEach(function(d) { mineMap[d.dept] = true; });
+  var stAll = {}; readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.factory) !== factory || !mineMap[str_(r.dept)]) return; if (isLocked_(str_(r.status))) stAll[str_(r.date) + '|' + str_(r.dept)] = true; });
+  var attByDay = {}; readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) { if (str_(r.factory) !== factory || !mineMap[str_(r.dept)] || str_(r.date) >= todayStr_()) return; (attByDay[str_(r.date)] = attByDay[str_(r.date)] || {})[str_(r.dept)] = true; });
+  var cutoffD = fmtDate_(new Date(new Date().getTime() - 4 * 86400000));
+  Object.keys(attByDay).sort().forEach(function(dd) {
+    if (dd < cutoffD) return;
+    var open = Object.keys(attByDay[dd]).filter(function(dept) { return !stAll[dd + '|' + dept]; });
+    if (open.length) openDays.push({ date: dd, lines: open.length });
+  });
+  return { ok: true, depts: depts, att: att, attSrn: attSrn, attRoles: attRoles, slots: slots, statuses: statusMap_(date, factory), events: events, eventList: eventList, mpNow: mpNow, pending: pending, transfers: transfers, openDays: openDays, serverTime: nowStr_() };
 }
 
 // ---------- manpower transfer between lines / floors ----------

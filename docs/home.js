@@ -9,12 +9,16 @@
 
   // per-slot summary shared with hourly.js
   S.slotInfo = function (d, s) {
-    var sl = d.slots[s.key] || {}, outLines = d.depts.filter(function (x) { return outType(x.cat); });
-    var done = 0, pcs = 0, pass = 0, eLines = 0;
-    outLines.forEach(function (x) { var t = outType(x.cat), v = sl[t] && sl[t][x.dept]; if (v) { done++; pcs += v; } });
+    var sl = d.slots[s.key] || {}, outLines = d.depts.filter(function (x) { return outType(x.cat) && d.att[x.dept + '|Final']; });
+    var done = 0, pcs = 0, st = 0, pk = 0, pass = 0, eLines = 0;
+    outLines.forEach(function (x) { var t = outType(x.cat), v = sl[t] && sl[t][x.dept]; if (v) { done++; pcs += v; if (t === 'PACKING') pk += v; else st += v; } });
     Object.keys(sl.ENDLINE || {}).forEach(function (k) { eLines++; pass += sl.ENDLINE[k]; });
-    return { done: done, total: outLines.length, pcs: pcs, pass: pass, eLines: eLines, full: outLines.length > 0 && done >= outLines.length };
+    return { done: done, total: outLines.length, pcs: pcs, st: st, pk: pk, pass: pass, eLines: eLines, full: outLines.length > 0 && done >= outLines.length };
   };
+  function triVal(inf) {
+    if (!inf.done && !inf.eLines) return '';
+    return '<span class="v tri"><span class="st">St <b>' + inf.st + '</b></span><span>End <b>' + inf.pass + '</b></span><span>Pk <b>' + inf.pk + '</b></span></span>';
+  }
 
   S.tabs.home = function () {
     var cached = S.factoryData();
@@ -27,6 +31,7 @@
     var now = S.isToday() ? S.nowHour() : 24, todayFlag = S.isToday();
     var nAll = d.depts.length;
     var attDone = d.depts.filter(function (x) { return d.att[x.dept + '|Final']; }).length;
+    var nOut = d.depts.filter(function (x) { return outType(x.cat) && d.att[x.dept + '|Final']; }).length;
     var attMp = d.depts.reduce(function (t, x) { return t + (d.att[x.dept + '|Final'] || 0); }, 0);
     var otAttDone = d.depts.filter(function (x) { return d.att[x.dept + '|OT']; }).length;
     var locked = function (dept, t) { var s = d.statuses[dept + '|' + t]; return s === 'Submitted' || s === 'Approved' || s === 'Sent'; };
@@ -50,15 +55,17 @@
 
     var nc;
     if (!nAll) nc = { cls: 'warn', k: 'Setup', t: 'Koi line nahi mili', s: 'USERS depts / MASTERS check karo', btn: 'Main', go: 'main' };
-    else if (!todayFlag) nc = { cls: 'done', k: S.fmtDay(state.date), t: totalPcs + ' pcs · ' + attMp + ' mp', s: lockedLines + '/' + nAll + ' lines submitted', btn: 'Hourly dekho', go: 'hourly' };
-    else if (lockedLines === nAll) nc = { cls: 'done', k: 'Aaj', t: 'Sab lines submit ho gayi', s: totalPcs + ' pcs · manager review me', btn: 'Hourly dekho', go: 'hourly' };
+    else if (!todayFlag && missed.length) nc = { cls: 'warn', k: S.fmtDay(state.date) + ' · purana din', t: missed.length + ' slot adhoore', s: missed.map(function (m) { return m.s.label + ' (' + m.inf.done + '/' + m.inf.total + ')'; }).slice(0, 3).join(', ') + ' · OT / night bhi yahin bharo', btn: missed[0].s.label + ' bharo', go: 'hour:' + missed[0].s.key };
+    else if (!todayFlag && lockedLines < nAll) nc = { cls: '', k: S.fmtDay(state.date) + ' · purana din', t: 'Din band karna baaki', s: totalPcs + ' pcs · ' + attMp + ' mp · ' + lockedLines + '/' + nAll + ' submitted', btn: 'Din band karo', go: 'dayclose' };
+    else if (!todayFlag) nc = { cls: 'done', k: S.fmtDay(state.date), t: totalPcs + ' pcs · ' + attMp + ' mp', s: lockedLines + '/' + nAll + ' lines submitted', btn: 'Reports dekho', go: 'reports' };
+    else if (lockedLines === nAll) nc = { cls: 'done', k: 'Aaj', t: 'Sab lines submit ho gayi', s: totalPcs + ' pcs · manager review me', btn: 'Reports dekho', go: 'reports' };
     else if (now < 8.5) nc = { cls: '', k: 'Subah', t: 'Din shuru hone wala hai', s: '9:00 par ' + nAll + ' lines ki attendance + SRN', btn: 'Attendance shuru karo', go: 'attlist:Final' };
     else if (attDone < nAll) nc = { cls: 'warn', k: 'Pehla kaam', t: 'Attendance: ' + (nAll - attDone) + ' line baaki', s: attDone + '/' + nAll + ' ho gayi · ' + attMp + ' mp', btn: 'Attendance bharo', go: 'attlist:Final' };
     else if (current) nc = { cls: '', k: 'Abhi · ' + current.s.label, t: 'Output update karo', s: current.inf.done + '/' + current.inf.total + ' lines' + (missed.length ? ' · ' + missed.length + ' purana slot adhoora' : ''), btn: current.s.label + ' bharo', go: 'hour:' + current.s.key };
     else if (missed.length) nc = { cls: 'warn', k: 'Adhoora', t: missed.length + ' slot adhoore', s: missed.map(function (m) { return m.s.label + ' (' + m.inf.done + '/' + m.inf.total + ')'; }).slice(0, 3).join(', '), btn: missed[0].s.label + ' poora karo', go: 'hour:' + missed[0].s.key };
     else if (now >= 18 && hasOTout && otAttDone < nAll) nc = { cls: 'warn', k: 'Shaam', t: 'OT attendance baaki', s: otAttDone + '/' + nAll + ' lines', btn: 'OT attendance', go: 'attlist:OT' };
     else if (now >= 17.75) nc = { cls: '', k: 'Shaam', t: 'Din band karo', s: lockedLines + '/' + nAll + ' submitted · ' + totalPcs + ' pcs', btn: 'Din band karo', go: 'dayclose' };
-    else nc = { cls: 'done', k: 'Sab up to date', t: totalPcs + ' pcs · ' + attMp + ' mp', s: upcoming ? 'Agla: ' + hhmm(S.slotStart(upcoming.key) + 1) + ' par ' + upcoming.label : 'Shaam ko din band karna hai', btn: upcoming ? upcoming.label + ' pehle se bharo' : 'Hourly dekho', go: upcoming ? 'hour:' + upcoming.key : 'hourly' };
+    else nc = { cls: 'done', k: 'Sab up to date', t: totalPcs + ' pcs · ' + attMp + ' mp', s: upcoming ? 'Agla: ' + hhmm(S.slotStart(upcoming.key) + 1) + ' par ' + upcoming.label : 'Shaam ko din band karna hai', btn: upcoming ? upcoming.label + ' pehle se bharo' : 'Reports dekho', go: upcoming ? 'hour:' + upcoming.key : 'reports' };
 
     var slotsSoFar = S.slots('Final').filter(function (s) { return now >= S.slotStart(s.key) + 1 || (todayFlag && now >= S.slotStart(s.key)); }).length;
     var total = nAll + slotsSoFar + nAll, done = attDone + doneSlots + lockedLines, pct = total ? Math.round(done / total * 100) : 0;
@@ -67,11 +74,16 @@
 
     // ---- pending timeline
     var task = function (o) {
-      return '<div class="task ' + (o.cls || '') + (o.sub ? ' sub' : '') + '" data-go="' + esc(o.go) + '"><div class="ic">' + icon(o.ic) + '</div><div class="b"><div class="n">' + o.n + '</div>' + (o.s ? '<div class="s">' + o.s + '</div>' : '') + '</div>' + (o.v !== undefined && o.v !== '' ? '<span class="v ' + (o.cls === 'done' ? 'ok' : '') + '">' + o.v + '</span>' : '') + '<span class="chev">' + icon('chev') + '</span></div>';
+      return '<div class="task ' + (o.cls || '') + (o.sub ? ' sub' : '') + '" data-go="' + esc(o.go) + '"><div class="ic">' + icon(o.ic) + '</div><div class="b"><div class="n">' + o.n + '</div>' + (o.s ? '<div class="s">' + o.s + '</div>' : '') + '</div>' + (o.raw ? o.raw : (o.v !== undefined && o.v !== '' ? '<span class="v ' + (o.cls === 'done' ? 'ok' : '') + '">' + o.v + '</span>' : '')) + '<span class="chev">' + icon('chev') + '</span></div>';
     };
     var hour = function (time, dotCls, future, inner) { return '<div class="tl-h' + (future ? ' future' : '') + '"><span class="time' + (dotCls === 'now' ? ' now' : '') + '">' + time + '</span><span class="dotp ' + dotCls + '"></span>' + inner + '</div>'; };
     var html = '';
 
+    if (todayFlag && (d.openDays || []).length) {
+      d.openDays.forEach(function (od) {
+        html += task({ go: 'day:' + od.date, ic: 'moon', cls: 'warn', n: 'Kal ka din adhoora · ' + esc(S.fmtDay(od.date)), s: od.lines + ' line band nahi hui — night / OT bharo, phir Day Close', v: '' });
+      });
+    }
     var attCls = attDone === nAll ? 'done' : now >= 9 ? 'warn' : '';
     var attTask = task({ go: 'attlist:Final', ic: 'att', cls: attCls, n: 'Attendance + SRN', s: attDone + '/' + nAll + ' lines' + (attDone < nAll && now >= 9 ? ' · baaki hai' : ''), v: attMp ? attMp + ' mp' : '' });
     if (attDone) attTask += task({ go: 'wa:Final', ic: 'wa', sub: true, cls: '', n: 'Send to group', s: 'WhatsApp me ' + attDone + ' lines ka manpower', v: '' });
@@ -81,7 +93,7 @@
       var cls = p.isNow ? 'now' : p.past ? 'warn' : '';
       var future = !p.past && !p.isNow;
       html += hour(p.s.label.replace(/\s?(AM|PM)$/, ''), cls, future && !p.inf.done, task({ go: 'hour:' + p.s.key, ic: 'out', cls: p.isNow ? '' : cls, n: 'Output' + (p.isNow ? ' <small style="color:var(--primary)">· abhi</small>' : ''),
-        s: p.inf.done ? p.inf.done + '/' + p.inf.total + ' lines · baaki ' + (p.inf.total - p.inf.done) : (p.past ? 'Entry baaki' : p.isNow ? 'Tap karke sab lines bharo' : ''), v: p.inf.pcs ? p.inf.pcs : '' }));
+        s: p.inf.done ? p.inf.done + '/' + p.inf.total + ' lines · baaki ' + (p.inf.total - p.inf.done) : (p.past ? 'Entry baaki' : p.isNow ? 'Tap karke sab lines bharo' : ''), raw: triVal(p.inf) }));
     });
     if (!showOT && nAll) html += '<button class="lnk tl-more" data-go="showOT">+ OT slots (6–10 PM)</button>';
     if (showOT && (hasOTout || now >= 18) && otAttDone < nAll) {
@@ -148,7 +160,8 @@
     if (go === 'ctx') S.openContext();
     else if (go === 'retry') { S.invalidateAll(); S.refresh(); }
     else if (go === 'data') S.tab('data');
-    else if (go === 'hourly') S.tab('hourly');
+    else if (go === 'reports') S.tab('reports');
+    else if (p[0] === 'day') S.setDate(p[1]);
     else if (go === 'main') S.tab('main');
     else if (p[0] === 'attlist') attList(p[1] || 'Final');
     else if (p[0] === 'wa') S.sendToGroup(p[1] || 'Final');
