@@ -257,3 +257,30 @@ body.has-nav .sticky-bottom { bottom: var(--nav-h); }
 .hour-tools { display: flex; gap: 6px; align-items: center; margin: 4px 0 8px; font-size: 12px; color: var(--muted); }
 .hour-tools .lnk { padding: 2px 6px; }
 .hdone { margin-left: auto; }
+
+/* ---- motion: light, GPU-only ---- */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes pop { 0% { transform: scale(.85); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes tick { 0% { transform: scale(.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.screen.in { animation: fadeUp .18s ease-out; }
+.tl .task, .hourly-slot, .rv-item, .egrid, .list .item, .hline { animation: fadeUp .22s ease-out both; }
+.tl .task:nth-child(2), .hline:nth-child(3) { animation-delay: .03s; }
+.tl-h:nth-child(2) .task, .hline:nth-child(4) { animation-delay: .05s; }
+.tl-h:nth-child(3) .task, .hline:nth-child(5) { animation-delay: .08s; }
+.tl-h:nth-child(4) .task, .hline:nth-child(6) { animation-delay: .11s; }
+.tl-h:nth-child(5) .task, .hline:nth-child(7) { animation-delay: .14s; }
+.tl-h:nth-child(n+6) .task, .hline:nth-child(n+8) { animation-delay: .17s; }
+.task, .egrid, .hourly-slot, .btn, .chips button, .seg button, .nav button svg { transition: transform .12s ease, background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease; }
+.task:active, .egrid:active, .hourly-slot:active { transform: scale(.985); }
+.btn:active { transform: scale(.97); }
+.chips button:active { transform: scale(.94); }
+.nav button.on svg { animation: pop .25s ease-out; }
+.task.done .ic, .hline.done { animation: tick .25s ease-out; }
+.hline { transition: border-color .2s ease, background-color .2s ease; }
+.nowcard { transition: background .3s ease, box-shadow .3s ease; }
+.nowcard .prog i { transition: width .5s ease; }
+.tl-h .dotp { transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease; }
+.toast { animation: fadeUp .18s ease-out; }
+.sheet-bg { animation: fadeIn .18s ease-out; } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.spinner, .hdr-prog { will-change: transform; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

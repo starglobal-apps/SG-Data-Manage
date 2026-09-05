@@ -101,7 +101,7 @@
     }
     if (!html) html = '<div class="empty">Aaj ka sab kaam ho gaya ✓</div>';
     $('#home-timeline').innerHTML = '<div class="tl">' + html + '</div>';
-    if (!stale && (current || missed.length)) S.swr('hour.get', { date: state.date, factory: state.factory, slot: (current ? current.s : missed[0].s).key }, 10000);
+    if (!stale && (current || missed.length)) S.swr('hour.get', { date: state.date, factory: state.factory, slot: (current ? current.s : missed[0].s).key }, 10000).promise.catch(function () {});
   }
 
   function transferSheet(id) {

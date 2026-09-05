@@ -49,7 +49,11 @@
 
   // ---------- navigation ----------
 
-  function showOnly(id) { $$('.screen').forEach(function (s) { s.hidden = s.id !== id; }); window.scrollTo(0, 0); }
+  function showOnly(id) {
+    $$('.screen').forEach(function (s) { s.hidden = s.id !== id; s.classList.remove('in'); });
+    var el = document.getElementById(id); if (el) { void el.offsetWidth; el.classList.add('in'); }
+    window.scrollTo(0, 0);
+  }
   function setHeader(title, sub, back) {
     $('#hdr-title').textContent = title;
     $('#hdr-sub').textContent = sub || '';
@@ -108,7 +112,13 @@
       .then(function (r) { return r.json(); });
   }
   var inflight = 0;
-  function prog(on) { inflight += on ? 1 : -1; if (inflight < 0) inflight = 0; $('#hdr-prog').hidden = inflight === 0; }
+  var progTimer;
+  function prog(on) {
+    inflight += on ? 1 : -1; if (inflight < 0) inflight = 0;
+    $('#hdr-prog').hidden = inflight === 0;
+    clearTimeout(progTimer);
+    if (inflight) progTimer = setTimeout(function () { inflight = 0; $('#hdr-prog').hidden = true; }, 20000);
+  }
   function api(action, payload, opts) {
     opts = opts || {};
     if (!API_URL) return Promise.reject(new Error('API URL set nahi hai — docs/config.js me daalo'));
@@ -143,7 +153,8 @@
   function clearLocalCaches() { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('sg_c_') === 0 || k.indexOf('sg_ft_') === 0) localStorage.removeItem(k); }); }
   function hardRefresh() {
     clearLocalCaches(); invalidateAll();
-    return api('cache.clear').then(function () { toast('Sab data refresh ho gaya', 'ok'); refresh(); }).catch(function (e) { toast(e.message, 'bad'); refresh(); });
+    return api('cache.clear').then(function () { return api('me', {}, { quiet: true }); }).then(function (d) { setUser(d.user); return loadMasters(); })
+      .then(function () { ensureLine(); toast('Sab data refresh ho gaya', 'ok'); refresh(); }).catch(function (e) { toast(e.message, 'bad'); refresh(); });
   }
 
   function queue() { return parse(localStorage.getItem('sg_queue')) || []; }
@@ -196,6 +207,7 @@
     setHeader('SG Data', '', false);
     showOnly('scr-login');
   }
+  function setUser(u) { if (!u) return; state.user = u; localStorage.setItem('sg_user', JSON.stringify(u)); }
   function loadMasters() {
     return api('masters').then(function (d) { state.masters = d; localStorage.setItem('sg_masters', JSON.stringify(d)); });
   }
@@ -323,7 +335,10 @@
     if (!depts.length) { toast('Is factory ke depts MASTERS me nahi hain', 'bad'); return; }
     if (shift) att.shift = shift;
     att.dept = dept || state.line || depts[0].key;
-    if (!depts.some(function (d) { return d.key === att.dept; })) att.dept = depts[0].key;
+    if (!depts.some(function (d) { return d.key === att.dept; })) {
+      if (dept) { depts = depts.concat([{ key: dept, factory: state.factory, extra: deptCategory(dept) || 'STITCH' }]); loadMasters().catch(function () {}); }
+      else att.dept = depts[0].key;
+    }
     $('#att-dept').innerHTML = deptOptions(depts, att.dept);
     $('#att-shift').innerHTML = state.masters.shifts.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('');
     push('att', (att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
@@ -446,7 +461,7 @@
     if (!API_URL) { showOnly('scr-login'); $('#login-msg').textContent = 'docs/config.js me API_URL set karo'; return; }
     if (state.token && state.user) {
       if (state.masters) { ensureLine(); home(); }
-      api('me', {}, { quiet: true }).then(function () { return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); if (!nav.sub) tab(nav.tab); flushQueue(); })
+      api('me', {}, { quiet: true }).then(function (d) { setUser(d.user); return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); if (!nav.sub) tab(nav.tab); flushQueue(); })
         .catch(function (e) { if (!state.masters || !/Network/.test(e.message || '')) logout(); });
     } else showOnly('scr-login');
   }
