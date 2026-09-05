@@ -50,3 +50,31 @@ function pmsGet_(req, user) {
   rows.sort(function(a, b) { return (b.lastLoad || '').localeCompare(a.lastLoad || '') || a.srn.localeCompare(b.srn); });
   return { ok: true, rows: rows, days: days, cutoff: cutoff };
 }
+
+// PMS alerts for one line×SRN (stitching line) or floor×SRN (packing). Blocking rules:
+//  Stitching > Loading (line+SRN) · Endline pass > Stitching (line+SRN) · Packing (SRN total) > Endline pass (SRN total)
+function pmsAlerts_(L, stitchedSrn, dept, srn, cat) {
+  var r = pmsRow_(L, stitchedSrn, dept, srn), out = [];
+  if (cat !== 'PACKING') {
+    if (r.stitched > r.loaded) out.push({ type: 'STITCH', dept: dept, srn: srn, diff: r.stitched - r.loaded, msg: 'Stitching ' + r.stitched + ' > Loading ' + r.loaded + ' (' + (r.stitched - r.loaded) + ' zyada) — loading check karo ya stitching output kam karo' });
+    if (r.endPass > r.stitched) out.push({ type: 'ENDLINE', dept: dept, srn: srn, diff: r.endPass - r.stitched, msg: 'Endline pass ' + r.endPass + ' > Stitching ' + r.stitched + ' (' + (r.endPass - r.stitched) + ' zyada) — endline ya stitching data theek karo' });
+  }
+  if (r.packed > r.endPassSrn) out.push({ type: 'PACKING', dept: dept, srn: srn, diff: r.packed - r.endPassSrn, msg: 'Packing ' + r.packed + ' (sab floors) > Endline pass ' + r.endPassSrn + ' (sab lines) — ' + (r.packed - r.endPassSrn) + ' ka endline data kam hai, pehle wo bharo' });
+  return out;
+}
+
+// { factory, date } -> alerts for every line/floor that has attendance (and a SRN) that day
+function reportCheck_(req, user) {
+  var factory = str_(req.factory), date = str_(req.date) || todayStr_();
+  var L = ledger_(), stitchedSrn = {};
+  Object.keys(L.stitched).forEach(function(k) { addTo_(stitchedSrn, k.split('|')[1], L.stitched[k]); });
+  var depts = writableDepts_(user, factory), attSrn = attSrnMap_(date, factory), alerts = [], seen = {};
+  depts.forEach(function(d) {
+    var srn = attSrn[d.dept]; if (!srn) return;
+    pmsAlerts_(L, stitchedSrn, d.dept, srn, d.cat).forEach(function(a) {
+      var k = a.type === 'PACKING' ? 'P|' + a.srn : a.type + '|' + a.dept + '|' + a.srn;   // packing rule is per SRN, not per floor
+      if (seen[k]) return; seen[k] = true; alerts.push(a);
+    });
+  });
+  return { ok: true, alerts: alerts, date: date };
+}

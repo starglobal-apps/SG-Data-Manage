@@ -26,7 +26,9 @@ function dayBuild_(req, user) {
   var events = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
   var hourly = readTab_(CFG.TABS.HOURLY_LOG).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
   var lineFloor = masterMap_('LINE_FLOOR'), lineStaff = masterMap_('LINE_STAFF');
-  var L = ledger_();
+  var L = ledger_(), stitchedSrnDB = {};
+  Object.keys(L.stitched).forEach(function(k) { addTo_(stitchedSrnDB, k.split('|')[1], L.stitched[k]); });
+  var pmsBlocks = function(dept, srn, cat, type) { return pmsAlerts_(L, stitchedSrnDB, dept, srn, cat).filter(function(a) { return a.type === type; }).map(function(a) { return { level: 'block', msg: a.msg }; }); };
   var rows = [];
 
   // ---- ATT: one summary per dept+shift
@@ -65,8 +67,7 @@ function dayBuild_(req, user) {
     var flags = [];
     if (!payload.manpower) flags.push({ level: 'warn', msg: 'Is dept ki ' + shift + ' attendance nahi hai' });
     if (!payload.floor) flags.push({ level: 'warn', msg: 'Floor nahi mila (MASTERS LINE_FLOOR)' });
-    var chk = chainCheck_(L, 'STITCH', dept, srn, 0);
-    if (!chk.ok) flags.push({ level: 'block', msg: chk.msg });
+    flags = flags.concat(pmsBlocks(dept, srn, 'STITCH', 'STITCH'));
     rows.push({ date: date, factory: factory, line: payload.line, dept: dept, type: 'STITCH', srn: srn, shift: shift, payload: payload, flags: flags });
   });
 
@@ -94,9 +95,7 @@ function dayBuild_(req, user) {
     };
     var flags = [];
     if (!checker) flags.push({ level: 'warn', msg: 'Checker ka naam nahi' });
-    var chk = chainCheck_(L, 'ENDLINE', dept, srn, 0);
-    if (!chk.ok) flags.push({ level: 'block', msg: chk.msg });
-    else if (chk.level === 'warn') flags.push({ level: 'warn', msg: chk.msg });
+    flags = flags.concat(pmsBlocks(dept, srn, 'STITCH', 'ENDLINE'));
     rows.push({ date: date, factory: factory, line: lineOf_(dept), dept: dept, type: 'ENDLINE', srn: srn, shift: shift, payload: payload, flags: flags });
   });
 
@@ -120,9 +119,7 @@ function dayBuild_(req, user) {
     Object.keys(CFG.PACK_ROLE_COLS).forEach(function(f) { payload[f] = byRoleP[CFG.PACK_ROLE_COLS[f]] || 0; });
     var flags = [];
     if (!payload.manpower) flags.push({ level: 'warn', msg: 'Is packing dept ki ' + shift + ' attendance nahi hai' });
-    var chk = chainCheck_(L, 'PACKING', dept, srn, 0);
-    if (!chk.ok) flags.push({ level: 'block', msg: chk.msg });
-    else if (chk.level === 'warn') flags.push({ level: 'warn', msg: chk.msg });
+    flags = flags.concat(pmsBlocks(dept, srn, 'PACKING', 'PACKING'));
     rows.push({ date: date, factory: factory, line: '', dept: dept, type: 'PACKING', srn: srn, shift: shift, payload: payload, flags: flags });
   });
 

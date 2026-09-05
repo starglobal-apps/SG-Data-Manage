@@ -4,23 +4,32 @@
   'use strict';
   var S = window.SG, $ = S.$, esc = S.esc, state = S.state, icon = S.icon;
 
+  var AL = { alerts: null };
   S.tabs.reports = function () {
     var cached = S.factoryData();
     if (cached) render(cached); else $('#reports-list').innerHTML = '<div class="empty">Loading…</div>';
     S.loadFactory().then(render).catch(function (e) { if (!cached) $('#reports-list').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    S.reportAlerts(true).then(function (a) { AL.alerts = a; var d = S.factoryData(); if (d) render(d); }).catch(function () {});
+  };
+  S.alertsHtml = function (alerts) {
+    if (!alerts || !alerts.length) return '';
+    return '<div class="banner bad" style="margin:0 0 10px"><b>⚠️ ' + alerts.length + ' mismatch — pehle theek karo, tab send / submit hoga</b>' + alerts.map(function (a) { return '<div style="margin-top:6px"><b>' + esc(S.shortLine(a.dept)) + ' · ' + esc(a.srn) + '</b><br>' + esc(a.msg) + '</div>'; }).join('') + '</div>';
   };
 
   function render(d) {
     var html = '', now = S.isToday() ? S.nowHour() : 24, totalPcs = 0;
     var lines = d.depts.filter(function (x) { return d.att[x.dept + '|Final']; });
     html += '<h2>Reports · ' + esc(S.fmtDay(state.date)) + ' · ' + lines.length + ' line</h2>';
-    if (lines.length) html += '<button class="btn primary big" data-all="1" style="margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:8px">' + icon('review') + ' Review & send all reports</button>';
+    var alerts = AL.alerts, blocked = alerts && alerts.length;
+    if (lines.length) html += S.alertsHtml(alerts) + '<button class="btn primary big" data-all="1" style="margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:8px"' + (blocked ? ' disabled' : '') + '>' + icon('review') + (blocked ? ' Mismatch hai — send band' : alerts === null ? ' Check ho raha hai…' : ' Review & send all reports') + '</button>';
     if (!lines.length) html += '<div class="empty">Is din kisi line ki attendance nahi — report attendance ke baad banti hai</div>';
     lines.forEach(function (x) {
       var srn = (d.attSrn && d.attSrn[x.dept]) || '', pk = x.cat === 'PACKING';
       var st = 0, ep = 0, pkq = 0;
       Object.keys(d.slots || {}).forEach(function (k) { var sl = d.slots[k]; st += (sl.STITCH && sl.STITCH[x.dept]) || 0; ep += (sl.ENDLINE && sl.ENDLINE[x.dept]) || 0; pkq += (sl.PACKING && sl.PACKING[x.dept]) || 0; });
-      html += '<div class="rep-card"><div class="h"><span class="nm">' + esc(S.shortLine(x.dept)) + '</span><span class="srn">' + (srn ? esc(srn) : '<span style="color:var(--warn)">SRN nahi</span>') + ' · ' + d.att[x.dept + '|Final'] + ' mp</span></div>' +
+      var myAl = (AL.alerts || []).filter(function (a) { return a.srn === srn && (a.type === 'PACKING' ? pk : a.dept === x.dept); });
+      html += '<div class="rep-card' + (myAl.length ? ' flag' : '') + '"' + (myAl.length ? ' style="border-left:3px solid var(--bad)"' : '') + '><div class="h"><span class="nm">' + esc(S.shortLine(x.dept)) + '</span><span class="srn">' + (srn ? esc(srn) : '<span style="color:var(--warn)">SRN nahi</span>') + ' · ' + d.att[x.dept + '|Final'] + ' mp</span></div>' +
+        (myAl.length ? '<div class="flag block" style="margin:0 0 6px">' + myAl.map(function (a) { return esc(a.msg); }).join('<br>') + '</div>' : '') +
         (srn ? '<div class="rep-btns">' + (pk
           ? '<button data-rep="PACKING|' + esc(x.dept) + '|' + esc(srn) + '">' + icon('box') + 'Packing report<small>' + pkq + ' pcs aaj</small></button>'
           : '<button data-rep="STITCH|' + esc(x.dept) + '|' + esc(srn) + '">' + icon('out') + 'Making report<small>' + st + ' pcs aaj</small></button><button data-rep="ENDLINE|' + esc(x.dept) + '|' + esc(srn) + '">' + icon('qc') + 'Endline FTR<small>pass ' + ep + ' aaj</small></button>') + '</div>' : '') + '</div>';

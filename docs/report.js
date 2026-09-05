@@ -276,12 +276,16 @@
   }
 
   // ---------- review all of today's reports, then send them together ----------
-  var RA = { files: [] };
+  var RA = { files: [], alerts: [] };
+  S.reportAlerts = function (fresh) {
+    var r = S.swr('report.check', { factory: state.factory, date: state.date }, fresh ? 0 : 30000);
+    return r.promise.then(function (d) { return d.alerts || []; });
+  };
   S.reportAll = function () {
     S.push('reportall', 'Review & send · ' + S.fmtDay(state.date));
-    $('#ra-info').innerHTML = '<div class="empty">Reports ban rahe hain…</div>'; $('#ra-list').innerHTML = ''; RA.files = [];
+    $('#ra-info').innerHTML = '<div class="empty">PMS check + reports ban rahe hain…</div>'; $('#ra-list').innerHTML = ''; RA.files = []; RA.alerts = [];
     $('#btn-ra-share').disabled = true; $('#btn-ra-dl').disabled = true;
-    S.loadFactory().then(function (d) {
+    S.reportAlerts(true).then(function (alerts) { RA.alerts = alerts; return S.loadFactory(); }).then(function (d) {
       var list = [];
       d.depts.forEach(function (x) { var srn = d.attSrn && d.attSrn[x.dept]; if (!srn) return; if (x.cat === 'PACKING') list.push({ t: 'PACKING', dept: x.dept, srn: srn }); else { list.push({ t: 'STITCH', dept: x.dept, srn: srn }); list.push({ t: 'ENDLINE', dept: x.dept, srn: srn }); } });
       if (!list.length) { $('#ra-info').innerHTML = '<div class="empty">Is din kisi line ka SRN / attendance nahi</div>'; return; }
@@ -293,12 +297,12 @@
             var wrap = document.createElement('div'); wrap.className = 'ra-item';
             wrap.innerHTML = '<div class="t"><span>' + esc(S.shortLine(x.dept)) + ' · ' + esc(labelOf(x.t)) + '</span><span class="muted">' + esc(x.srn) + ' · ' + out.rows + ' rows · p' + out.page + '/' + out.pages + '</span></div>';
             wrap.appendChild(out.canvas); $('#ra-list').appendChild(wrap);
-            done++; $('#ra-info').innerHTML = '<b>' + done + ' / ' + list.length + ' reports</b><div class="muted" style="font-size:12px">Neeche ek-ek karke dekho, phir "Send all" — sab ek saath WhatsApp me</div>';
+            done++; $('#ra-info').innerHTML = (RA.alerts.length ? S.alertsHtml(RA.alerts) : '') + '<b>' + done + ' / ' + list.length + ' reports</b><div class="muted" style="font-size:12px">' + (RA.alerts.length ? 'Mismatch theek hone tak send band hai — reports sirf dekh sakte ho' : 'Neeche ek-ek karke dekho, phir "Send all" — sab ek saath WhatsApp me') + '</div>';
             return new Promise(function (res) { out.canvas.toBlob(function (b) { RA.files.push(new File([b], name, { type: 'image/png' })); res(); }, 'image/png'); });
           }).catch(function (e) { $('#ra-list').insertAdjacentHTML('beforeend', '<div class="ra-item"><div class="t">' + esc(S.shortLine(x.dept)) + ' · ' + esc(labelOf(x.t)) + '</div><div class="empty">' + esc(e.message) + '</div></div>'); });
         });
       });
-      return seq.then(function () { $('#btn-ra-share').disabled = !RA.files.length; $('#btn-ra-dl').disabled = !RA.files.length; });
+      return seq.then(function () { var blocked = RA.alerts.length > 0; $('#btn-ra-share').disabled = blocked || !RA.files.length; $('#btn-ra-share').textContent = blocked ? 'Send band — mismatch' : 'Send all (WhatsApp)'; $('#btn-ra-dl').disabled = blocked || !RA.files.length; });
     }).catch(function (e) { $('#ra-info').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   };
   $('#btn-ra-share').addEventListener('click', function () {

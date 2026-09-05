@@ -52,6 +52,7 @@ function routes_() {
     'transfer.decide': transferDecide_,
     'cache.clear':    cacheClear_,
     'pms.get':        pmsGet_,
+    'report.check':   reportCheck_,
     'staff.list':     staffList_,
     'report.line':    reportLine_,
     'report.packing': reportPacking_,
