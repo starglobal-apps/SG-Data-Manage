@@ -153,7 +153,7 @@
 
   function save(del) {
     var p = { date: state.date, factory: state.factory, type: q.type, dept: state.line, srn: del || q.srn, slot: q.slot };
-    if (del) { p.qty = 0; p.checked = 0; p.checker = 'x'; }
+    if (del) { var rr = rowsHere().filter(function (r) { return r.srn === del; })[0] || {}; p.qty = 0; p.checked = 0; p.checker = q.type === 'ENDLINE' ? (rr.checker || '') : 'x'; }
     else if (q.type === 'ENDLINE') {
       p.checker = $('#f-checker').value.trim(); p.checked = num($('#f-checked').value); p.pass = num($('#f-pass').value); p.reject = num($('#f-reject').value);
       if (!p.checker) { toast('Checker ka naam likho', 'bad'); return; }

@@ -33,7 +33,7 @@
     return '<select class="f-srn">' + opts.map(function (o) { return '<option value="' + esc(o.srn) + '"' + (o.srn === sel ? ' selected' : '') + '>' + esc(o.srn) + (o.balance !== '' ? ' · ' + o.balance : '') + '</option>'; }).join('') + '</select>';
   }
 
-  function lineRow(d, type, r, extra) {
+  function lineRow(d, type, r, extra, qcFixed) {
     r = r || {};
     var opts = d.srns[type] || [], sel = r.srn || d.lastSrn[type] || d.attSrn || (type !== 'PACKING' && opts[0] ? opts[0].srn : '');
     var lock = d.locked[type], noSrn = !opts.length && !sel;
@@ -46,7 +46,7 @@
     var inputs = type === 'ENDLINE'
       ? '<input class="f-chk sm" type="number" inputmode="numeric" placeholder="chk" value="' + (r.checked || '') + '"><input class="f-pass sm" type="number" inputmode="numeric" placeholder="pass" value="' + (r.pass || '') + '"><input class="f-rej sm" type="number" inputmode="numeric" placeholder="rej" value="' + (r.reject || '') + '">'
       : '<input class="f-qty" type="number" inputmode="numeric" placeholder="' + (type === 'PACKING' ? 'pcs' : 'qty') + '" value="' + (r.qty || '') + '">' + (type === 'PACKING' ? '<input class="f-ctn sm" type="number" inputmode="numeric" placeholder="ctn" value="' + (r.cartons || '') + '">' : '');
-    var qcs = d.qcNames || [], defQc = r.checker || d.checker || (qcs.length === 1 ? qcs[0] : '');
+    var qcs = d.qcNames || [], defQc = qcFixed || r.checker || d.checker || (qcs.length === 1 ? qcs[0] : '');
     var checker = type === 'ENDLINE' ? '<div class="chk-name">' + icon('qc') + (qcs.length ? '<select class="f-checker">' + (defQc && qcs.indexOf(defQc) < 0 ? '<option>' + esc(defQc) + '</option>' : '') + qcs.map(function (n) { return '<option' + (n === defQc ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' : '<input class="f-checker" type="text" list="staff-qc" placeholder="checker ka naam" value="' + esc(defQc) + '">') + '</div>' : '';
     if (type === 'PACKING') {
       // two lines: [name · mp · actions] / [SRN search · pcs · ctn]
@@ -54,7 +54,17 @@
         '<div class="top">' + (extra ? '<span class="nm"><small>+ dusra SRN</small></span>' : nm + mp + acts) + '</div>' +
         '<div class="bot"><div class="srnp-mount" data-sel="' + esc(sel) + '"></div>' + inputs + '</div></div>';
     }
-    return '<div class="hline ' + cls + (checker ? ' wrap' : '') + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' + (extra ? '<span class="nm"><small>+ dusra SRN</small></span>' : nm) + (extra || type === 'ENDLINE' ? '' : mp) + srnSel(opts, sel) + inputs + (extra || type === 'ENDLINE' ? '' : acts) + checker + '</div>';
+    var nmCell = extra ? '<span class="nm"><small>' + (qcFixed ? '↳ ' + esc(qcFixed) : '+ dusra SRN') + '</small></span>' : nm;
+    return '<div class="hline ' + cls + (checker ? ' wrap' : '') + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' + nmCell + (extra || type === 'ENDLINE' ? '' : mp) + srnSel(opts, sel) + inputs + (extra || type === 'ENDLINE' ? '' : acts) + checker + '</div>';
+  }
+  // ENDLINE: one row per QC of the line (each QC's checked/pass/reject saved separately)
+  function endlineRows(d) {
+    var rows = d.rows.ENDLINE || [], qcs = d.qcNames || [];
+    if (!qcs.length) return rows.length ? rows.map(function (r, j) { return lineRow(d, 'ENDLINE', r, j > 0); }).join('') : lineRow(d, 'ENDLINE');
+    var used = {};
+    var html = qcs.map(function (q, j) { var r = rows.filter(function (x) { return x.checker === q && !used[x.srn + '|' + x.checker]; })[0]; if (r) used[r.srn + '|' + r.checker] = 1; return lineRow(d, 'ENDLINE', r || {}, j > 0, q); }).join('');
+    rows.forEach(function (r) { if (!used[r.srn + '|' + r.checker]) html += lineRow(d, 'ENDLINE', r, true, r.checker); });
+    return html;
   }
   function mountPickers() {
     $$('#hour-list .srnp-mount').forEach(function (m) {
@@ -72,6 +82,7 @@
     if (!depts.length) html += '<div class="empty">Is type ki koi line nahi</div>';
     else {
       depts.forEach(function (d) {
+        if (H.type === 'ENDLINE') { html += endlineRows(d); return; }
         var rows = d.rows[H.type] || [];
         html += rows.length ? rows.map(function (r, j) { return lineRow(d, H.type, r, j > 0); }).join('') : lineRow(d, H.type);
       });
@@ -88,13 +99,14 @@
     var items = [], seen = {};
     $$('#hour-list .hline[data-type]').forEach(function (row) {
       var d = H.data.depts[Number(row.dataset.i)], type = row.dataset.type, sel = $('.f-srn', row); if (!sel) return;
-      var srn = sel.value, k = d.dept + '|' + srn; if (!srn || seen[k]) return; seen[k] = true;
+      var srn = sel.value, chk = type === 'ENDLINE' ? (($('.f-checker', row) || { value: '' }).value || '').trim() : '';
+      var k = d.dept + '|' + srn + (type === 'ENDLINE' ? '|' + chk : ''); if (!srn || seen[k]) return; seen[k] = true;
       var it = { type: type, dept: d.dept, srn: srn, floor: d.floor };
-      if (type === 'ENDLINE') { it.checked = num($('.f-chk', row).value); it.pass = num($('.f-pass', row).value); it.reject = num($('.f-rej', row).value); it.checker = ($('.f-checker', row) || { value: '' }).value.trim(); }
+      if (type === 'ENDLINE') { it.checked = num($('.f-chk', row).value); it.pass = num($('.f-pass', row).value); it.reject = num($('.f-rej', row).value); it.checker = chk; }
       else { it.qty = num($('.f-qty', row).value); if (type === 'PACKING') it.cartons = num(($('.f-ctn', row) || { value: 0 }).value); }
       items.push(it);
     });
-    deptsOf(H.type).forEach(function (d) { (d.rows[H.type] || []).forEach(function (r) { if (!seen[d.dept + '|' + r.srn]) items.push({ type: H.type, dept: d.dept, srn: r.srn, qty: 0, checked: 0, checker: 'x' }); }); });
+    deptsOf(H.type).forEach(function (d) { (d.rows[H.type] || []).forEach(function (r) { var k = d.dept + '|' + r.srn + (H.type === 'ENDLINE' ? '|' + (r.checker || '') : ''); if (!seen[k]) items.push({ type: H.type, dept: d.dept, srn: r.srn, qty: 0, checked: 0, checker: H.type === 'ENDLINE' ? (r.checker || '') : 'x' }); }); });
     return items;
   }
   function snapshot() { return JSON.stringify(collect()); }

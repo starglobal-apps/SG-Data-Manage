@@ -124,7 +124,8 @@ function slotUpsert_(p, user, ctx) {
   }
   var newAmt = type === 'ENDLINE' ? row.checked : row.qty;
   var key = [date, factory, type, dept, srn].join('|');
-  var existing = ctx.rows.filter(function(r) { return hourlyKey_(r) === key && str_(r.slot) === slot; });
+  // endline rows are per checker: two QCs on one line keep separate rows for the same slot
+  var existing = ctx.rows.filter(function(r) { return hourlyKey_(r) === key && str_(r.slot) === slot && (type !== 'ENDLINE' || str_(r.checker) === str_(p.checker)); });
   var oldAmt = 0; existing.forEach(function(r) { oldAmt += type === 'ENDLINE' ? num_(r.checked) : num_(r.qty); });
   if (newAmt === oldAmt && !existing.length) return { ok: true, skipped: true };
 
