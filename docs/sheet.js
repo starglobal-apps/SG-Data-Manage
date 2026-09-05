@@ -9,9 +9,14 @@
     open: function (title, html) {
       $('#sheet-title').textContent = title; $('#sheet-content').innerHTML = html;
       $('#sheet-content').onclick = null; $('#sheet-content').onchange = null;
+      if ($('#sheet').hidden) { try { history.pushState({ sheet: 1 }, ''); } catch (e) {} }
       $('#sheet').hidden = false;
     },
-    close: function () { $('#sheet').hidden = true; }
+    close: function () {
+      if ($('#sheet').hidden) return;
+      $('#sheet').hidden = true;
+      if (history.state && history.state.sheet) { S.skipPop(); try { history.back(); } catch (e) {} }
+    }
   };
   $('#sheet-close').addEventListener('click', S.sheet.close);
   $('#sheet-bg').addEventListener('click', S.sheet.close);

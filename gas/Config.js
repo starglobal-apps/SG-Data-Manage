@@ -16,6 +16,7 @@ var CFG = {
     MANPOWER_EVENTS: 'MANPOWER_EVENTS',
     DAY_SUMMARY: 'DAY_SUMMARY',
     ACTIVE_ORDERS: 'ACTIVE_ORDERS',
+    TRANSFERS: 'TRANSFERS',
     AUDIT_LOG: 'AUDIT_LOG'
   },
 
@@ -27,6 +28,7 @@ var CFG = {
     MANPOWER_EVENTS: ['id', 'date', 'factory', 'dept', 'role', 'event', 'count', 'time', 'eff_hours', 'note', 'entered_by', 'entered_at'],
     DAY_SUMMARY:     ['id', 'date', 'factory', 'line', 'dept', 'type', 'srn', 'shift', 'payload', 'status', 'flags', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'remark'],
     ACTIVE_ORDERS:   ['factory', 'line', 'dept', 'srn', 'loaded', 'stitched', 'balance', 'last_loading'],
+    TRANSFERS:       ['id', 'date', 'factory', 'from_dept', 'to_dept', 'role', 'count', 'time', 'srn', 'status', 'note', 'by', 'at', 'decided_by', 'decided_at'],
     AUDIT_LOG:       ['at', 'user', 'action', 'ref', 'detail']
   },
 
@@ -37,6 +39,7 @@ var CFG = {
     HOURLY_LOG: ['date', 'slot'],
     MANPOWER_EVENTS: ['date', 'time'],
     DAY_SUMMARY: ['date'],
+    TRANSFERS: ['date', 'time'],
     ACTIVE_ORDERS: ['last_loading']
   },
 
@@ -117,7 +120,9 @@ CFG.MP_EVENTS = [
   { key: 'LEFT_AT',   label: 'Beech me chala gaya',    eff: null, needsTime: true,  from: 9 },
   { key: 'LATE_JOIN', label: 'Late aaya',              eff: null, needsTime: true,  to: 18 },
   { key: 'ABSENT',    label: 'Absent (attendance ke baad)', eff: 0, needsTime: false },
-  { key: 'EXTRA',     label: 'Extra aaya (add)',       eff: 8,    needsTime: false, add: true }
+  { key: 'EXTRA',     label: 'Extra aaya (add)',       eff: 8,    needsTime: false, add: true },
+  { key: 'TRANSFER_OUT', label: 'Transfer gaya (dusri line)',  eff: null, needsTime: true, from: 9 },
+  { key: 'TRANSFER_IN',  label: 'Transfer se aaya',           eff: null, needsTime: true, to: 18, add: true }
 ];
 
 // The 5 manpower-type columns of the stitching source sheets (cols 23-27 on FAC666 'Data', 12-16 on FAC117), in order.

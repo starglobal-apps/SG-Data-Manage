@@ -86,6 +86,13 @@
     if (showOT && (hasOTout || now >= 18) && otAttDone < nAll) {
       html += '<div class="tl-label">OT</div>' + hour('6:00', hasOTout ? 'warn' : '', false, task({ go: 'attlist:OT', ic: 'att', cls: hasOTout ? 'warn' : '', n: 'OT attendance', s: otAttDone + '/' + nAll + ' lines' + (hasOTout ? ' · OT output hai' : ''), v: '' }));
     }
+    var tr = d.transfers || { incoming: [], outgoing: [] };
+    tr.incoming.forEach(function (t) {
+      html += task({ go: 'transfer:' + t.id, ic: 'mp', cls: 'warn', n: 'Transfer aaya · ' + esc(S.shortLine(t.to_dept)), s: t.count + ' ' + esc(t.role) + ' · ' + esc(S.shortLine(t.from_dept)) + ' se · ' + esc(t.time) + ' · ' + esc(t.by), v: 'Accept?' });
+    });
+    tr.outgoing.forEach(function (t) {
+      html += task({ go: 'noop', ic: 'mp', sub: true, cls: '', n: 'Transfer bheja · ' + esc(S.shortLine(t.from_dept)) + ' → ' + esc(S.shortLine(t.to_dept)), s: t.count + ' ' + esc(t.role) + ' · accept ka wait', v: '' });
+    });
     if (d.events) html += task({ go: 'manpower', ic: 'mp', sub: true, cls: 'done', n: 'Manpower change', s: d.events + ' event aaj', v: '' });
     else html += '<button class="lnk tl-more" data-go="manpower">+ Manpower change (koi gaya / late aaya)</button>';
     var sub = {}; Object.keys(d.statuses).forEach(function (k) { sub[d.statuses[k]] = (sub[d.statuses[k]] || 0) + 1; });
@@ -94,6 +101,29 @@
     }
     if (!html) html = '<div class="empty">Aaj ka sab kaam ho gaya ✓</div>';
     $('#home-timeline').innerHTML = '<div class="tl">' + html + '</div>';
+    if (!stale && (current || missed.length)) S.swr('hour.get', { date: state.date, factory: state.factory, slot: (current ? current.s : missed[0].s).key }, 10000);
+  }
+
+  function transferSheet(id) {
+    var d = S.factoryData(); if (!d) return;
+    var t = (d.transfers.incoming || []).filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    var html = '<div class="card" style="margin:0 0 8px"><b>' + t.count + ' ' + esc(t.role) + '</b> · ' + esc(S.shortLine(t.from_dept)) + ' → <b>' + esc(S.shortLine(t.to_dept)) + '</b><br><span class="muted">' + esc(t.time) + ' · ' + esc(t.by) + (t.note ? ' · ' + esc(t.note) : '') + '</span></div>' +
+      '<label>Kis SRN par kaam karenge?</label><div id="tr-srns" class="chips"><span class="muted">Loading…</span></div>' +
+      '<div class="actions" style="margin-top:10px"><button class="btn danger" data-dec="reject">Reject</button><button class="btn ok" data-dec="accept">Accept</button></div>';
+    S.sheet.open('Transfer accept', html);
+    var srn = d.attSrn && d.attSrn[t.to_dept] || '';
+    var cat = S.deptCategory(t.to_dept);
+    S.api('orders.active', { factory: state.factory, dept: t.to_dept, type: cat === 'PACKING' ? 'PACKING' : 'STITCH' }, { quiet: true }).then(function (r) {
+      if (!srn && r.srns[0]) srn = r.srns[0].srn;
+      $('#tr-srns').innerHTML = r.srns.map(function (x) { return '<button data-srn="' + esc(x.srn) + '" class="' + (x.srn === srn ? 'on' : '') + '">' + esc(x.srn) + '<small>bal ' + x.balance + '</small></button>'; }).join('') || '<span class="muted">Koi SRN nahi</span>';
+    }).catch(function () { $('#tr-srns').innerHTML = ''; });
+    $('#sheet-content').onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.srn) { srn = b.dataset.srn; S.$$('#tr-srns button').forEach(function (x) { x.classList.toggle('on', x === b); }); return; }
+      if (b.dataset.dec) {
+        S.api('transfer.decide', { id: id, action: b.dataset.dec, srn: srn }).then(function () { S.toast(b.dataset.dec === 'accept' ? 'Accept ho gaya · manpower jud gayi' : 'Reject kiya', 'ok'); S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); S.refresh(); }).catch(function (er) { S.toast(er.message, 'bad'); });
+      }
+    };
   }
 
   function attList(shift) {
@@ -116,6 +146,8 @@
     else if (go === 'hourly') S.tab('hourly');
     else if (go === 'main') S.tab('main');
     else if (p[0] === 'attlist') attList(p[1] || 'Final');
+    else if (p[0] === 'transfer') transferSheet(p[1]);
+    else if (go === 'noop') return;
     else if (p[0] === 'att') S.openAttendance(p[1]);
     else if (p[0] === 'hour') S.screens.hour(p[1], p[2]);
     else if (p[0] === 'slot') S.quick(p[1], p[2]);

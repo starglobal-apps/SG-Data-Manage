@@ -242,3 +242,18 @@ body.has-nav .sticky-bottom { bottom: var(--nav-h); }
 .hourly-slot .t { width: 62px; font-weight: 800; font-size: 13px; } .hourly-slot .b { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
 .hourly-slot .b b { color: var(--text); font-size: 14px; } .hourly-slot .chev { color: #c4c8d0; }
 .hourly-slot.next { border: 1px dashed var(--primary); background: var(--soft); }
+
+/* loading bar under the header (reads never block the UI) */
+.hdr { position: sticky; }
+.hdr-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, transparent, #fff, transparent); background-size: 40% 100%; animation: slide 1s linear infinite; }
+@keyframes slide { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+/* hour rows: manpower + quick actions */
+.hline .mpb { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--muted); background: #f3f4f6; border-radius: 6px; padding: 3px 6px; white-space: nowrap; }
+.hline .mpb.chg { color: var(--warn); background: var(--warn-soft); }
+.hline .act { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--muted); font-weight: 800; font-size: 14px; padding: 0; }
+.hline .act.on { color: var(--primary); }
+.hline .nm { width: 27%; }
+.hline input { width: 60px; }
+.hour-tools { display: flex; gap: 6px; align-items: center; margin: 4px 0 8px; font-size: 12px; color: var(--muted); }
+.hour-tools .lnk { padding: 2px 6px; }
+.hdone { margin-left: auto; }

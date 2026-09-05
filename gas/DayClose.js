@@ -171,6 +171,7 @@ function daySubmit_(req, user) {
       n++;
     });
   });
+  invalidateDaily_(CFG.TABS.DAY_SUMMARY);
   audit_(user, 'day.submit', date + '|' + factory + '|' + onlyDept, { rows: n });
   return { ok: true, submitted: n, rows: built.rows };
 }
@@ -184,6 +185,7 @@ function setDayStatus_(date, factory, dept, type, status, user, remark) {
       if (remark !== undefined) sh.getRange(r._row, cr).setValue(remark);
     }
   });
+  invalidateDaily_(CFG.TABS.DAY_SUMMARY);
 }
 
 // ---------- manager review ----------
@@ -241,6 +243,7 @@ function reviewDecide_(req, user) {
       done++;
     });
   });
+  invalidateDaily_(CFG.TABS.DAY_SUMMARY);
   audit_(user, 'review.' + action, ids.join(','), { done: done, skipped: skipped, override: override, remark: remark });
   return { ok: true, done: done, skipped: skipped };
 }
@@ -324,7 +327,7 @@ function reviewSend_(req, user) {
       sh.getRange(r._row, cs).setValue('Sent'); sh.getRange(r._row, cb).setValue(userName_(user)); sh.getRange(r._row, ca).setValue(stamp);
     });
   });
-  cacheDelBig_('hist_agg'); cacheDelBig_('app_agg');
+  cacheDelBig_('hist_agg'); cacheDelBig_('app_agg'); invalidateDaily_(CFG.TABS.DAY_SUMMARY);
   audit_(user, 'review.send', sentIds.join(','), log);
   return { ok: true, sent: sentIds.length, log: log, skipped: skipped };
 }

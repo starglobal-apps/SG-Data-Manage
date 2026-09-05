@@ -79,6 +79,7 @@ function appendRows_(name, objs) {
     return head.map(function(h) { var v = o[h]; return (v === undefined || v === null) ? '' : v; });
   });
   sh.getRange(sh.getLastRow() + 1, 1, rows.length, head.length).setValues(rows);
+  invalidateDaily_(name);
 }
 
 // Delete the given sheet row numbers (bottom-up so indices stay valid)
@@ -86,6 +87,7 @@ function deleteRows_(name, rowNums) {
   if (!rowNums.length) return;
   var sh = tab_(name, false);
   rowNums.sort(function(a, b) { return b - a; }).forEach(function(r) { sh.deleteRow(r); });
+  invalidateDaily_(name);
 }
 
 function audit_(user, action, ref, detail) {
@@ -162,7 +164,22 @@ function readRecent_(name, n) {
   }
   return out;
 }
-function readDaily_(name) { return readRecent_(name, 3000); }
+// Day views: last 3000 rows, memoised per execution and cached 90 s across executions; every write invalidates.
+var DAILY_MEM_ = {};
+function readDaily_(name) {
+  if (DAILY_MEM_[name]) return DAILY_MEM_[name];
+  var hit = cacheGetBig_('daily:' + name);
+  if (hit) { DAILY_MEM_[name] = hit; return hit; }
+  var rows = readRecent_(name, 3000);
+  cachePutBig_('daily:' + name, rows, 90);
+  DAILY_MEM_[name] = rows;
+  return rows;
+}
+function invalidateDaily_(name) { delete DAILY_MEM_[name]; cacheDelBig_('daily:' + name); }
+function clearAllCaches_() {
+  ['loading_agg', 'hist_agg', 'app_agg', 'masters_rows', 'users_rows'].forEach(cacheDelBig_);
+  Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); });
+}
 
 // MASTERS rows, cached 10 min (invalidated by setup/reseed)
 function mastersRows_() {

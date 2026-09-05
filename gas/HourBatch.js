@@ -60,6 +60,8 @@ function hourGet_(req, user) {
   var L = ledger_();
   var depts = writableDepts_(user, factory).filter(function(d) { return d.cat === 'STITCH' || d.cat === 'PACKING'; });
   var st = statusMap_(date, factory), attSrn = attSrnMap_(date, factory);
+  var attRows = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
 
   var rowsBy = {}, lastSrn = {}, lastChecker = {}, lastFloor = {};
   readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
@@ -78,6 +80,7 @@ function hourGet_(req, user) {
   var out = depts.map(function(d) {
     var types = d.cat === 'STITCH' ? ['STITCH', 'ENDLINE'] : ['PACKING'];
     var o = { dept: d.dept, cat: d.cat, srns: {}, rows: {}, lastSrn: {}, locked: {}, attSrn: attSrn[d.dept] || '',
+              mp: mpAtSlot_(attRows, events, d.dept, slot), mpBase: attRows.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === 'Final'; }).reduce(function(t, r) { return t + num_(r.count); }, 0),
               checker: lastChecker[d.dept] ? lastChecker[d.dept].v : '',
               floor: lastFloor[d.dept] ? lastFloor[d.dept].v : (lineFloor[d.dept] ? lineFloor[d.dept].value : '') };
     types.forEach(function(t) {
@@ -197,5 +200,68 @@ function factoryToday_(req, user) {
   var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; }).length;
   var pending = 0;
   if (isManager_(user)) readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Submitted' && str_(r.factory) === factory) pending++; });
-  return { ok: true, depts: depts, att: att, attSrn: attSrn, slots: slots, statuses: statusMap_(date, factory), events: events, pending: pending, serverTime: nowStr_() };
+  var mine = {}; depts.forEach(function(d) { mine[d.dept] = true; });
+  var transfers = { incoming: [], outgoing: [] };
+  readDaily_(CFG.TABS.TRANSFERS).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.status) !== 'Pending') return;
+    var t = { id: str_(r.id), from_dept: str_(r.from_dept), to_dept: str_(r.to_dept), role: str_(r.role), count: num_(r.count), time: str_(r.time), note: str_(r.note), by: str_(r.by) };
+    if (mine[t.to_dept]) transfers.incoming.push(t);
+    if (mine[t.from_dept]) transfers.outgoing.push(t);
+  });
+  return { ok: true, depts: depts, att: att, attSrn: attSrn, slots: slots, statuses: statusMap_(date, factory), events: events, pending: pending, transfers: transfers, serverTime: nowStr_() };
 }
+
+// ---------- manpower transfer between lines / floors ----------
+
+// { date, factory, from_dept, to_dept, role, count, time, note }
+function transferCreate_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), from = str_(req.from_dept), to = str_(req.to_dept);
+  var role = str_(req.role), count = num_(req.count), time = str_(req.time), note = str_(req.note);
+  if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
+  if (!from || !to || from === to) return fail_('VAL', 'Kahan se, kahan — dono chuno');
+  if (!role || count < 1) return fail_('VAL', 'Role aur count chahiye');
+  if (!/^\d{1,2}:\d{2}$/.test(time)) return fail_('VAL', 'Time HH:MM');
+  if (!canWrite_(user, factory, from)) return fail_('PERM', 'Is line ki permission nahi');
+  if (isLocked_(dayStatus_(date, factory, from, 'ATT'))) return fail_('LOCKED', 'Attendance submit ho chuki');
+  var id = uuid_(), stamp = nowStr_();
+  withLock_(function() {
+    appendRows_(CFG.TABS.TRANSFERS, [{ id: id, date: date, factory: factory, from_dept: from, to_dept: to, role: role, count: count, time: time, srn: '',
+      status: 'Pending', note: note, by: userName_(user), at: stamp, decided_by: '', decided_at: '' }]);
+    // the people have left the sending line right away
+    appendRows_(CFG.TABS.MANPOWER_EVENTS, [{ id: uuid_(), date: date, factory: factory, dept: from, role: role, event: 'TRANSFER_OUT', count: count, time: time,
+      eff_hours: effHours_('TRANSFER_OUT', time), note: 'transfer:' + id + ' → ' + to, entered_by: userName_(user), entered_at: stamp }]);
+  });
+  audit_(user, 'transfer.create', id, { from: from, to: to, role: role, count: count });
+  return { ok: true, id: id };
+}
+
+// { id, action: 'accept'|'reject', srn }
+function transferDecide_(req, user) {
+  var id = str_(req.id), action = str_(req.action), srn = str_(req.srn);
+  var t = readDaily_(CFG.TABS.TRANSFERS).filter(function(r) { return str_(r.id) === id; })[0];
+  if (!t) return fail_('NF', 'Transfer nahi mila');
+  if (str_(t.status) !== 'Pending') return fail_('VAL', 'Ye transfer pehle se ' + str_(t.status));
+  var factory = str_(t.factory), to = str_(t.to_dept), from = str_(t.from_dept), date = str_(t.date);
+  if (!canWrite_(user, factory, to)) return fail_('PERM', 'Ye transfer aapki line ka nahi');
+  var sh = tab_(CFG.TABS.TRANSFERS, true), head = CFG.HEADERS.TRANSFERS, stamp = nowStr_();
+  withLock_(function() {
+    if (action === 'accept') {
+      appendRows_(CFG.TABS.MANPOWER_EVENTS, [{ id: uuid_(), date: date, factory: factory, dept: to, role: str_(t.role), event: 'TRANSFER_IN', count: num_(t.count), time: str_(t.time),
+        eff_hours: effHours_('TRANSFER_IN', str_(t.time)), note: 'transfer:' + id + ' ← ' + from + (srn ? ' · ' + srn : ''), entered_by: userName_(user), entered_at: stamp }]);
+    } else {
+      // rejected: undo the sending line's TRANSFER_OUT
+      var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
+      deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
+    }
+    sh.getRange(t._row, head.indexOf('status') + 1).setValue(action === 'accept' ? 'Accepted' : 'Rejected');
+    sh.getRange(t._row, head.indexOf('srn') + 1).setValue(srn);
+    sh.getRange(t._row, head.indexOf('decided_by') + 1).setValue(userName_(user));
+    sh.getRange(t._row, head.indexOf('decided_at') + 1).setValue(stamp);
+  });
+  invalidateDaily_(CFG.TABS.TRANSFERS);
+  audit_(user, 'transfer.' + action, id, { srn: srn });
+  return { ok: true };
+}
+
+// Manual "refresh everything" (after editing sheets by hand)
+function cacheClear_(req, user) { clearAllCaches_(); return { ok: true }; }

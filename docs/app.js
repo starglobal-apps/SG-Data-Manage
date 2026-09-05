@@ -59,14 +59,29 @@
   function shortLine(d) { return (d || '').replace(/^FAC\d+-/, ''); }
   function ctxSub() { return 'FAC' + state.factory + ' · ' + fmtDay(state.date) + (isToday() ? '' : ' (purana din)'); }
 
+  var popping = false, skipPop = false;
+  function pushHist(st) { if (popping) return; try { history.pushState(st, ''); } catch (e) {} }
+  window.addEventListener('popstate', function () {
+    if (skipPop) { skipPop = false; return; }
+    popping = true;
+    try {
+      if (!$('#sheet').hidden) { $('#sheet').hidden = true; }
+      else if (nav.sub) { tab(nav.tab); }
+      else if (nav.tab !== 'home' && state.user) { tab('home'); }
+      else { pushHist({ tab: 'home' }); } // stay in the app; a second back on Home is left to the browser
+    } finally { popping = false; }
+  });
+
   function tab(name) {
     if (!state.user) return;
     if (name === 'review' && !isManager()) name = 'home';
+    if (nav.sub || nav.tab !== name) pushHist({ tab: name });
     nav.tab = name; nav.sub = null;
     showOnly('tab-' + name);
     document.body.classList.add('has-nav');
     $('#nav').hidden = false;
     $$('#nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
+    $('#hdr-refresh').hidden = false;
     if (name === 'home' || name === 'hourly') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory', false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
@@ -74,10 +89,12 @@
     if (tabs[name]) tabs[name]();
   }
   function push(id, title) {
+    if (nav.sub !== id) pushHist({ sub: id });
     nav.sub = id;
     showOnly('scr-' + id);
     $('#nav').hidden = true;
     document.body.classList.remove('has-nav');
+    $('#hdr-refresh').hidden = true;
     setHeader(title, '', true);
   }
   function back() { tab(nav.tab); }
@@ -90,10 +107,13 @@
     return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow' })
       .then(function (r) { return r.json(); });
   }
+  var inflight = 0;
+  function prog(on) { inflight += on ? 1 : -1; if (inflight < 0) inflight = 0; $('#hdr-prog').hidden = inflight === 0; }
   function api(action, payload, opts) {
     opts = opts || {};
     if (!API_URL) return Promise.reject(new Error('API URL set nahi hai — docs/config.js me daalo'));
-    if (!opts.quiet) busy(true);
+    var blocking = opts.busy || (WRITE_ACTIONS.indexOf(action) >= 0 || /\.(save|decide|send|submit|create|clear|delete|refresh)$/.test(action)) && !opts.quiet;
+    if (blocking) busy(true); else prog(true);
     return rawPost(Object.assign({}, payload || {}, { action: action, token: state.token }))
       .then(function (data) {
         if (!data.ok) {
@@ -110,7 +130,20 @@
         }
         throw err;
       })
-      .finally(function () { if (!opts.quiet) busy(false); });
+      .finally(function () { if (blocking) busy(false); else prog(false); });
+  }
+
+  // stale-while-revalidate for read calls: instant data from the last copy + a promise for fresh data
+  function swr(action, payload, ttl) {
+    var key = 'sg_c_' + action + '_' + JSON.stringify(payload || {});
+    var hit = parse(localStorage.getItem(key)), fresh = hit && Date.now() - hit.t < (ttl || 15000);
+    var p = fresh ? Promise.resolve(hit.d) : api(action, payload, { quiet: true }).then(function (d) { try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), d: d })); } catch (e) {} return d; });
+    return { data: hit ? hit.d : null, fresh: fresh, promise: p };
+  }
+  function clearLocalCaches() { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('sg_c_') === 0 || k.indexOf('sg_ft_') === 0) localStorage.removeItem(k); }); }
+  function hardRefresh() {
+    clearLocalCaches(); invalidateAll();
+    return api('cache.clear').then(function () { toast('Sab data refresh ho gaya', 'ok'); refresh(); }).catch(function (e) { toast(e.message, 'bad'); refresh(); });
   }
 
   function queue() { return parse(localStorage.getItem('sg_queue')) || []; }
@@ -347,6 +380,7 @@
     html += '<h2>Setting</h2><div class="menu">';
     html += '<div class="task" data-m="ctx"><div class="ic">' + icon('home') + '</div><div class="b"><div class="n">Entry / Data ki line</div><div class="s">' + esc(state.line || '—') + ' · FAC' + esc(state.factory) + '</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="endline"><div class="ic">' + icon('qc') + '</div><div class="b"><div class="n">Endline timeline me dikhao</div><div class="s">QC checker ke liye on karo</div></div><span class="v">' + (recall('show_endline') === '1' ? 'On' : 'Off') + '</span></div>';
+    html += '<div class="task" data-m="hard"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Refresh sab data</div><div class="s">Sheet me haath se kuch badla / delete kiya ho to</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="refresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Loading refresh</div><div class="s">Nayi loading sheet me aayi ho to</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="masters"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Masters reload</div><div class="s">Depts / roles badle ho to</div></div>' + icon('chev') + '</div>';
     html += '</div>';
@@ -368,6 +402,7 @@
     var m = t.dataset.m;
     if (m === 'ctx') openContext();
     else if (m === 'users') screens.users();
+    else if (m === 'hard') hardRefresh();
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
     else if (m === 'refresh') api('orders.refresh').then(function () { toast('Loading refresh ho gayi', 'ok'); invalidate(); }).catch(function (er) { toast(er.message, 'bad'); });
     else if (m === 'masters') loadMasters().then(function () { ensureLine(); toast('Masters reload ho gaye', 'ok'); }).catch(function (er) { toast(er.message, 'bad'); });
@@ -380,6 +415,7 @@
   $('#in-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   $('#hdr-back').addEventListener('click', back);
   $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
+  $('#hdr-refresh').addEventListener('click', hardRefresh);
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
   $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
@@ -395,13 +431,15 @@
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
     lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
-    loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine,
+    loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
+    skipPop: function () { skipPop = true; },
     setLine: setLine, setDate: setDate, setFactory: setFactory, openContext: openContext, openAttendance: openAttendance, loadMasters: loadMasters
   };
 
   // ---------- boot ----------
 
   function boot() {
+    try { history.replaceState({ tab: 'home' }, ''); } catch (e) {}
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
     renderQueueBadge();
     $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); });

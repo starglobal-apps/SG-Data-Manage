@@ -273,3 +273,26 @@ function reviewCount_(req, user) {
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Submitted' && (!req.factory || str_(r.factory) === str_(req.factory))) n++; });
   return { ok: true, count: n };
 }
+
+// Event time as a decimal hour (HALF_DAY = 13:00, ABSENT/EXTRA = 9:00)
+function eventHour_(e) {
+  var m = str_(e.time).match(/^(\d{1,2}):(\d{2})$/);
+  if (m) return (+m[1]) + (+m[2]) / 60;
+  var k = str_(e.event);
+  return k === 'HALF_DAY' ? 13 : 9;
+}
+function eventAdds_(e) { var d = CFG.MP_EVENTS.filter(function(x) { return x.key === str_(e.event); })[0]; return !!(d && d.add); }
+
+// Manpower actually on a dept during a slot = Final attendance + people who joined before the slot ends − people who left before it starts
+function mpAtSlot_(attRows, events, dept, slotKey) {
+  var base = 0;
+  attRows.forEach(function(r) { if (str_(r.dept) === dept && str_(r.shift) === 'Final') base += num_(r.count); });
+  var st = Number(slotKey.split('-')[0]);
+  events.forEach(function(e) {
+    if (str_(e.dept) !== dept) return;
+    var t = eventHour_(e), n = num_(e.count);
+    if (eventAdds_(e)) { if (t < st + 1) base += n; }
+    else if (t <= st + 0.01) base -= n;
+  });
+  return Math.max(0, base);
+}
