@@ -115,6 +115,11 @@
         <div class="field small"><label>Shift</label><select id="att-shift"></select></div>
       </div>
       <div id="att-srn-wrap"><label>Aaj is line par kaunsa SRN?</label><div id="att-srn" class="chips"></div></div>
+      <div class="row">
+        <div class="field" id="att-sup-wrap"><label>Supervisor *</label><input id="att-sup" type="text" list="staff-sup" placeholder="naam" autocomplete="off"></div>
+        <div class="field"><label>Incharge *</label><input id="att-inc" type="text" list="staff-inc" placeholder="naam" autocomplete="off"></div>
+      </div>
+      <datalist id="staff-sup"></datalist><datalist id="staff-inc"></datalist>
       <div id="att-banner" class="banner" hidden></div>
     </div>
     <table class="tbl">
@@ -178,6 +183,15 @@
     <div id="users-list"></div>
   </section>
 
+  <section id="scr-report" class="screen" hidden>
+    <div id="report-info" class="card"></div>
+    <div id="report-canvas-wrap" class="rep-wrap"></div>
+    <div class="sticky-bottom actions">
+      <button id="btn-rep-dl" class="btn ghost">Download</button>
+      <button id="btn-rep-share" class="btn wa">Share (WhatsApp)</button>
+    </div>
+  </section>
+
   <section id="scr-dayclose" class="screen" hidden>
     <div class="card">
       <div class="row">
@@ -221,6 +235,7 @@
 <script src="hour.js"></script>
 <script src="users.js"></script>
 <script src="pms.js"></script>
+<script src="report.js"></script>
 <script src="modules.js"></script>
 </body>
 </html>

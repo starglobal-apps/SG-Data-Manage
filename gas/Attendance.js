@@ -12,14 +12,15 @@ function attGet_(req, user) {
     return str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === shift;
   });
 
+  var staff = lineStaffOf_(dept);
   var today = all.filter(function(r) { return str_(r.date) === date; });
-  if (today.length) return { ok: true, rows: today.map(attRowOut_), srn: str_(today[0].srn), prefill: false, prefillDate: '' };
+  if (today.length) return { ok: true, rows: today.map(attRowOut_), srn: str_(today[0].srn), supervisor: str_(today[0].supervisor) || staff.supervisor, incharge: str_(today[0].incharge) || staff.incharge, prefill: false, prefillDate: '' };
 
   var earlier = all.filter(function(r) { return str_(r.date) < date; });
-  if (!earlier.length) return { ok: true, rows: [], srn: '', prefill: false, prefillDate: '' };
+  if (!earlier.length) return { ok: true, rows: [], srn: '', supervisor: staff.supervisor, incharge: staff.incharge, prefill: false, prefillDate: '' };
   var latest = earlier.reduce(function(a, r) { return str_(r.date) > a ? str_(r.date) : a; }, '');
   var rows = earlier.filter(function(r) { return str_(r.date) === latest; });
-  return { ok: true, rows: rows.map(attRowOut_), srn: str_(rows[0].srn), prefill: true, prefillDate: latest };
+  return { ok: true, rows: rows.map(attRowOut_), srn: str_(rows[0].srn), supervisor: str_(rows[0].supervisor) || staff.supervisor, incharge: str_(rows[0].incharge) || staff.incharge, prefill: true, prefillDate: latest };
 }
 
 function attRowOut_(r) {
@@ -48,7 +49,12 @@ function attSave_(req, user) {
     clean.push({ role: role, hours: hours, count: count });
   }
 
-  var srn = str_(req.srn), stamp = nowStr_();
+  var srn = str_(req.srn), supervisor = str_(req.supervisor), incharge = str_(req.incharge), stamp = nowStr_();
+  var cat = deptCategory_(dept);
+  if (clean.length && shift === 'Final') {
+    if (!incharge) return fail_('VAL', 'Incharge ka naam zaroori hai');
+    if (cat === 'STITCH' && !supervisor) return fail_('VAL', 'Supervisor ka naam zaroori hai');
+  }
   var result = withLock_(function() {
     var existing = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) {
       return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === shift;
@@ -56,7 +62,7 @@ function attSave_(req, user) {
     deleteRows_(CFG.TABS.ATT_DAILY, existing.map(function(r) { return r._row; }));
     appendRows_(CFG.TABS.ATT_DAILY, clean.map(function(c) {
       return { id: uuid_(), date: date, factory: factory, dept: dept, shift: shift, role: c.role,
-               hours: c.hours, count: c.count, entered_by: userName_(user), entered_at: stamp, srn: srn };
+               hours: c.hours, count: c.count, entered_by: userName_(user), entered_at: stamp, srn: srn, supervisor: supervisor, incharge: incharge };
     }));
     return { replaced: existing.length, saved: clean.length };
   });
@@ -80,4 +86,17 @@ function attStatus_(req, user) {
     if (str_(r.entered_at) > agg[k].at) { agg[k].at = str_(r.entered_at); agg[k].by = str_(r.entered_by); }
   });
   return { ok: true, depts: Object.keys(agg).map(function(k) { return agg[k]; }) };
+}
+
+function lineStaffOf_(dept) {
+  var hit = mastersRows_().filter(function(r) { return str_(r.type) === 'LINE_STAFF' && str_(r.key) === dept; })[0];
+  return { supervisor: hit ? str_(hit.value) : '', incharge: hit ? str_(hit.extra) : '' };
+}
+
+// Names to suggest for supervisor / incharge: LINE_STAFF masters + whatever was typed in attendance recently
+function staffList_(req, user) {
+  var sup = {}, inc = {};
+  mastersRows_().forEach(function(r) { if (str_(r.type) !== 'LINE_STAFF') return; if (str_(r.value)) sup[str_(r.value)] = 1; if (str_(r.extra)) inc[str_(r.extra)] = 1; });
+  readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) { if (str_(r.supervisor)) sup[str_(r.supervisor)] = 1; if (str_(r.incharge)) inc[str_(r.incharge)] = 1; });
+  return { ok: true, supervisors: Object.keys(sup).sort(), incharges: Object.keys(inc).sort() };
 }

@@ -247,9 +247,13 @@
       html += '</div>';
     });
     if (locked && locked.length) html += '<div class="dc-group"><h3>Pehle se submitted (lock)</h3>' + locked.map(function (l) { return '<div class="dc-row">' + esc(l) + '</div>'; }).join('') + '</div>';
+    var reps = {};
+    rows.forEach(function (r) { if ((r.type === 'STITCH' || r.type === 'PACKING') && r.srn) reps[r.type + '|' + r.dept + '|' + r.srn] = true; });
+    if (Object.keys(reps).length) html += '<div class="dc-group"><h3>Day report (image) · group me bhejo</h3>' + Object.keys(reps).map(function (k) { var p = k.split('|'); return '<button class="btn ghost" data-rep="' + esc(k) + '" style="margin:4px 4px 0 0">📄 ' + esc(S.shortLine(p[1])) + ' · ' + esc(p[2]) + '</button>'; }).join('') + '</div>';
     if (!html) html = '<div class="empty">Is din ka koi data nahi</div>';
     $('#dc-out').innerHTML = html;
   }
+  $('#dc-out').addEventListener('click', function (e) { var b = e.target.closest('[data-rep]'); if (!b) return; var p = b.dataset.rep.split('|'); S.report(p[0], p[1], p[2]); });
   $('#btn-dc-preview').addEventListener('click', function () {
     api('day.build', { date: state.date, factory: state.factory, dept: $('#dc-dept').value })
       .then(function (d) {
@@ -263,7 +267,7 @@
   $('#btn-dc-submit').addEventListener('click', function () {
     if (!confirm('Submit karein? Iske baad is din ki entry lock ho jayegi.')) return;
     api('day.submit', { date: state.date, factory: state.factory, dept: $('#dc-dept').value })
-      .then(function (d) { toast('Submitted: ' + d.submitted + ' rows', 'ok'); S.invalidate(); S.back(); })
+      .then(function (d) { toast('Submitted: ' + d.submitted + ' rows', 'ok'); S.invalidateAll(); S.back(); setTimeout(function () { if (confirm('Day report image group me bhejein?')) S.reportPicker(); }, 400); })
       .catch(function (e) { toast(e.message, 'bad', 6000); });
   });
 

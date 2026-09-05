@@ -97,9 +97,9 @@
     if (d.events) html += task({ go: 'manpower', ic: 'mp', sub: true, cls: 'done', n: 'Manpower change', s: d.events + ' event aaj', v: '' });
     else html += '<button class="lnk tl-more" data-go="manpower">+ Manpower change (koi gaya / late aaya)</button>';
     var sub = {}; Object.keys(d.statuses).forEach(function (k) { sub[d.statuses[k]] = (sub[d.statuses[k]] || 0) + 1; });
-    if (lockedLines < nAll) {
-      html += '<div class="tl-label">Shaam</div>' + hour('End', '', now < 17.5, task({ go: 'dayclose', ic: 'moon', cls: '', n: 'Din band karo', s: Object.keys(sub).length ? Object.keys(sub).map(function (k) { return sub[k] + ' ' + k; }).join(' · ') : 'Sab bhar ke submit karo', v: lockedLines ? lockedLines + '/' + nAll : '' }));
-    }
+    html += '<div class="tl-label">Shaam</div>';
+    if (lockedLines < nAll) html += hour('End', '', now < 17.5, task({ go: 'dayclose', ic: 'moon', cls: '', n: 'Din band karo', s: Object.keys(sub).length ? Object.keys(sub).map(function (k) { return sub[k] + ' ' + k; }).join(' · ') : 'Sab bhar ke submit karo', v: lockedLines ? lockedLines + '/' + nAll : '' }));
+    if (doneSlots) html += task({ go: 'report', ic: 'table', sub: true, cls: '', n: 'Day report (image)', s: 'Line · SRN ka Making / Packing report group me', v: '' });
     if (!html) html = '<div class="empty">Aaj ka sab kaam ho gaya ✓</div>';
     $('#home-timeline').innerHTML = '<div class="tl">' + html + '</div>';
     if (!stale && (current || missed.length)) S.swr('hour.get', { date: state.date, factory: state.factory, slot: (current ? current.s : missed[0].s).key }, 10000).promise.catch(function () {});
@@ -161,6 +161,7 @@
     else if (p[0] === 'table') S.screens.hourly(state.line, p[1]);
     else if (go === 'manpower') S.screens.manpower(state.line);
     else if (go === 'dayclose') S.screens.dayclose('');
+    else if (go === 'report') S.reportPicker();
     else if (go === 'review') S.tab('review');
     else if (go === 'showOT') { ui.showOT = true; S.refresh(); }
   };

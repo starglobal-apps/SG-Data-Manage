@@ -343,3 +343,7 @@ h2 { color: #4b5563; }
 
 .wa-prev { white-space: pre-wrap; word-break: break-word; background: #e7f7ec; border-radius: 12px; padding: 12px; font: 13px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0 0 8px; max-height: 45vh; overflow-y: auto; }
 a.btn { color: #fff; }
+
+.rep-wrap { background: #e5e7eb; border-radius: 12px; padding: 8px; overflow: auto; }
+.rep-wrap canvas { width: 100%; height: auto; display: block; background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.rep-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }

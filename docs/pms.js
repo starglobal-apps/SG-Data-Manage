@@ -12,7 +12,7 @@
   function row(r, pinned) {
     var b = bad(r), any = b.st || b.en || b.pk;
     var pin = pinned ? '<button class="pin" data-unpin="' + esc(r.dept + '|' + r.srn) + '">✕</button>' : (P.q ? '<button class="pin" data-pin="' + esc(r.dept + '|' + r.srn) + '">+ add</button>' : '');
-    return '<div class="pms' + (any ? ' flag' : '') + '"><div class="pms-h"><span class="srn">' + esc(r.srn) + '</span><span class="it">' + esc(r.item) + '</span>' + (r.lastLoad ? '<span class="dt">' + esc(S.fmtDay(r.lastLoad)) + '</span>' : '') + pin + '</div>' +
+    return '<div class="pms' + (any ? ' flag' : '') + '" data-rep="' + esc((r.floor ? 'PACKING' : 'STITCH') + '|' + r.dept + '|' + r.srn) + '"><div class="pms-h"><span class="srn">' + esc(r.srn) + '</span><span class="it">' + esc(r.item) + '</span>' + (r.lastLoad ? '<span class="dt">' + esc(S.fmtDay(r.lastLoad)) + '</span>' : '') + pin + '</div>' +
       '<div class="pms-n"><div' + (b.st ? ' class="bad"' : '') + '><div class="k">Loading</div><div class="v">' + r.loaded + '</div></div>' +
       '<div' + (b.st ? ' class="bad"' : '') + '><div class="k">Stitch</div><div class="v">' + r.stitched + '</div></div>' +
       '<div' + (b.en ? ' class="bad"' : '') + '><div class="k">End pass</div><div class="v">' + r.endPass + '</div></div>' +
@@ -70,7 +70,8 @@
     t = setTimeout(function () { P.q = q; load(); }, 350);
   });
   $('#tab-pms').addEventListener('click', function (e) {
-    var b = e.target.closest('button'); if (!b) return;
+    var b = e.target.closest('button');
+    if (!b) { var card = e.target.closest('[data-rep]'); if (card && card.dataset.rep.split('|')[1]) { var p = card.dataset.rep.split('|'); S.report(p[0], p[1], p[2]); } return; }
     if (b.dataset.clear) { P.q = ''; $('#pms-q').value = ''; load(); }
     else if (b.dataset.pin) { if (P.watch.indexOf(b.dataset.pin) < 0) P.watch.push(b.dataset.pin); saveWatch(); S.toast('Watch list me add · PMS tab me neeche dikhega', 'ok'); }
     else if (b.dataset.unpin) { P.watch = P.watch.filter(function (k) { return k !== b.dataset.unpin; }); saveWatch(); load(); }

@@ -316,7 +316,15 @@
 
   // ---------- attendance form (pushed screen) ----------
 
-  var att = { dept: '', shift: 'Final', srn: '', srns: [] };
+  var att = { dept: '', shift: 'Final', srn: '', srns: [], staff: null };
+  function loadStaff() {
+    if (att.staff) return;
+    api('staff.list', {}, { quiet: true }).then(function (d) {
+      att.staff = d;
+      $('#staff-sup').innerHTML = d.supervisors.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+      $('#staff-inc').innerHTML = d.incharges.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+    }).catch(function () {});
+  }
   function attType() { var c = deptCategory(att.dept); return c === 'PACKING' ? 'PACKING' : 'STITCH'; }
   function renderAttSrns() {
     var box = $('#att-srn'), list = att.srns || [];
@@ -349,7 +357,8 @@
     $('#att-dept').innerHTML = deptOptions(depts, att.dept);
     $('#att-shift').innerHTML = state.masters.shifts.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('');
     push('att', (att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
-    att.srn = ''; loadAttendance();
+    $('#att-sup-wrap').hidden = attType() === 'PACKING';
+    att.srn = ''; loadStaff(); loadAttendance();
   }
   function shiftDef() { return state.masters.shifts.filter(function (s) { return s.key === att.shift; })[0] || state.masters.shifts[0]; }
   function loadAttendance() {
@@ -357,6 +366,7 @@
     api('att.get', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift })
       .then(function (d) {
         att.srn = d.srn || ''; loadAttSrns();
+        $('#att-sup').value = d.supervisor || ''; $('#att-inc').value = d.incharge || '';
         renderAttRows(d.rows);
         if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo'; }
         else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). Badal ke phir Save kar sakte ho.'; }
@@ -388,7 +398,12 @@
     var rows = collectAttRows().filter(function (r) { return r.count > 0; });
     if (!rows.length && !confirm('Koi count nahi bhara. Khali save karein?')) return;
     if (!att.srn && (att.srns || []).length) { toast('Pehle SRN chuno', 'bad'); return; }
-    api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, rows: rows })
+    var sup = $('#att-sup').value.trim(), inc = $('#att-inc').value.trim();
+    if (rows.length && att.shift === 'Final') {
+      if (attType() !== 'PACKING' && !sup) { toast('Supervisor ka naam likho', 'bad'); $('#att-sup').focus(); return; }
+      if (!inc) { toast('Incharge ka naam likho', 'bad'); $('#att-inc').focus(); return; }
+    }
+    api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, rows: rows })
       .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidateAll(); back(); if (!d.queued) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400); })
       .catch(function (e) { toast(e.message, 'bad'); });
   }
@@ -505,7 +520,7 @@
   $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
   $('#hdr-refresh').addEventListener('click', hardRefresh);
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
-  $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; loadAttendance(); });
+  $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; $('#att-sup-wrap').hidden = attType() === 'PACKING'; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
   $('#att-rows').addEventListener('input', updateAttTotals);
   $('#att-rows').addEventListener('click', function (e) {

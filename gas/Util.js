@@ -75,6 +75,7 @@ function appendRows_(name, objs) {
   if (!objs || !objs.length) return;
   var sh = tab_(name, true);
   var head = CFG.HEADERS[name];
+  if (sh.getLastColumn() < head.length) ensureHeaders_(name); // a column was added to CFG after the tab was created
   var rows = objs.map(function(o) {
     return head.map(function(h) { var v = o[h]; return (v === undefined || v === null) ? '' : v; });
   });
