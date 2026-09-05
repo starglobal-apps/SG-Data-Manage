@@ -401,38 +401,44 @@
     return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] + ', ' + pad(d.getDate()) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + ' ' + d.getFullYear();
   }
   function ampm(hhmm) { var m = (hhmm || '').match(/^(\d{1,2}):(\d{2})/); if (!m) return hhmm || ''; var h = +m[1]; return (h % 12 || 12) + ':' + m[2] + ' ' + (h >= 12 ? 'PM' : 'AM'); }
+  function floorOf(dept) {
+    var lf = M('LINE_FLOOR').filter(function (x) { return x.key === dept; })[0];
+    var m = lf && lf.value.match(/(Ground|First|Second|Third)/i);
+    return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() + ' floor' : '';
+  }
   function waAttendanceText(d, shift) {
     shift = shift || 'Final';
-    var out = [], total = 0, nLines = 0, nPack = 0, now = new Date();
-    out.push('🏭 *FAC' + state.factory + ' — ' + (shift === 'Final' ? 'ATTENDANCE' : shift.toUpperCase() + ' ATTENDANCE') + '*');
-    out.push('📅 ' + longDate(state.date) + '   ⏰ ' + (now.getHours() % 12 || 12) + ':' + pad(now.getMinutes()) + ' ' + (now.getHours() >= 12 ? 'PM' : 'AM'));
+    var lines = d.depts.filter(function (x) { return d.att[x.dept + '|' + shift]; });
+    if (!lines.length) return '';
+    var floors = lines.map(function (x) { return floorOf(x.dept); }).filter(String);
+    var oneFloor = floors.length && floors.every(function (f) { return f === floors[0]; }) ? floors[0] : '';
+    var p = state.date.split('-'), dateStr = pad(+p[2]) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+p[1] - 1] + ' ' + p[0];
+    var out = [], grand = 0;
+    out.push('Date:- ' + dateStr + (oneFloor ? ' - ' + oneFloor : '') + (shift !== 'Final' ? ' - ' + shift : '') + ' - FAC' + state.factory);
     out.push('');
-    d.depts.forEach(function (x) {
-      var mp = d.att[x.dept + '|' + shift]; if (!mp) return;
-      total += mp; if (x.cat === 'PACKING') nPack++; else nLines++;
-      var roles = (d.attRoles && d.attRoles[x.dept + '|' + shift]) || {};
-      var rs = Object.keys(roles).map(function (r) { return (ROLE_SHORT[r] || r) + ' ' + roles[r]; }).join(' · ');
-      out.push('*' + shortLine(x.dept) + '*' + (d.attSrn && d.attSrn[x.dept] ? '  ·  ' + d.attSrn[x.dept] : ''));
-      out.push('👥 *' + mp + '*' + (rs ? '   |   ' + rs : ''));
+    lines.forEach(function (x) {
+      var mp = d.att[x.dept + '|' + shift], roles = (d.attRoles && d.attRoles[x.dept + '|' + shift]) || {};
+      grand += mp;
+      var fl = !oneFloor ? floorOf(x.dept) : '';
+      out.push(shortLine(x.dept) + (d.attSrn && d.attSrn[x.dept] ? ' - ' + d.attSrn[x.dept] : '') + (fl ? ' (' + fl + ')' : ''));
+      Object.keys(roles).forEach(function (r) { out.push(r + ' - ' + roles[r]); });
+      out.push('Total manpower ' + mp);
       out.push('');
     });
-    if (!total) return '';
-    out.push('━━━━━━━━━━━━━━');
-    out.push('*TOTAL: ' + total + ' manpower*   (' + nLines + ' line' + (nLines !== 1 ? 's' : '') + (nPack ? ' + ' + nPack + ' packing' : '') + ')');
+    if (lines.length > 1) { out.push('Grand total ' + grand + ' manpower'); out.push(''); }
     var evs = (d.eventList || []);
     if (shift === 'Final' && evs.length) {
-      out.push('');
-      out.push('⚠️ *Changes today*');
+      out.push('Changes:');
       var byDept = {};
       evs.forEach(function (e) { (byDept[e.dept] = byDept[e.dept] || []).push(e); });
       Object.keys(byDept).forEach(function (dept) {
-        var parts = byDept[dept].map(function (e) { return e.count + ' ' + (ROLE_SHORT[e.role] || e.role) + ' ' + (EV_LABEL[e.event] || e.event) + (e.time ? ' (' + ampm(e.time) + ')' : ''); });
+        var parts = byDept[dept].map(function (e) { return e.count + ' ' + e.role + ' ' + (EV_LABEL[e.event] || e.event) + (e.time ? ' (' + ampm(e.time) + ')' : ''); });
         var nowMp = d.mpNow && d.mpNow[dept];
-        out.push('• *' + shortLine(dept) + '*: ' + parts.join(', ') + (nowMp !== undefined ? ' → ab *' + nowMp + '*' : ''));
+        out.push(shortLine(dept) + ' - ' + parts.join(', ') + (nowMp !== undefined ? ' - ab ' + nowMp : ''));
       });
+      out.push('');
     }
-    out.push('');
-    out.push('— ' + (state.user.name || ''));
+    out.push('- ' + (state.user.name || ''));
     return out.join('\n');
   }
   // fresh data -> preview sheet -> WhatsApp (the button click is the user gesture that opens the app)
