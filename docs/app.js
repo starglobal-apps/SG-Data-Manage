@@ -504,8 +504,8 @@
       evs.forEach(function (e) { (byDept[e.dept] = byDept[e.dept] || []).push(e); });
       Object.keys(byDept).forEach(function (dept) {
         var parts = byDept[dept].map(function (e) { return e.event === 'LINE_CLOSED' ? 'Line band' + (e.time ? ' ' + ampm(e.time) : '') : e.count + ' ' + e.role + ' ' + (EV_LABEL[e.event] || e.event) + (e.time ? ' (' + ampm(e.time) + ')' : ''); });
-        var nowMp = d.mpNow && d.mpNow[dept];
-        out.push(shortLine(dept) + ' - ' + parts.join(', ') + (nowMp !== undefined ? ' - ab ' + nowMp : ''));
+        var nowMp = d.mpNow && d.mpNow[dept], isClosed = byDept[dept].some(function (e) { return e.event === 'LINE_CLOSED'; });
+        out.push(shortLine(dept) + ' - ' + parts.join(', ') + (nowMp !== undefined && !isClosed ? ' - ab ' + nowMp : ''));
       });
       out.push('');
     }
