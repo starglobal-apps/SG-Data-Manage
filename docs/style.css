@@ -369,3 +369,6 @@ a.btn { color: #fff; }
 .tr-role input { width: 70px; text-align: center; font-weight: 700; min-height: 38px; padding: 6px; }
 .alloc-h { font-weight: 800; margin: 10px 0 4px; display: flex; justify-content: space-between; } .alloc-h span { color: var(--muted); font-weight: 600; font-size: 12px; }
 .alloc-h.bad span { color: var(--bad); } .alloc-h.ok span { color: var(--ok); }
+
+.chips button.qc { padding-right: 8px; } .chips button .x { margin-left: 6px; opacity: .6; }
+.staff-add { display: flex; gap: 6px; margin: 6px 0 4px; } .staff-add input { flex: 1; } .staff-add .btn { min-height: 40px; padding: 0 14px; }

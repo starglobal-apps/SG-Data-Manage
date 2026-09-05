@@ -46,7 +46,8 @@
     var inputs = type === 'ENDLINE'
       ? '<input class="f-chk sm" type="number" inputmode="numeric" placeholder="chk" value="' + (r.checked || '') + '"><input class="f-pass sm" type="number" inputmode="numeric" placeholder="pass" value="' + (r.pass || '') + '"><input class="f-rej sm" type="number" inputmode="numeric" placeholder="rej" value="' + (r.reject || '') + '">'
       : '<input class="f-qty" type="number" inputmode="numeric" placeholder="' + (type === 'PACKING' ? 'pcs' : 'qty') + '" value="' + (r.qty || '') + '">' + (type === 'PACKING' ? '<input class="f-ctn sm" type="number" inputmode="numeric" placeholder="ctn" value="' + (r.cartons || '') + '">' : '');
-    var checker = type === 'ENDLINE' ? '<div class="chk-name">' + icon('qc') + '<input class="f-checker" type="text" placeholder="checker ka naam" value="' + esc(r.checker || d.checker || '') + '"></div>' : '';
+    var qcs = d.qcNames || [], defQc = r.checker || d.checker || (qcs.length === 1 ? qcs[0] : '');
+    var checker = type === 'ENDLINE' ? '<div class="chk-name">' + icon('qc') + (qcs.length ? '<select class="f-checker">' + (defQc && qcs.indexOf(defQc) < 0 ? '<option>' + esc(defQc) + '</option>' : '') + qcs.map(function (n) { return '<option' + (n === defQc ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' : '<input class="f-checker" type="text" list="staff-qc" placeholder="checker ka naam" value="' + esc(defQc) + '">') + '</div>' : '';
     if (type === 'PACKING') {
       // two lines: [name · mp · actions] / [SRN search · pcs · ctn]
       return '<div class="hline pack ' + cls + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' +

@@ -122,7 +122,8 @@
         <div class="field"><label>Supervisor *</label><input id="att-sup" type="text" list="staff-sup" placeholder="naam" autocomplete="off"></div>
         <div class="field" id="att-inc-wrap"><label>Incharge *</label><input id="att-inc" type="text" list="staff-inc" placeholder="naam" autocomplete="off"></div>
       </div>
-      <datalist id="staff-sup"></datalist><datalist id="staff-inc"></datalist>
+      <div id="att-qc-wrap" hidden><label>Endline QC ke naam <span id="att-qc-need" class="muted"></span></label><div id="att-qc" class="chips" style="flex-wrap:wrap"></div></div>
+      <datalist id="staff-sup"></datalist><datalist id="staff-inc"></datalist><datalist id="staff-qc"></datalist>
       <div id="att-banner" class="banner" hidden></div>
     </div>
     <table class="tbl">
@@ -180,6 +181,10 @@
     <div id="hour-head" class="hour-head"></div>
     <div id="hour-list"></div>
     <div class="sticky-bottom"><button id="btn-hour-save" class="btn primary big">Save all lines</button></div>
+  </section>
+
+  <section id="scr-staff" class="screen" hidden>
+    <div id="staff-body"></div>
   </section>
 
   <section id="scr-users" class="screen" hidden>
@@ -246,6 +251,7 @@
 <script src="data.js"></script>
 <script src="hour.js"></script>
 <script src="users.js"></script>
+<script src="staff.js"></script>
 <script src="pms.js"></script>
 <script src="report.js"></script>
 <script src="modules.js"></script>

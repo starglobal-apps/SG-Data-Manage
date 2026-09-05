@@ -23,7 +23,7 @@ var CFG = {
   HEADERS: {
     USERS:           ['user_id', 'name', 'pin', 'role', 'factory', 'depts', 'active', 'created_at'],
     MASTERS:         ['type', 'key', 'value', 'factory', 'extra', 'active'],
-    ATT_DAILY:       ['id', 'date', 'factory', 'dept', 'shift', 'role', 'hours', 'count', 'entered_by', 'entered_at', 'srn', 'supervisor', 'incharge'],
+    ATT_DAILY:       ['id', 'date', 'factory', 'dept', 'shift', 'role', 'hours', 'count', 'entered_by', 'entered_at', 'srn', 'supervisor', 'incharge', 'qc_names'],
     HOURLY_LOG:      ['id', 'date', 'factory', 'line', 'dept', 'srn', 'floor', 'type', 'shift', 'slot', 'qty', 'checked', 'pass', 'reject', 'cartons', 'pcs_per_ctn', 'checker', 'entered_by', 'entered_at'],
     MANPOWER_EVENTS: ['id', 'date', 'factory', 'dept', 'role', 'event', 'count', 'time', 'eff_hours', 'note', 'entered_by', 'entered_at'],
     DAY_SUMMARY:     ['id', 'date', 'factory', 'line', 'dept', 'type', 'srn', 'shift', 'payload', 'status', 'flags', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'remark'],
@@ -162,6 +162,8 @@ CFG.FINAL_TARGETS = {
   ATT_OT:     { srcKey: 'ATT', sheet: 'OT att', keyCol: 3, minRow: 2,
     cols: { 3: 'date', 4: 'factory', 5: 'dept', 7: 'role', 8: 'hours', 9: 'count', 11: 'supervisor' } }
 };
+
+CFG.STAFF_KINDS = ['Supervisor', 'Incharge', 'Endline QC'];
 
 // Only these dept categories are active in the app for now (attendance, hourly, home)
 CFG.ACTIVE_CATS = ['STITCH', 'PACKING'];

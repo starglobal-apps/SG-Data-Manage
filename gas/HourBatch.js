@@ -64,7 +64,7 @@ function hourGet_(req, user) {
   var L = ledger_();
   var st = statusMap_(date, factory), attSrn = attSrnMap_(date, factory);
   var attRows = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
-  var hasAtt = {}; attRows.forEach(function(r) { hasAtt[str_(r.dept)] = true; });
+  var hasAtt = {}, qcOf = {}; attRows.forEach(function(r) { hasAtt[str_(r.dept)] = true; if (str_(r.qc_names)) qcOf[str_(r.dept)] = csv_(r.qc_names); });
   // only lines / floors whose attendance was entered that day
   var depts = writableDepts_(user, factory).filter(function(d) { return (d.cat === 'STITCH' || d.cat === 'PACKING') && hasAtt[d.dept]; });
   var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
@@ -85,7 +85,7 @@ function hourGet_(req, user) {
 
   var out = depts.map(function(d) {
     var types = d.cat === 'STITCH' ? ['STITCH', 'ENDLINE'] : ['PACKING'];
-    var o = { dept: d.dept, cat: d.cat, srns: {}, rows: {}, lastSrn: {}, locked: {}, attSrn: attSrn[d.dept] || '',
+    var o = { dept: d.dept, cat: d.cat, srns: {}, rows: {}, lastSrn: {}, locked: {}, attSrn: attSrn[d.dept] || '', qcNames: qcOf[d.dept] || [],
               mp: mpAtSlot_(attRows, events, d.dept, slot), mpBase: attRows.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === 'Final'; }).reduce(function(t, r) { return t + num_(r.count); }, 0),
               checker: lastChecker[d.dept] ? lastChecker[d.dept].v : '',
               floor: lastFloor[d.dept] ? lastFloor[d.dept].v : (lineFloor[d.dept] ? lineFloor[d.dept].value : '') };

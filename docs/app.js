@@ -323,8 +323,36 @@
       att.staff = d;
       $('#staff-sup').innerHTML = d.supervisors.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
       $('#staff-inc').innerHTML = d.incharges.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+      $('#staff-qc').innerHTML = (d.qcs || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+      renderQc();
     }).catch(function () {});
   }
+  var QC_ROLES = ['End Line Checker', 'Line Qc.', 'Final Checker'];
+  function qcNeed() { var n = 0; collectAttRows().forEach(function (r) { if (QC_ROLES.indexOf(r.role) >= 0) n += r.count; }); return n; }
+  function renderQc() {
+    var need = qcNeed(), wrap = $('#att-qc-wrap');
+    wrap.hidden = !need || attType() === 'PACKING';
+    if (wrap.hidden) return;
+    var all = (att.staff && att.staff.qcs) || [], sel = att.qc || [];
+    $('#att-qc-need').textContent = '(' + sel.length + ' / ' + need + ' chuno)';
+    $('#att-qc').innerHTML = all.map(function (n) { return '<button type="button" data-qc="' + esc(n) + '" class="' + (sel.indexOf(n) >= 0 ? 'on' : '') + '">' + esc(n) + '</button>'; }).join('') +
+      '<button type="button" data-qcadd="1" class="qc" style="border-style:dashed">+ naya naam</button>';
+  }
+  $('#att-qc').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.qcadd) {
+      askText('Endline QC ka naam', { ok: 'Add' }).then(function (n) {
+        if (!n) return;
+        api('staff.save', { name: n, kind: 'Endline QC' }).then(function () { att.staff = null; att.qc = (att.qc || []).concat([n]); loadStaff(); }).catch(function (er) { toast(er.message, 'bad'); });
+      });
+      return;
+    }
+    var n = b.dataset.qc, sel = att.qc || [];
+    if (sel.indexOf(n) >= 0) att.qc = sel.filter(function (x) { return x !== n; });
+    else if (sel.length >= qcNeed()) { toast('Utne hi naam chuno jitne QC hain (' + qcNeed() + ')', 'bad'); return; }
+    else att.qc = sel.concat([n]);
+    renderQc();
+  });
   function attType() { var c = deptCategory(att.dept); return c === 'PACKING' ? 'PACKING' : 'STITCH'; }
   function renderAttSrns() {
     var box = $('#att-srn'), list = att.srns || [];
@@ -367,7 +395,8 @@
       .then(function (d) {
         att.srn = d.srn || ''; loadAttSrns();
         $('#att-sup').value = d.supervisor || ''; $('#att-inc').value = d.incharge || '';
-        renderAttRows(d.rows);
+        att.qc = d.qc_names || [];
+        renderAttRows(d.rows); renderQc();
         if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo'; }
         else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). Badal ke phir Save kar sakte ho.'; }
       })
@@ -401,12 +430,13 @@
   }
   function saveAttendance2(rows) {
     if (!att.srn && (att.srns || []).length) { toast('Pehle SRN chuno', 'bad'); return; }
-    var sup = $('#att-sup').value.trim(), inc = $('#att-inc').value.trim();
+    var sup = $('#att-sup').value.trim(), inc = $('#att-inc').value.trim(), need = qcNeed(), qc = att.qc || [];
     if (rows.length && att.shift === 'Final') {
       if (!sup) { toast('Supervisor ka naam likho', 'bad'); $('#att-sup').focus(); return; }
       if (attType() !== 'PACKING' && !inc) { toast('Incharge ka naam likho', 'bad'); $('#att-inc').focus(); return; }
+      if (attType() !== 'PACKING' && need && qc.length !== need) { toast('Endline QC ke ' + need + ' naam chuno (abhi ' + qc.length + ')', 'bad'); return; }
     }
-    api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, rows: rows })
+    api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, qc_names: qc, rows: rows })
       .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidateAll(); back(); if (!d.queued) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400); })
       .catch(function (e) { toast(e.message, 'bad'); });
   }
@@ -518,6 +548,7 @@
     var u = state.user, q = queue();
     var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : ' · dono factory') + (u.depts && u.depts.length ? ' · ' + u.depts.length + ' dept' : '') + '</div></div></div>';
     if (u.role === 'Admin') html += '<h2>Admin</h2><div class="menu"><div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users & access</div><div class="s">Naya user, PIN, lines / floors, active</div></div>' + icon('chev') + '</div></div>';
+    html += '<h2>Staff</h2><div class="menu"><div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Staff names</div><div class="s">Supervisor · Incharge · Endline QC</div></div>' + icon('chev') + '</div></div>';
     html += '<h2>Reports</h2><div class="menu"><div class="task" data-m="print"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Print SRN report (PDF)</div><div class="s">SRN chuno → saari lines, saare pages</div></div>' + icon('chev') + '</div></div>';
     html += '<h2>Setting</h2><div class="menu">';
     html += '<div class="task" data-m="ctx"><div class="ic">' + icon('home') + '</div><div class="b"><div class="n">Entry / Data ki line</div><div class="s">' + esc(state.line || '—') + ' · FAC' + esc(state.factory) + '</div></div>' + icon('chev') + '</div>';
@@ -546,6 +577,7 @@
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
     else if (m === 'print') SG.printSrn();
+    else if (m === 'staff') screens.staff();
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
     else if (m === 'refresh') api('orders.refresh').then(function () { toast('Loading refresh ho gayi', 'ok'); invalidate(); }).catch(function (er) { toast(er.message, 'bad'); });
     else if (m === 'masters') loadMasters().then(function () { ensureLine(); toast('Masters reload ho gaye', 'ok'); }).catch(function (er) { toast(er.message, 'bad'); });
@@ -564,11 +596,11 @@
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
   $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; $('#att-inc-wrap').hidden = attType() === 'PACKING'; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
-  $('#att-rows').addEventListener('input', updateAttTotals);
+  $('#att-rows').addEventListener('input', function () { updateAttTotals(); renderQc(); });
   $('#att-rows').addEventListener('click', function (e) {
     var b = e.target.closest('.st-dec, .st-inc'); if (!b) return;
     var inp = $('.att-count', b.parentNode), v = Number(inp.value || 0) + (b.classList.contains('st-inc') ? 1 : -1);
-    inp.value = v > 0 ? v : ''; updateAttTotals();
+    inp.value = v > 0 ? v : ''; updateAttTotals(); renderQc();
   });
   $('#btn-att-save').addEventListener('click', saveAttendance);
 
