@@ -140,7 +140,7 @@
             var dd = H.data.depts[Number(row.dataset.i)], sel = $('.f-srn', row) || $('.srnp-in', row);
             var f = fails.filter(function (x) { return x.dept === dd.dept && x.type === row.dataset.type && sel && x.srn === sel.value; })[0];
             row.classList.toggle('bad', !!f); var m = $('.msg.err', row); if (m) m.remove();
-            if (f) row.insertAdjacentHTML('beforeend', '<span class="msg err">' + esc(f.message) + '</span>');
+            if (f) { row.classList.add('wrap'); row.insertAdjacentHTML('beforeend', '<span class="msg err">' + esc(f.message) + '</span>'); }
           });
           toast(S.shortLine(fails[0].dept) + ': ' + fails[0].message + (d.saved ? ' · baaki ' + d.saved + ' saved' : ''), 'bad', 9000);
           H.dirty = true; return;
@@ -261,6 +261,7 @@
   $('#hour-list').addEventListener('input', function (e) {
     var row = e.target.closest('.hline'); if (!row) return;
     H.dirty = true;
+    if (row.classList.contains('bad')) { row.classList.remove('bad'); var em = $('.msg.err', row); if (em) em.remove(); }
     if (row.dataset.type === 'ENDLINE') {
       var c = $('.f-chk', row), r = $('.f-rej', row), p = $('.f-pass', row);
       if (e.target === p) p.dataset.touched = '1'; else if (p && !p.dataset.touched) p.value = Math.max(0, num(c.value) - num(r.value));

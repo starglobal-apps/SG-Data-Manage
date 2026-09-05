@@ -127,7 +127,7 @@ function chainCheck_(L, type, dept, srn, add) {
   if (used + num_(add) > limit) {
     var left = Math.max(0, limit - used);
     return { ok: false, level: 'block', limit: limit, used: used,
-      msg: srn + ' ki loading ' + limit + ' hai, ' + used + ' ban chuka — ab sirf ' + left + ' aur ho sakta hai (' + (used + num_(add) - limit) + ' zyada bhara)' };
+      msg: srn + ' ki loading ' + limit + ' hai, ' + used + ' ban chuka — ab sirf ' + left + ' aur ho sakta hai' };
   }
   return { ok: true, limit: limit, used: used, balance: limit - used - num_(add) };
 }
