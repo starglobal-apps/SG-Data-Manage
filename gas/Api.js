@@ -45,6 +45,8 @@ function routes_() {
     'hour.get':       hourGet_,
     'hour.save':      hourSave_,
     'line.save':      lineSave_,
+    'audit.recent':   function(req, user) { if (!isAdmin_(user)) return fail_('PERM', 'Sirf admin'); return { ok: true, rows: readRecent_(CFG.TABS.AUDIT_LOG, num_(req.n) || 40) }; },
+    'hourly.rows':    function(req, user) { if (!isAdmin_(user)) return fail_('PERM', 'Sirf admin'); return { ok: true, last: tab_(CFG.TABS.HOURLY_LOG, true).getLastRow(), rows: readRecent_(CFG.TABS.HOURLY_LOG, num_(req.n) || 60) }; },
     'factory.today':  factoryToday_,
     'line.today':     lineToday_,
     'review.count':   reviewCount_,
