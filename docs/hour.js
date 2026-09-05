@@ -142,34 +142,58 @@
     };
   }
 
-  // ---- transfer sheet ----
+  // ---- transfer sheet: my line -> another data recorder, any number of roles ----
+  function availByRole(d) {
+    // this hour's manpower per role: attendance roles ± today's events for this dept
+    var ft = S.factoryData() || {}, roles = (ft.attRoles && ft.attRoles[d.dept + '|Final']) || {}, out = {};
+    Object.keys(roles).forEach(function (r) { out[r] = roles[r]; });
+    (ft.eventList || []).forEach(function (e) {
+      if (e.dept !== d.dept) return;
+      var add = e.event === 'EXTRA' || e.event === 'TRANSFER_IN' || e.event === 'LATE_JOIN';
+      out[e.role] = (out[e.role] || 0) + (add ? e.count : -e.count);
+    });
+    return out;
+  }
   function trSheet(d) {
-    var all = S.M('DEPT').filter(function (x) { return x.factory === state.factory && x.key !== d.dept; });
-    var lines = all.filter(function (x) { return x.extra === 'STITCH'; }), floors = all.filter(function (x) { return x.extra === 'PACKING'; });
-    var opt = function (list) { return list.map(function (x) { return '<option value="' + esc(x.key) + '">' + esc(S.shortLine(x.key)) + '</option>'; }).join(''); };
-    var html = '<div class="row"><div class="field"><label>Role</label><select id="t-role">' + S.rolesForDept(d.dept).map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field small"><label>Kitne</label><input id="t-count" type="number" inputmode="numeric" value="1" min="1"></div></div>' +
-      '<label>Kahan bhejna hai</label><select id="t-to"><optgroup label="Lines">' + opt(lines) + '</optgroup>' + (floors.length ? '<optgroup label="Packing floors">' + opt(floors) + '</optgroup>' : '') + '</select>' +
+    var avail = availByRole(d), roles = Object.keys(avail).filter(function (r) { return avail[r] > 0; });
+    if (!roles.length) roles = S.rolesForDept(d.dept);
+    var html = '<div class="hint" style="margin:0 0 6px">Se: <b>' + esc(S.shortLine(d.dept)) + '</b> · abhi ' + d.mp + ' mp</div>' +
+      '<label>Kis data recorder ko</label><select id="t-to"><option value="">Loading…</option></select>' +
+      '<label>Kitne log (role-wise)</label><div id="t-roles">' + roles.map(function (r) { return '<div class="tr-role"><span class="n">' + esc(r) + '</span><span class="av">' + (avail[r] || 0) + ' hai</span><input type="number" inputmode="numeric" min="0" max="' + (avail[r] || 99) + '" placeholder="0" data-role="' + esc(r) + '"></div>'; }).join('') + '</div>' +
       '<div class="row"><div class="field small"><label>Time</label><input id="t-time" type="time" value="' + (S.isToday() ? nowTime() : slotTime()) + '"></div><div class="field"><label>Note</label><input id="t-note" type="text" placeholder="optional"></div></div>' +
-      '<p class="hint">Dusri line ka recorder accept karega, tab uski line me manpower judegi. Aapki line se abhi hat jayegi.</p>' +
-      '<button class="btn primary big" id="t-save">Transfer bhejo</button>';
+      '<p class="hint">Wo recorder decide karega kis line / floor par lagana hai. Aapki line se abhi hat jayenge.</p>' +
+      '<button class="btn primary big" id="t-save">Transfer bhejo · <span id="t-total">0</span></button>';
     S.sheet.open(S.shortLine(d.dept) + ' → transfer', html);
-    $('#sheet-content').onclick = function (e) {
+    api('users.recorders', { factory: state.factory }, { quiet: true }).then(function (r) {
+      var sel = $('#t-to'); if (!sel) return;
+      sel.innerHTML = '<option value="">— recorder chuno —</option>' + r.users.map(function (u) { return '<option value="' + esc(u.user_id) + '">' + esc(u.name) + (u.depts.length ? ' (' + u.depts.map(S.shortLine).join(', ') + ')' : '') + '</option>'; }).join('');
+    }).catch(function (e) { toast(e.message, 'bad'); });
+    var c = $('#sheet-content');
+    c.oninput = function () { var t = 0; $$('#t-roles input').forEach(function (i) { t += num(i.value); }); var el = $('#t-total'); if (el) el.textContent = t; };
+    c.onclick = function (e) {
       if (!e.target.closest('#t-save')) return;
-      var p = { date: state.date, factory: state.factory, from_dept: d.dept, to_dept: $('#t-to').value, role: $('#t-role').value, count: num($('#t-count').value), time: $('#t-time').value, note: $('#t-note').value.trim() };
-      if (p.count < 1) { toast('Count 1 ya zyada', 'bad'); return; }
-      api('transfer.create', p).then(function () { toast('Transfer bheja · ' + S.shortLine(p.to_dept) + ' accept karega', 'ok'); S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); load(true); }).catch(function (er) { toast(er.message, 'bad'); });
+      var items = $$('#t-roles input').map(function (i) { return { role: i.dataset.role, count: num(i.value) }; }).filter(function (x) { return x.count > 0; });
+      var over = items.filter(function (x) { return avail[x.role] !== undefined && x.count > avail[x.role]; })[0];
+      if (over) { toast(over.role + ': sirf ' + avail[over.role] + ' hain', 'bad'); return; }
+      var p = { date: state.date, factory: state.factory, from_dept: d.dept, to_user: $('#t-to').value, items: items, time: $('#t-time').value, note: $('#t-note').value.trim() };
+      if (!p.to_user) { toast('Recorder chuno', 'bad'); return; }
+      if (!items.length) { toast('Kitne log — qty daalo', 'bad'); return; }
+      api('transfer.create', p).then(function (r) {
+        toast('Transfer bheja · ' + r.to_name + ' adjust karega', 'ok');
+        S.invalidateAll(); S.clearLocalCaches(); load(true);
+        S.sendTransferToGroup({ from_dept: d.dept, to_name: r.to_name, items: items, time: p.time, note: p.note });
+      }).catch(function (er) { toast(er.message, 'bad'); });
     };
   }
 
   $('#hour-head').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-nav]'); if (!b) return;
-    if (H.dirty && snapshot() !== H.initial && !confirm('Bina save kiye slot badlein?')) return;
-    var n = nextSlot(Number(b.dataset.nav)); if (n) { H.slot = n.key; H.dirty = false; load(); }
+    var go = function () { var n = nextSlot(Number(b.dataset.nav)); if (n) { H.slot = n.key; H.dirty = false; load(); } };
+    if (H.dirty && snapshot() !== H.initial) S.ask('Bina save kiye slot badlein?', { ok: 'Haan, badlo', cancel: 'Ruko' }).then(function (ok) { if (ok) go(); }); else go();
   });
   $('#hour-list').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.t) { if (H.dirty && snapshot() !== H.initial && !confirm('Bina save kiye tab badlein?')) return; H.type = b.dataset.t; render(); return; }
+    if (b.dataset.t) { var sw = function () { H.type = b.dataset.t; render(); }; if (H.dirty && snapshot() !== H.initial) S.ask('Bina save kiye tab badlein?', { ok: 'Haan, badlo', cancel: 'Ruko' }).then(function (ok) { if (ok) sw(); }); else sw(); return; }
     if (b.dataset.done) { S.back(); return; }
     if (b.dataset.mp !== undefined) { mpSheet(H.data.depts[Number(b.dataset.mp)]); return; }
     if (b.dataset.tr !== undefined) { trSheet(H.data.depts[Number(b.dataset.tr)]); return; }

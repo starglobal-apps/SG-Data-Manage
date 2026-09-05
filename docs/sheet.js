@@ -9,14 +9,17 @@
     open: function (title, html) {
       $('#sheet-title').textContent = title; $('#sheet-content').innerHTML = html;
       $('#sheet-content').onclick = null; $('#sheet-content').onchange = null;
+      var cb = S.sheet.onClose; S.sheet.onClose = null; if (cb) cb();
       if ($('#sheet').hidden) { try { history.pushState({ sheet: 1 }, ''); } catch (e) {} }
       $('#sheet').hidden = false;
     },
     close: function () {
       if ($('#sheet').hidden) return;
       $('#sheet').hidden = true;
+      var cb = S.sheet.onClose; S.sheet.onClose = null; if (cb) cb();
       if (history.state && history.state.sheet) { S.skipPop(); try { history.back(); } catch (e) {} }
-    }
+    },
+    onClose: null
   };
   $('#sheet-close').addEventListener('click', S.sheet.close);
   $('#sheet-bg').addEventListener('click', S.sheet.close);
@@ -142,7 +145,7 @@
       var b = e.target.closest('button'); if (!b) return;
       if (b.dataset.srn) { q.srn = b.dataset.srn; $$('#q-srns button').forEach(function (x) { x.classList.toggle('on', x === b); }); getOrders(q.type).then(renderFields); }
       else if (b.id === 'q-save') save();
-      else if (b.dataset.del) { if (confirm(b.dataset.del + ' ki is slot ki entry hatayein?')) save(b.dataset.del); }
+      else if (b.dataset.del) { var del = b.dataset.del; S.ask(del + ' ki is slot ki entry hatayein?', { danger: true, ok: 'Hatao' }).then(function (ok) { if (ok) { S.quick(q.type, q.slot); setTimeout(function () { save(del); }, 50); } }); }
       else if (b.dataset.refresh) { api('orders.refresh').then(function () { return getOrders(q.type, true); }).then(renderQuick).catch(function (er) { toast(er.message, 'bad'); }); }
     };
     c.onkeydown = function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); save(); } };

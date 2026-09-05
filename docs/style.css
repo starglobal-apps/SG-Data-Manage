@@ -357,3 +357,15 @@ a.btn { color: #fff; }
 .rep-btns { display: flex; gap: 6px; }
 .rep-btns button { flex: 1; border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 8px 4px; font-weight: 700; font-size: 12px; color: var(--primary); display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .rep-btns button small { font-weight: 500; color: var(--muted); font-size: 10px; }
+
+.hdr-btn { position: relative; }
+.hdr-btn .dot { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--bad); border: 2px solid var(--primary); }
+.dlg-msg { font-size: 15px; margin: 4px 0 12px; line-height: 1.45; }
+.ra-item { background: var(--card); border-radius: 12px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(17,24,39,.05); }
+.ra-item .t { font-weight: 700; font-size: 13px; margin: 0 4px 6px; display: flex; justify-content: space-between; }
+.ra-item canvas { width: 100%; height: auto; display: block; border-radius: 6px; border: 1px solid var(--line); }
+.tr-role { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.tr-role .n { flex: 1; font-weight: 600; } .tr-role .av { font-size: 12px; color: var(--muted); }
+.tr-role input { width: 70px; text-align: center; font-weight: 700; min-height: 38px; padding: 6px; }
+.alloc-h { font-weight: 800; margin: 10px 0 4px; display: flex; justify-content: space-between; } .alloc-h span { color: var(--muted); font-weight: 600; font-size: 12px; }
+.alloc-h.bad span { color: var(--bad); } .alloc-h.ok span { color: var(--ok); }

@@ -176,7 +176,7 @@
     if (dept) mp.dept = dept;
     mp.dept = depts.some(function (d) { return d.key === mp.dept; }) ? mp.dept : depts[0].key;
     $('#mp-dept').innerHTML = S.deptOptions(depts, mp.dept);
-    $('#mp-event').innerHTML = opt(state.masters.mpEvents || [], null, function (x) { return x.key; }, function (x) { return x.label; });
+    $('#mp-event').innerHTML = opt((state.masters.mpEvents || []).filter(function (x) { return x.key.indexOf('TRANSFER') < 0; }), null, function (x) { return x.key; }, function (x) { return x.label; });
     renderMpRoles(); mpTimeToggle();
     S.push('manpower', 'Manpower · ' + S.fmtDay(state.date));
     loadMp();
@@ -212,8 +212,7 @@
   $('#btn-mp-save').addEventListener('click', saveMp);
   $('#mp-list').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-del]'); if (!b) return;
-    if (!confirm('Ye event hatayein?')) return;
-    api('manpower.delete', { id: b.dataset.del }).then(loadMp).catch(function (er) { toast(er.message, 'bad'); });
+    S.ask('Ye event hatayein?', { danger: true, ok: 'Hatao' }).then(function (ok) { if (!ok) return; api('manpower.delete', { id: b.dataset.del }).then(loadMp).catch(function (er) { toast(er.message, 'bad'); }); });
   });
 
   // =====================================================================
@@ -265,10 +264,12 @@
       .catch(function (e) { toast(e.message, 'bad'); });
   });
   $('#btn-dc-submit').addEventListener('click', function () {
-    if (!confirm('Submit karein? Iske baad is din ki entry lock ho jayegi.')) return;
-    api('day.submit', { date: state.date, factory: state.factory, dept: $('#dc-dept').value })
-      .then(function (d) { toast('Submitted: ' + d.submitted + ' rows', 'ok'); S.invalidateAll(); S.back(); setTimeout(function () { if (confirm('Day report image group me bhejein?')) S.reportPicker(); }, 400); })
-      .catch(function (e) { toast(e.message, 'bad', 6000); });
+    S.ask('Submit karein? Iske baad is din ki entry lock ho jayegi.', { ok: 'Submit', cancel: 'Ruko' }).then(function (ok) {
+      if (!ok) return;
+      api('day.submit', { date: state.date, factory: state.factory, dept: $('#dc-dept').value })
+        .then(function (d) { toast('Submitted: ' + d.submitted + ' rows', 'ok'); S.invalidateAll(); S.back(); setTimeout(function () { S.ask('Aaj ke saare reports review karke group me bhejein?', { ok: 'Review & send', cancel: 'Baad me' }).then(function (y) { if (y) S.reportAll(); }); }, 400); })
+        .catch(function (e) { toast(e.message, 'bad', 6000); });
+    });
   });
 
   // =====================================================================
@@ -307,12 +308,13 @@
     var ids = selectedIds();
     if (!ids.length) { toast('Pehle select karo', 'bad'); return; }
     var hasBlock = rv.items.some(function (it) { return ids.indexOf(it.id) >= 0 && (it.flags || []).some(function (f) { return f.level === 'block'; }); });
-    var remark = '', override = false;
-    if (action === 'reject') { remark = prompt('Reject ka reason:'); if (!remark) return; }
-    else if (hasBlock) { remark = prompt('Block flag hai. Override karke approve karna hai to reason likho:'); if (!remark) return; override = true; }
-    api('review.decide', { ids: ids, action: action, remark: remark, override: override })
-      .then(function (d) { toast(action + ': ' + d.done + (d.skipped.length ? ' · skipped ' + d.skipped.length + ': ' + d.skipped[0] : ''), d.skipped.length ? '' : 'ok', 6000); S.invalidate(); loadReview(); })
-      .catch(function (e) { toast(e.message, 'bad'); });
+    var pr = action === 'reject' ? S.askText('Reject ka reason:', { ok: 'Reject' }) : hasBlock ? S.askText('Block flag hai. Override karke approve karna hai to reason likho:', { ok: 'Approve' }) : Promise.resolve('');
+    pr.then(function (remark) {
+      if (remark === null || (remark === '' && (action === 'reject' || hasBlock))) return;
+      api('review.decide', { ids: ids, action: action, remark: remark, override: hasBlock && action !== 'reject' })
+        .then(function (d) { toast(action + ': ' + d.done + (d.skipped.length ? ' · skipped ' + d.skipped.length + ': ' + d.skipped[0] : ''), d.skipped.length ? '' : 'ok', 6000); S.invalidate(); loadReview(); })
+        .catch(function (e) { toast(e.message, 'bad'); });
+    });
   }
   $('#rv-status').addEventListener('change', loadReview);
   $('#rv-date').addEventListener('change', loadReview);
@@ -322,10 +324,12 @@
   $('#btn-rv-send').addEventListener('click', function () {
     var ids = selectedIds();
     if (!ids.length) { toast('Approved rows select karo', 'bad'); return; }
-    if (!confirm('Selected Approved rows ko source sheets me likh dein? Ye wapas nahi hota.')) return;
-    api('review.send', { ids: ids })
-      .then(function (d) { toast('Sent ' + d.sent + ' · ' + d.log.join(' | '), 'ok', 8000); loadReview(); })
-      .catch(function (e) { toast(e.message, 'bad', 6000); });
+    S.ask('Selected Approved rows ko source sheets me likh dein? Ye wapas nahi hota.', { ok: 'Send to Final', cancel: 'Ruko' }).then(function (ok) {
+      if (!ok) return;
+      api('review.send', { ids: ids })
+        .then(function (d) { toast('Sent ' + d.sent + ' · ' + d.log.join(' | '), 'ok', 8000); loadReview(); })
+        .catch(function (e) { toast(e.message, 'bad', 6000); });
+    });
   });
 
   // ---------- register ----------

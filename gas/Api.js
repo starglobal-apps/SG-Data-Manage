@@ -48,6 +48,7 @@ function routes_() {
     'line.today':     lineToday_,
     'review.count':   reviewCount_,
     'transfer.create': transferCreate_,
+    'users.recorders': usersRecorders_,
     'transfer.decide': transferDecide_,
     'cache.clear':    cacheClear_,
     'pms.get':        pmsGet_,

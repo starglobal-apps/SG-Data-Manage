@@ -85,7 +85,7 @@
     document.body.classList.add('has-nav');
     $('#nav').hidden = false;
     $$('#nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
-    $('#hdr-refresh').hidden = false;
+    $('#hdr-refresh').hidden = false; $('#hdr-bell').hidden = false;
     if (name === 'home' || name === 'reports' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : name === 'reports' ? 'Reports · ' + (isToday() ? 'aaj' : 'is din ke') : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
@@ -98,7 +98,7 @@
     showOnly('scr-' + id);
     $('#nav').hidden = true;
     document.body.classList.remove('has-nav');
-    $('#hdr-refresh').hidden = true;
+    $('#hdr-refresh').hidden = true; $('#hdr-bell').hidden = true;
     setHeader(title, '', true);
   }
   function back() { tab(nav.tab); }
@@ -279,7 +279,7 @@
     if (fcache.key === key && fcache.p) return fcache.p;
     fcache.key = key;
     fcache.p = api('factory.today', { date: state.date, factory: state.factory }, { quiet: true })
-      .then(function (d) { fcache.data = d; fcache.t = Date.now(); fcache.p = null; try { localStorage.setItem('sg_ft_' + key, JSON.stringify(d)); } catch (e) {} return d; })
+      .then(function (d) { fcache.data = d; fcache.t = Date.now(); fcache.p = null; try { localStorage.setItem('sg_ft_' + key, JSON.stringify(d)); } catch (e) {} setBell(d.transfers && d.transfers.incoming ? d.transfers.incoming.length : 0); return d; })
       .catch(function (e) { fcache.p = null; throw e; });
     return fcache.p;
   }
@@ -396,7 +396,10 @@
   }
   function saveAttendance() {
     var rows = collectAttRows().filter(function (r) { return r.count > 0; });
-    if (!rows.length && !confirm('Koi count nahi bhara. Khali save karein?')) return;
+    if (!rows.length) { ask('Koi count nahi bhara. Khali save karein?').then(function (ok) { if (ok) saveAttendance2(rows); }); return; }
+    saveAttendance2(rows);
+  }
+  function saveAttendance2(rows) {
     if (!att.srn && (att.srns || []).length) { toast('Pehle SRN chuno', 'bad'); return; }
     var sup = $('#att-sup').value.trim(), inc = $('#att-inc').value.trim();
     if (rows.length && att.shift === 'Final') {
@@ -406,6 +409,28 @@
     api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, rows: rows })
       .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidateAll(); back(); if (!d.queued) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400); })
       .catch(function (e) { toast(e.message, 'bad'); });
+  }
+
+  // ---------- in-app dialogs: never the browser's confirm()/prompt() ----------
+  function ask(msg, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      SG.sheet.open(opts.title || 'Confirm', '<div class="dlg-msg">' + esc(msg) + '</div><div class="actions"><button class="btn ghost" data-dlg="0">' + esc(opts.cancel || 'Nahi') + '</button><button class="btn ' + (opts.danger ? 'danger' : 'primary') + '" data-dlg="1">' + esc(opts.ok || 'Haan') + '</button></div>');
+      var done = false;
+      $('#sheet-content').onclick = function (e) { var b = e.target.closest('[data-dlg]'); if (!b) return; done = true; SG.sheet.close(); resolve(b.dataset.dlg === '1'); };
+      SG.sheet.onClose = function () { if (!done) { done = true; resolve(false); } };
+    });
+  }
+  function askText(msg, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      SG.sheet.open(opts.title || 'Likho', '<div class="dlg-msg">' + esc(msg) + '</div><input id="dlg-in" type="text" placeholder="' + esc(opts.placeholder || '') + '"><div class="actions" style="margin-top:10px"><button class="btn ghost" data-dlg="0">Cancel</button><button class="btn primary" data-dlg="1">' + esc(opts.ok || 'OK') + '</button></div>');
+      setTimeout(function () { var i = $('#dlg-in'); if (i) i.focus(); }, 80);
+      var done = false;
+      $('#sheet-content').onclick = function (e) { var b = e.target.closest('[data-dlg]'); if (!b) return; var v = $('#dlg-in').value.trim(); done = true; SG.sheet.close(); resolve(b.dataset.dlg === '1' ? v : null); };
+      $('#sheet-content').onkeydown = function (e) { if (e.key === 'Enter') { var v = $('#dlg-in').value.trim(); done = true; SG.sheet.close(); resolve(v); } };
+      SG.sheet.onClose = function () { if (!done) { done = true; resolve(null); } };
+    });
   }
 
   // ---------- WhatsApp: attendance summary for the group ----------
@@ -472,7 +497,20 @@
       };
     }).catch(function (e) { busy(false); toast(e.message, 'bad'); });
   }
-  function offerGroup(msg) { if (confirm(msg || 'Attendance update group me bhejein?')) sendToGroup('Final'); }
+  function offerGroup(msg) { ask(msg || 'Attendance update group me bhejein?', { ok: 'Bhejo', cancel: 'Abhi nahi' }).then(function (ok) { if (ok) sendToGroup('Final'); }); }
+  function waTransferText(t) {
+    var p = state.date.split('-'), dateStr = pad(+p[2]) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+p[1] - 1] + ' ' + p[0];
+    var out = ['Manpower Transfer - ' + dateStr + ' - FAC' + state.factory, '', shortLine(t.from_dept) + ' → ' + t.to_name + (t.time ? ' (' + ampm(t.time) + ')' : '')];
+    var total = 0; t.items.forEach(function (x) { out.push(x.role + ' - ' + x.count); total += x.count; });
+    out.push('Total ' + total + ' manpower'); if (t.note) out.push('Note: ' + t.note);
+    out.push(''); out.push('- ' + (state.user.name || ''));
+    return out.join('\n');
+  }
+  function sendTransferToGroup(t) {
+    var text = waTransferText(t);
+    SG.sheet.open('Transfer group me bhejo', '<pre class="wa-prev">' + esc(text) + '</pre><a class="btn big wa" href="https://wa.me/?text=' + encodeURIComponent(text) + '" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none">' + icon('wa') + ' WhatsApp me bhejo</a><button class="btn ghost big" data-skip="1">Baad me</button>');
+    $('#sheet-content').onclick = function (e) { if (e.target.closest('[data-skip]')) SG.sheet.close(); if (e.target.closest('a.btn')) setTimeout(SG.sheet.close, 300); };
+  }
 
   // ---------- Main tab ----------
 
@@ -500,7 +538,7 @@
   };
   $('#main-body').addEventListener('click', function (e) {
     var b = e.target.closest('button'); var t = e.target.closest('[data-m]');
-    if (b && b.dataset.drop) { if (confirm('Ye offline entry hata dein?')) { saveQueue(queue().filter(function (x) { return x.id !== b.dataset.drop; })); tabs.main(); } return; }
+    if (b && b.dataset.drop) { ask('Ye offline entry hata dein?', { danger: true, ok: 'Hatao' }).then(function (ok) { if (ok) { saveQueue(queue().filter(function (x) { return x.id !== b.dataset.drop; })); tabs.main(); } }); return; }
     if (b && b.dataset.retry) { saveQueue(queue().map(function (x) { if (x.id === b.dataset.retry) x.error = ''; return x; })); flushQueue().then(tabs.main); return; }
     if (!t) return;
     var m = t.dataset.m;
@@ -511,7 +549,7 @@
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
     else if (m === 'refresh') api('orders.refresh').then(function () { toast('Loading refresh ho gayi', 'ok'); invalidate(); }).catch(function (er) { toast(er.message, 'bad'); });
     else if (m === 'masters') loadMasters().then(function () { ensureLine(); toast('Masters reload ho gaye', 'ok'); }).catch(function (er) { toast(er.message, 'bad'); });
-    else if (m === 'logout') { if (confirm('Logout?')) logout(); }
+    else if (m === 'logout') ask('Logout karein?', { ok: 'Logout', danger: true }).then(function (ok) { if (ok) logout(); });
   });
 
   // ---------- events ----------
@@ -521,6 +559,8 @@
   $('#hdr-back').addEventListener('click', back);
   $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
   $('#hdr-refresh').addEventListener('click', hardRefresh);
+  $('#hdr-bell').addEventListener('click', function () { if (SG.transferInbox) SG.transferInbox(); });
+  function setBell(n) { var b = $('#hdr-bell'); b.hidden = !state.user; $('#bell-dot').hidden = !n; }
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
   $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; $('#att-inc-wrap').hidden = attType() === 'PACKING'; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
@@ -543,6 +583,7 @@
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,
+    ask: ask, askText: askText, sendTransferToGroup: sendTransferToGroup, setBell: setBell,
     setLine: setLine, setDate: setDate, setFactory: setFactory, openContext: openContext, openAttendance: openAttendance, loadMasters: loadMasters
   };
 

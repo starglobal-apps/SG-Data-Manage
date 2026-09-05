@@ -275,6 +275,39 @@
     }).catch(function (e) { S.busy(false); toast(e.message, 'bad', 6000); });
   }
 
+  // ---------- review all of today's reports, then send them together ----------
+  var RA = { files: [] };
+  S.reportAll = function () {
+    S.push('reportall', 'Review & send · ' + S.fmtDay(state.date));
+    $('#ra-info').innerHTML = '<div class="empty">Reports ban rahe hain…</div>'; $('#ra-list').innerHTML = ''; RA.files = [];
+    $('#btn-ra-share').disabled = true; $('#btn-ra-dl').disabled = true;
+    S.loadFactory().then(function (d) {
+      var list = [];
+      d.depts.forEach(function (x) { var srn = d.attSrn && d.attSrn[x.dept]; if (!srn) return; if (x.cat === 'PACKING') list.push({ t: 'PACKING', dept: x.dept, srn: srn }); else { list.push({ t: 'STITCH', dept: x.dept, srn: srn }); list.push({ t: 'ENDLINE', dept: x.dept, srn: srn }); } });
+      if (!list.length) { $('#ra-info').innerHTML = '<div class="empty">Is din kisi line ka SRN / attendance nahi</div>'; return; }
+      var seq = Promise.resolve(), done = 0;
+      list.forEach(function (x) {
+        seq = seq.then(function () {
+          return api(actionOf(x.t), { factory: state.factory, dept: x.dept, srn: x.srn }, { quiet: true }).then(function (rd) {
+            var out = drawBy(x.t, rd), name = labelOf(x.t).replace(/\s+/g, '') + '_' + S.shortLine(x.dept).replace(/\s+/g, '') + '_' + x.srn + '_' + state.date + '.png';
+            var wrap = document.createElement('div'); wrap.className = 'ra-item';
+            wrap.innerHTML = '<div class="t"><span>' + esc(S.shortLine(x.dept)) + ' · ' + esc(labelOf(x.t)) + '</span><span class="muted">' + esc(x.srn) + ' · ' + out.rows + ' rows · p' + out.page + '/' + out.pages + '</span></div>';
+            wrap.appendChild(out.canvas); $('#ra-list').appendChild(wrap);
+            done++; $('#ra-info').innerHTML = '<b>' + done + ' / ' + list.length + ' reports</b><div class="muted" style="font-size:12px">Neeche ek-ek karke dekho, phir "Send all" — sab ek saath WhatsApp me</div>';
+            return new Promise(function (res) { out.canvas.toBlob(function (b) { RA.files.push(new File([b], name, { type: 'image/png' })); res(); }, 'image/png'); });
+          }).catch(function (e) { $('#ra-list').insertAdjacentHTML('beforeend', '<div class="ra-item"><div class="t">' + esc(S.shortLine(x.dept)) + ' · ' + esc(labelOf(x.t)) + '</div><div class="empty">' + esc(e.message) + '</div></div>'); });
+        });
+      });
+      return seq.then(function () { $('#btn-ra-share').disabled = !RA.files.length; $('#btn-ra-dl').disabled = !RA.files.length; });
+    }).catch(function (e) { $('#ra-info').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+  };
+  $('#btn-ra-share').addEventListener('click', function () {
+    if (!RA.files.length) return;
+    if (navigator.canShare && navigator.canShare({ files: RA.files })) navigator.share({ files: RA.files, title: 'SG Data reports ' + state.date }).catch(function () {});
+    else { toast('Is browser me multi-file share nahi — ek-ek download ho raha hai', '', 5000); RA.files.forEach(function (f, i) { setTimeout(function () { downloadBlob(f, f.name); }, i * 400); }); }
+  });
+  $('#btn-ra-dl').addEventListener('click', function () { RA.files.forEach(function (f, i) { setTimeout(function () { downloadBlob(f, f.name); }, i * 400); }); });
+
   // today's line×SRN list -> single report
   S.reportPicker = function () {
     S.loadFactory().then(function (d) {

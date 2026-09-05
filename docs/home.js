@@ -23,7 +23,7 @@
   S.tabs.home = function () {
     var cached = S.factoryData();
     if (cached) render(cached, true); else $('#home-now').innerHTML = '<div class="nowcard"><div class="k">Loading…</div><div class="t">&nbsp;</div></div>';
-    S.loadFactory().then(function (d) { render(d, false); })
+    S.loadFactory().then(function (d) { render(d, false); S.maybeTransferPopup(d); })
       .catch(function (e) { if (!cached) { $('#home-now').innerHTML = '<div class="nowcard warn"><div class="k">Error</div><div class="t">' + esc(e.message) + '</div><button class="btn" data-go="retry">Dobara try</button></div>'; $('#home-timeline').innerHTML = ''; } });
   };
 
@@ -101,10 +101,10 @@
     }
     var tr = d.transfers || { incoming: [], outgoing: [] };
     tr.incoming.forEach(function (t) {
-      html += task({ go: 'transfer:' + t.id, ic: 'mp', cls: 'warn', n: 'Transfer aaya · ' + esc(S.shortLine(t.to_dept)), s: t.count + ' ' + esc(t.role) + ' · ' + esc(S.shortLine(t.from_dept)) + ' se · ' + esc(t.time) + ' · ' + esc(t.by), v: 'Accept?' });
+      html += task({ go: 'transfer:' + t.id, ic: 'mp', cls: 'warn', n: 'Manpower aaya · ' + t.count + ' log', s: (t.items || []).map(function (x) { return x.count + ' ' + x.role; }).join(', ') + ' · ' + esc(S.shortLine(t.from_dept)) + ' se · ' + esc(t.by), v: 'Adjust' });
     });
     tr.outgoing.forEach(function (t) {
-      html += task({ go: 'noop', ic: 'mp', sub: true, cls: '', n: 'Transfer bheja · ' + esc(S.shortLine(t.from_dept)) + ' → ' + esc(S.shortLine(t.to_dept)), s: t.count + ' ' + esc(t.role) + ' · accept ka wait', v: '' });
+      html += task({ go: 'noop', ic: 'mp', sub: true, cls: '', n: 'Transfer bheja · ' + esc(S.shortLine(t.from_dept)) + ' se ' + t.count + ' log', s: (t.items || []).map(function (x) { return x.count + ' ' + x.role; }).join(', ') + ' · adjust ka wait', v: '' });
     });
     if (d.events) html += task({ go: 'manpower', ic: 'mp', sub: true, cls: 'done', n: 'Manpower change', s: d.events + ' event aaj', v: '' });
     else html += '<button class="lnk tl-more" data-go="manpower">+ Manpower change (koi gaya / late aaya)</button>';
@@ -117,27 +117,59 @@
     if (!stale && (current || missed.length)) S.swr('hour.get', { date: state.date, factory: state.factory, slot: (current ? current.s : missed[0].s).key }, 10000).promise.catch(function () {});
   }
 
+  // Receiving recorder places every transferred person on one of their lines / floors
+  var shownPopup = {};
   function transferSheet(id) {
     var d = S.factoryData(); if (!d) return;
     var t = (d.transfers.incoming || []).filter(function (x) { return x.id === id; })[0]; if (!t) return;
-    var html = '<div class="card" style="margin:0 0 8px"><b>' + t.count + ' ' + esc(t.role) + '</b> · ' + esc(S.shortLine(t.from_dept)) + ' → <b>' + esc(S.shortLine(t.to_dept)) + '</b><br><span class="muted">' + esc(t.time) + ' · ' + esc(t.by) + (t.note ? ' · ' + esc(t.note) : '') + '</span></div>' +
-      '<label>Kis SRN par kaam karenge?</label><div id="tr-srns" class="chips"><span class="muted">Loading…</span></div>' +
-      '<div class="actions" style="margin-top:10px"><button class="btn danger" data-dec="reject">Reject</button><button class="btn ok" data-dec="accept">Accept</button></div>';
-    S.sheet.open('Transfer accept', html);
-    var srn = d.attSrn && d.attSrn[t.to_dept] || '';
-    var cat = S.deptCategory(t.to_dept);
-    S.api('orders.active', { factory: state.factory, dept: t.to_dept, type: cat === 'PACKING' ? 'PACKING' : 'STITCH' }, { quiet: true }).then(function (r) {
-      if (!srn && r.srns[0]) srn = r.srns[0].srn;
-      $('#tr-srns').innerHTML = r.srns.map(function (x) { return '<button data-srn="' + esc(x.srn) + '" class="' + (x.srn === srn ? 'on' : '') + '">' + esc(x.srn) + '<small>bal ' + x.balance + '</small></button>'; }).join('') || '<span class="muted">Koi SRN nahi</span>';
-    }).catch(function () { $('#tr-srns').innerHTML = ''; });
-    $('#sheet-content').onclick = function (e) {
-      var b = e.target.closest('button'); if (!b) return;
-      if (b.dataset.srn) { srn = b.dataset.srn; S.$$('#tr-srns button').forEach(function (x) { x.classList.toggle('on', x === b); }); return; }
-      if (b.dataset.dec) {
-        S.api('transfer.decide', { id: id, action: b.dataset.dec, srn: srn }).then(function () { S.toast(b.dataset.dec === 'accept' ? 'Accept ho gaya · manpower jud gayi' : 'Reject kiya', 'ok'); S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); S.refresh(); }).catch(function (er) { S.toast(er.message, 'bad'); });
-      }
+    var mine = d.depts;
+    var html = '<div class="card" style="margin:0 0 8px"><b>' + t.count + ' manpower aaye</b> · ' + esc(S.shortLine(t.from_dept)) + ' se · ' + esc(t.by) + (t.time ? ' · ' + esc(t.time) : '') + (t.note ? '<br><span class="muted">' + esc(t.note) + '</span>' : '') + '<br><span class="muted">Kis line / floor par lagana hai — role-wise qty bharo</span></div>';
+    (t.items || []).forEach(function (it, i) {
+      html += '<div class="alloc-h" data-role="' + esc(it.role) + '">' + esc(it.role) + ' × ' + it.count + '<span>0 / ' + it.count + '</span></div>';
+      mine.forEach(function (x) { html += '<div class="tr-role"><span class="n">' + esc(S.shortLine(x.dept)) + '</span><span class="av">' + esc(S.catLabel(x.cat)) + '</span><input type="number" inputmode="numeric" min="0" placeholder="0" data-role="' + esc(it.role) + '" data-dept="' + esc(x.dept) + '"' + (mine.length === 1 ? ' value="' + it.count + '"' : '') + '></div>'; });
+    });
+    html += '<div class="actions" style="margin-top:12px"><button class="btn danger" data-dec="reject">Reject</button><button class="btn ok" data-dec="accept">Adjust & accept</button></div>';
+    S.sheet.open('Manpower adjust karo', html);
+    var c = $('#sheet-content');
+    var tally = function () {
+      (t.items || []).forEach(function (it) {
+        var sum = 0; S.$$('input[data-role="' + it.role + '"]', c).forEach(function (i) { sum += Number(i.value) || 0; });
+        var h = S.$$('.alloc-h', c).filter(function (x) { return x.dataset.role === it.role; })[0];
+        if (h) { h.querySelector('span').textContent = sum + ' / ' + it.count; h.className = 'alloc-h ' + (sum === it.count ? 'ok' : 'bad'); }
+      });
     };
+    tally();
+    c.oninput = tally;
+    c.onclick = function (e) {
+      var b = e.target.closest('button[data-dec]'); if (!b) return;
+      if (b.dataset.dec === 'reject') {
+        S.ask('Transfer reject karein? Log bhejne wali line par wapas dikhenge.', { danger: true, ok: 'Reject' }).then(function (ok) { if (ok) decide('reject', []); });
+        return;
+      }
+      var allocs = S.$$('input[data-role]', c).map(function (i) { return { dept: i.dataset.dept, role: i.dataset.role, count: Number(i.value) || 0 }; }).filter(function (a) { return a.count > 0; });
+      var bad = (t.items || []).filter(function (it) { var sum = 0; allocs.forEach(function (a) { if (a.role === it.role) sum += a.count; }); return sum !== it.count; })[0];
+      if (bad) { S.toast(bad.role + ': ' + bad.count + ' aaye — utne hi adjust karo', 'bad'); return; }
+      decide('accept', allocs);
+    };
+    function decide(action, allocs) {
+      S.api('transfer.decide', { id: id, action: action, allocations: allocs }).then(function () { S.toast(action === 'accept' ? 'Adjust ho gaya · manpower lines me jud gayi' : 'Reject kiya', 'ok'); S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); S.refresh(); }).catch(function (er) { S.toast(er.message, 'bad'); });
+    }
   }
+  // bell: list of pending incoming transfers; popup once per transfer when the app opens
+  S.transferInbox = function () {
+    var d = S.factoryData(), inc = (d && d.transfers && d.transfers.incoming) || [];
+    if (!inc.length) { S.toast('Koi naya transfer nahi', ''); return; }
+    if (inc.length === 1) { transferSheet(inc[0].id); return; }
+    S.sheet.open('Manpower aaya · ' + inc.length, inc.map(function (t) { return '<div class="task" data-tid="' + esc(t.id) + '"><div class="ic">' + icon('mp') + '</div><div class="b"><div class="n">' + t.count + ' log · ' + esc(S.shortLine(t.from_dept)) + ' se</div><div class="s">' + (t.items || []).map(function (x) { return x.count + ' ' + x.role; }).join(', ') + ' · ' + esc(t.by) + '</div></div><span class="chev">' + icon('chev') + '</span></div>'; }).join(''));
+    $('#sheet-content').onclick = function (e) { var x = e.target.closest('[data-tid]'); if (x) { S.sheet.close(); transferSheet(x.dataset.tid); } };
+  };
+  S.maybeTransferPopup = function (d) {
+    var inc = (d.transfers && d.transfers.incoming) || [];
+    var fresh = inc.filter(function (t) { return !shownPopup[t.id]; });
+    if (!fresh.length || !$('#sheet').hidden) return;
+    fresh.forEach(function (t) { shownPopup[t.id] = true; });
+    transferSheet(fresh[0].id);
+  };
 
   function attList(shift) {
     var d = S.factoryData(); if (!d) return;

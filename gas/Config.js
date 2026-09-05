@@ -28,7 +28,7 @@ var CFG = {
     MANPOWER_EVENTS: ['id', 'date', 'factory', 'dept', 'role', 'event', 'count', 'time', 'eff_hours', 'note', 'entered_by', 'entered_at'],
     DAY_SUMMARY:     ['id', 'date', 'factory', 'line', 'dept', 'type', 'srn', 'shift', 'payload', 'status', 'flags', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'remark'],
     ACTIVE_ORDERS:   ['factory', 'line', 'dept', 'srn', 'loaded', 'stitched', 'balance', 'last_loading'],
-    TRANSFERS:       ['id', 'date', 'factory', 'from_dept', 'to_dept', 'role', 'count', 'time', 'srn', 'status', 'note', 'by', 'at', 'decided_by', 'decided_at'],
+    TRANSFERS:       ['id', 'date', 'factory', 'from_dept', 'to_dept', 'role', 'count', 'time', 'srn', 'status', 'note', 'by', 'at', 'decided_by', 'decided_at', 'to_user', 'items', 'allocations'],
     AUDIT_LOG:       ['at', 'user', 'action', 'ref', 'detail']
   },
 

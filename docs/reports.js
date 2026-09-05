@@ -14,6 +14,7 @@
     var html = '', now = S.isToday() ? S.nowHour() : 24, totalPcs = 0;
     var lines = d.depts.filter(function (x) { return d.att[x.dept + '|Final']; });
     html += '<h2>Reports · ' + esc(S.fmtDay(state.date)) + ' · ' + lines.length + ' line</h2>';
+    if (lines.length) html += '<button class="btn primary big" data-all="1" style="margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:8px">' + icon('review') + ' Review & send all reports</button>';
     if (!lines.length) html += '<div class="empty">Is din kisi line ki attendance nahi — report attendance ke baad banti hai</div>';
     lines.forEach(function (x) {
       var srn = (d.attSrn && d.attSrn[x.dept]) || '', pk = x.cat === 'PACKING';
@@ -44,6 +45,7 @@
   $('#tab-reports').addEventListener('click', function (e) {
     var r = e.target.closest('[data-rep]'); if (r) { var p = r.dataset.rep.split('|'); S.report(p[0], p[1], p[2]); return; }
     if (e.target.closest('[data-print]')) { S.printSrn(); return; }
+    if (e.target.closest('[data-all]')) { S.reportAll(); return; }
     var g = e.target.closest('[data-go]'); if (g) S.go(g.dataset.go);
   });
 })();
