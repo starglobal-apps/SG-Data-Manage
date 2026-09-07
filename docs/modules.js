@@ -310,7 +310,7 @@
     });
   });
   function loadReview() {
-    loadAttReview();
+    $('#rv-att').innerHTML = '';   // attendance is reviewed and sent together with the day's rows (Day Close)
     $('#rv-list').innerHTML = '<div class="empty">Loading…</div>';
     api('review.list', { factory: state.factory, status: $('#rv-status').value, date: $('#rv-date').value })
       .then(function (d) {

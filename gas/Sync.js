@@ -39,12 +39,14 @@ function afterSendJob() {
   return log.join('\n');
 }
 
-// Admin button: run the import + cleanup right now (synchronous; takes a minute or two)
+// Admin button: import + cleanup in the background (one-off trigger, ~20 s later)
 function adminImportNow_(req, user) {
   if (!isAdmin_(user)) return fail_('PERM', 'Sirf admin');
-  var out = afterSendJob();
-  if (out === 'busy') return fail_('BUSY', 'Import pehle se chal raha hai — thodi der baad dekho');
-  return { ok: true, log: out };
+  var running = Number(PropertiesService.getScriptProperties().getProperty('SYNC_RUNNING') || 0);
+  if (running && Date.now() - running < 10 * 60000) return { ok: true, scheduled: false, running: true };
+  var ok = scheduleAfterSend_();
+  if (!ok) return fail_('TRIGGER', 'Trigger permission nahi — Apps Script editor me Sync.gs > afterSendJob ek baar Run karo');
+  return { ok: true, scheduled: true };
 }
 
 // Delete the app copies of every DAY_SUMMARY row that is Sent and not yet cleaned.

@@ -563,7 +563,7 @@
     html += '<div class="task" data-m="ctx"><div class="ic">' + icon('home') + '</div><div class="b"><div class="n">Entry / Data ki line</div><div class="s">' + esc(state.line || '—') + ' · FAC' + esc(state.factory) + '</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="endline"><div class="ic">' + icon('qc') + '</div><div class="b"><div class="n">Endline timeline me dikhao</div><div class="s">QC checker ke liye on karo</div></div><span class="v">' + (recall('show_endline') === '1' ? 'On' : 'Off') + '</span></div>';
     html += '<div class="task" data-m="hard"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Refresh sab data</div><div class="s">Sheet me haath se kuch badla / delete kiya ho to</div></div>' + icon('chev') + '</div>';
-    if (isAdmin()) html += '<div class="task" data-m="import"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Import + cleanup abhi chalao</div><div class="s">Main sheet → MASTER DATA, phir Sent data app se hataye (1–2 min)</div></div>' + icon('chev') + '</div>';
+    if (isAdmin()) html += '<div class="task" data-m="import"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Import + cleanup chalao</div><div class="s">Background me: main sheet → MASTER DATA, phir Sent data app se hataye</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="refresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Loading refresh</div><div class="s">Nayi loading sheet me aayi ho to</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="masters"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Masters reload</div><div class="s">Depts / roles badle ho to</div></div>' + icon('chev') + '</div>';
     html += '</div>';
@@ -586,7 +586,7 @@
     if (m === 'ctx') openContext();
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
-    else if (m === 'import') ask('Import + cleanup abhi chalayein? 1–2 minute lagenge.', { ok: 'Chalao' }).then(function (ok) { if (!ok) return; busy(true, 'Import chal raha hai…'); api('admin.importNow', {}).then(function (d) { busy(false); toast('Ho gaya: ' + String(d.log || '').split('\n').slice(-3).join(' · '), 'ok', 9000); invalidateAll(); clearLocalCaches(); }).catch(function (er) { busy(false); toast(er.message, 'bad', 7000); }); });
+    else if (m === 'import') ask('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', { ok: 'Chalao' }).then(function (ok) { if (!ok) return; api('admin.importNow', {}).then(function (d) { toast(d.running ? 'Import pehle se chal raha hai — 2 min baad Refresh karo' : 'Background me shuru · 2 min baad "Refresh sab data" dabao', 'ok', 8000); }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
     else if (m === 'print') SG.printSrn();
     else if (m === 'staff') screens.staff();
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
