@@ -31,7 +31,7 @@ function doPost(e) {
 
 function routes_() {
   return {
-    'me':         function(req, user) { return { ok: true, user: user }; },
+    'me':         function(req, user) { var nt = renewIfOld_(str_(req.token), user.user_id); return { ok: true, user: user, token: nt || undefined, exp: tokenExp_(nt || str_(req.token)) }; },
     'masters':    getMasters_,
     'att.get':    attGet_,
     'att.save':   attSave_,
@@ -117,22 +117,61 @@ function login_(req) {
   cache.remove('loginfail');
 
   var pub = publicUser_(users[0]);
-  var token = uuid_();
-  CacheService.getScriptCache().put('tok:' + token, JSON.stringify(pub), CFG.TOKEN_TTL_SEC);
+  var token = makeToken_(pub.user_id);
   audit_(pub, 'login', pub.user_id, '');
-  return { ok: true, token: token, user: pub };
+  return { ok: true, token: token, user: pub, exp: tokenExp_(token) };
+}
+
+// ---- signed tokens (no server-side session store): base64url(user_id|iat|exp|nonce) + '.' + HMAC-SHA256 ----
+function tokenSecret_() {
+  var p = PropertiesService.getScriptProperties(), s = p.getProperty('TOKEN_SECRET');
+  if (!s) { s = uuid_() + uuid_(); p.setProperty('TOKEN_SECRET', s); }
+  return s;
+}
+function b64u_(bytesOrStr) { return Utilities.base64EncodeWebSafe(bytesOrStr).replace(/=+$/, ''); }
+function makeToken_(userId) {
+  var now = Math.floor(Date.now() / 1000);
+  var body = b64u_(Utilities.newBlob([userId, now, now + CFG.TOKEN_TTL_SEC, uuid_().slice(0, 8)].join('|')).getBytes());
+  var sig = b64u_(Utilities.computeHmacSha256Signature(body, tokenSecret_()));
+  return body + '.' + sig;
+}
+function parseToken_(token) {
+  try {
+    var p = token.split('.'); if (p.length !== 2) return null;
+    var sig = b64u_(Utilities.computeHmacSha256Signature(p[0], tokenSecret_()));
+    if (sig !== p[1]) return null;
+    var padded = p[0] + '==='.slice(0, (4 - p[0].length % 4) % 4);
+    var parts = Utilities.newBlob(Utilities.base64DecodeWebSafe(padded)).getDataAsString().split('|');
+    if (parts.length < 3) return null;
+    var o = { user_id: parts[0], iat: num_(parts[1]), exp: num_(parts[2]) };
+    if (o.exp < Math.floor(Date.now() / 1000)) return null;
+    return o;
+  } catch (e) { return null; }
+}
+
+function tokenExp_(token) { var t = parseToken_(token); return t ? t.exp : 0; }
+// sliding: after a day of use hand out a fresh 7-day token (frontend swaps it in)
+function renewIfOld_(token, userId) {
+  var t = parseToken_(token);
+  if (!t || t.iat > Math.floor(Date.now() / 1000) - 86400) return '';
+  return makeToken_(userId);
 }
 
 function auth_(token) {
   token = str_(token);
   if (!token) return null;
-  var cache = CacheService.getScriptCache();
-  var raw = cache.get('tok:' + token);
-  if (!raw) return null;
-  cache.put('tok:' + token, raw, CFG.TOKEN_TTL_SEC); // sliding expiry
-  var pub = JSON.parse(raw);
-  // access can be changed by the admin at any time: refresh role/factory/depts from USERS on every call
-  var fresh = usersRows_().filter(function(u) { return str_(u.user_id) === pub.user_id; })[0];
+  var userId = '';
+  var t = parseToken_(token);
+  if (t) userId = t.user_id;
+  else {
+    // tokens issued before signed tokens (CacheService, 6 h) keep working until they expire
+    var raw = CacheService.getScriptCache().get('tok:' + token);
+    if (!raw) return null;
+    userId = JSON.parse(raw).user_id;
+  }
+  // access can be changed by the admin at any time: refresh role/factory/depts from USERS on every call.
+  // Deactivating a user (active = FALSE) logs every phone of theirs out at once.
+  var fresh = usersRows_().filter(function(u) { return str_(u.user_id) === userId; })[0];
   if (!fresh || !isTrue_(fresh.active)) return null;
   return publicUser_(fresh);
 }

@@ -4,7 +4,7 @@ var CFG = {
   // Blank = use the container-bound spreadsheet. Paste a spreadsheet ID here if the script is standalone.
   SS_ID: '',
 
-  TOKEN_TTL_SEC: 21600, // 6 h (CacheService max)
+  TOKEN_TTL_SEC: 7 * 86400, // 7 din: phone par ek baar PIN, phir hafte bhar bina PIN (signed token, sliding renewal)
 
   FACTORIES: ['666', '117'],
 

@@ -646,7 +646,7 @@
     if (!API_URL) { showOnly('scr-login'); $('#login-msg').textContent = 'docs/config.js me API_URL set karo'; return; }
     if (state.token && state.user) {
       if (state.masters) { ensureLine(); home(); }
-      api('me', {}, { quiet: true }).then(function (d) { setUser(d.user); return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub) tab(nav.tab); flushQueue(); })
+      api('me', {}, { quiet: true }).then(function (d) { if (d.token) { state.token = d.token; localStorage.setItem('sg_token', d.token); } setUser(d.user); return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub) tab(nav.tab); flushQueue(); })
         .catch(function (e) { if (!state.masters || !/Network/.test(e.message || '')) logout(); });
     } else showOnly('scr-login');
   }
