@@ -35,6 +35,9 @@ function reportLine_(req, user) {
   var factory = str_(req.factory), dept = str_(req.dept), srn = str_(req.srn);
   if (!dept || !srn) return fail_('VAL', 'Line aur SRN chahiye');
   var rows = [], start = CFG.APP_START_DATE;
+  // dates the app itself has stitching rows for (sheet rows on those dates are the same data come back via import)
+  var appDates = {};
+  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) { if (str_(r.type) === 'STITCH' && str_(r.dept) === dept && str_(r.srn) === srn && str_(r.date) >= start) appDates[str_(r.date)] = 1; });
 
   // history from MASTER DATA (cols 4 = FAC666 stitching, 5 = FAC117 stitching)
   var md = getSS_().getSheetByName(MASTER_SHEET_NAME);
@@ -43,7 +46,7 @@ function reportLine_(req, user) {
       var s = parseJson_(row[0]), s7 = parseJson_(row[1]);
       var a = s && str_(s[2]) === dept && str_(s[3]) === srn ? { date: dateKey_(s[0]), shift: s[5], mp: s[6], hrs: s[7], out: s[8], inc: s[9], sup: s[10], helper: s[11], paster: s[12], tc: s[13], eqc: s[14], hn: s[15] }
             : s7 && str_(s7[3]) === dept && str_(s7[4]) === srn ? { date: dateKey_(s7[0]), shift: s7[5], mp: s7[6], hrs: s7[7], out: s7[8], inc: s7[9], sup: s7[10], helper: s7[11], paster: s7[12], tc: s7[13], eqc: s7[14], hn: s7[15] } : null;
-      if (!a || a.date >= start || a.date === '9999-12-31') return;
+      if (!a || a.date === '9999-12-31' || (a.date >= start && appDates[a.date])) return;
       var others = num_(a.helper) + num_(a.paster) + num_(a.tc) + num_(a.eqc) + num_(a.hn);
       rows.push({ date: a.date, op: opOf_(a.shift), output: num_(a.out), operator: Math.max(0, num_(a.mp) - others), helper: num_(a.helper), paster: num_(a.paster),
                   eqc: num_(a.eqc), tc: num_(a.tc), other: num_(a.hn), hours: num_(a.hrs), supervisor: str_(a.sup), incharge: str_(a.inc), recorder: '' });
@@ -84,11 +87,13 @@ function reportPacking_(req, user) {
   var factory = str_(req.factory), dept = str_(req.dept), srn = str_(req.srn);
   if (!dept || !srn) return fail_('VAL', 'Floor aur SRN chahiye');
   var rows = [], start = CFG.APP_START_DATE, pcsPerBox = 0;
+  var appDatesP = {};
+  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) { if (str_(r.type) === 'PACKING' && str_(r.dept) === dept && str_(r.srn) === srn && str_(r.date) >= start) appDatesP[str_(r.date)] = 1; });
   var md = getSS_().getSheetByName(MASTER_SHEET_NAME);
   if (md && md.getLastRow() >= 3) {
     md.getRange(3, 6, md.getLastRow() - 2, 1).getValues().forEach(function(row) {
       var p = parseJson_(row[0]); if (!p || str_(p[0]) !== srn) return;
-      var d = dateKey_(p[1]); if (d >= start || d === '9999-12-31') return;
+      var d = dateKey_(p[1]); if (d === '9999-12-31' || (d >= start && appDatesP[d])) return;
       if (str_(p[21]) && str_(p[21]) !== dept) return;                 // another floor
       var op = /^OT/i.test(str_(p[7])) ? 'OT' : 'Final';
       rows.push({ date: d, op: op, pcs: num_(p[3]), box: num_(p[4]), checker: num_(p[14]), tc: num_(p[15]), helper: num_(p[16]), pressman: num_(p[12]), hours: num_(p[17]), supervisor: str_(p[13]), recorder: '', floorKnown: !!str_(p[21]) });
@@ -139,12 +144,14 @@ function reportEndline_(req, user) {
   if (!dept || !srn) return fail_('VAL', 'Line aur SRN chahiye');
   var start = CFG.APP_START_DATE, byDate = {}, outByDate = {};
   var get = function(d) { return byDate[d] = byDate[d] || { date: d, checked: 0, pass: 0, fail: 0, hours: 0, checkers: {}, mp: 0 }; };
+  var appS = {}, appE = {};
+  readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) { if (str_(r.dept) !== dept || str_(r.srn) !== srn || str_(r.date) < start) return; if (str_(r.type) === 'STITCH') appS[str_(r.date)] = 1; else if (str_(r.type) === 'ENDLINE') appE[str_(r.date)] = 1; });
   var md = getSS_().getSheetByName(MASTER_SHEET_NAME);
   if (md && md.getLastRow() >= 3) {
     md.getRange(3, 4, md.getLastRow() - 2, 4).getValues().forEach(function(row) {
-      var s = parseJson_(row[0]); if (s && str_(s[2]) === dept && str_(s[3]) === srn) { var d1 = dateKey_(s[0]); if (d1 < start) addTo_(outByDate, d1, s[8]); }
+      var s = parseJson_(row[0]); if (s && str_(s[2]) === dept && str_(s[3]) === srn) { var d1 = dateKey_(s[0]); if (d1 !== '9999-12-31' && (d1 < start || !appS[d1])) addTo_(outByDate, d1, s[8]); }
       var e = parseJson_(row[3]); if (!e || str_(e[5]) !== dept || str_(e[3]) !== srn) return;
-      var d = dateKey_(e[2] || e[0]); if (d >= start || d === '9999-12-31') return;
+      var d = dateKey_(e[2] || e[0]); if (d === '9999-12-31' || (d >= start && appE[d])) return;
       var g = get(d); g.checked += num_(e[9]); g.pass += num_(e[10]); g.fail += num_(e[11]); g.hours = Math.max(g.hours, num_(e[8])); if (str_(e[7])) g.checkers[str_(e[7])] = 1;
     });
   }

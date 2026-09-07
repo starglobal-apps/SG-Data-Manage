@@ -37,33 +37,37 @@ function loadingAgg_() {
   return out;
 }
 
-// MASTER DATA rows dated before APP_START_DATE, aggregated. Cached 30 min.
+// MASTER DATA aggregated. Rows dated before APP_START_DATE go straight into the totals; rows on/after it are kept
+// per (dept, srn, date) in `late` and only count where the app has NO rows for that same line/SRN/date/type —
+// so data typed straight into the source sheets still counts, while app rows that came back via Send to Final
+// + import are never counted twice. Cached 6 h (re-import -> Main > Refresh sab data).
 function historyAgg_() {
-  var hit = cacheGetBig_('hist_agg');
+  var hit = cacheGetBig_('hist_agg2');
   if (hit) return hit;
 
-  var out = { stitched: {}, endChecked: {}, endPass: {}, endPassSrn: {}, packed: {} };
+  var out = { stitched: {}, endChecked: {}, endPass: {}, endPassSrn: {}, packed: {},
+              late: { stitched: {}, endChecked: {}, endPass: {}, packed: {} } };
   var ss = getSS_();
   var md = ss.getSheetByName(MASTER_SHEET_NAME);
   if (md && md.getLastRow() >= 3) {
-    var start = CFG.APP_START_DATE;
+    var start = CFG.APP_START_DATE, BAD = '9999-12-31';
     var vals = md.getRange(3, 4, md.getLastRow() - 2, 4).getValues(); // cols 4..7: Stitching, 117 Stitching, Packing, Endline
     vals.forEach(function(row) {
-      var s = parseJson_(row[0]);   // [date, line, dept, srn, floor, shift, manpower, hours, output]
-      if (s && dateKey_(s[0]) < start) addTo_(out.stitched, k2_(s[2], s[3]), s[8]);
-      var s7 = parseJson_(row[1]);  // [date, floor, line, dept, srn, shift, manpower, hours, output]
-      if (s7 && dateKey_(s7[0]) < start) addTo_(out.stitched, k2_(s7[3], s7[4]), s7[8]);
-      var p = parseJson_(row[2]);   // [srn, date, '', qty, ...]
-      if (p && dateKey_(p[1]) < start) addTo_(out.packed, str_(p[0]), p[3]);
-      var e = parseJson_(row[3]);   // [entry, factory, prodDate, srn, item, dept, qfloor, checker, hours, checked, pass, reject]
-      if (e && dateKey_(e[2] || e[0]) < start) {
-        addTo_(out.endChecked, k2_(e[5], e[3]), e[9]);
-        addTo_(out.endPass, k2_(e[5], e[3]), e[10]);
-        addTo_(out.endPassSrn, str_(e[3]), e[10]);
+      var s = parseJson_(row[0]), d;   // [date, line, dept, srn, floor, shift, manpower, hours, output]
+      if (s) { d = dateKey_(s[0]); if (d < start) addTo_(out.stitched, k2_(s[2], s[3]), s[8]); else if (d !== BAD) addTo_(out.late.stitched, k2_(s[2], s[3]) + '|' + d, s[8]); }
+      var s7 = parseJson_(row[1]);     // [date, floor, line, dept, srn, shift, manpower, hours, output]
+      if (s7) { d = dateKey_(s7[0]); if (d < start) addTo_(out.stitched, k2_(s7[3], s7[4]), s7[8]); else if (d !== BAD) addTo_(out.late.stitched, k2_(s7[3], s7[4]) + '|' + d, s7[8]); }
+      var p = parseJson_(row[2]);      // [srn, date, '', qty, ...]
+      if (p) { d = dateKey_(p[1]); if (d < start) addTo_(out.packed, str_(p[0]), p[3]); else if (d !== BAD) addTo_(out.late.packed, str_(p[0]) + '|' + d, p[3]); }
+      var e = parseJson_(row[3]);      // [entry, factory, prodDate, srn, item, dept, qfloor, checker, hours, checked, pass, reject]
+      if (e) {
+        d = dateKey_(e[2] || e[0]);
+        if (d < start) { addTo_(out.endChecked, k2_(e[5], e[3]), e[9]); addTo_(out.endPass, k2_(e[5], e[3]), e[10]); addTo_(out.endPassSrn, str_(e[3]), e[10]); }
+        else if (d !== BAD) { addTo_(out.late.endChecked, k2_(e[5], e[3]) + '|' + d, e[9]); addTo_(out.late.endPass, k2_(e[5], e[3]) + '|' + d, e[10]); }
       }
     });
   }
-  cachePutBig_('hist_agg', out, 21600); // history only changes when MASTER DATA is re-imported
+  cachePutBig_('hist_agg2', out, 21600);
   return out;
 }
 
@@ -73,17 +77,18 @@ function dateKey_(v) { var d = parseDate_(v); return d ? fmtDate_(d) : '9999-12-
 // (date|factory|type|dept|srn) so a re-save of that key is not counted twice.
 function appAgg_(excludeKey) {
   if (!excludeKey) { var hit = cacheGetBig_('app_agg'); if (hit) return hit; }
-  var out = { stitched: {}, endChecked: {}, endPass: {}, endPassSrn: {}, packed: {} };
+  var out = { stitched: {}, endChecked: {}, endPass: {}, endPassSrn: {}, packed: {}, keys: {} };
   readTab_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
     if (str_(r.date) < CFG.APP_START_DATE) return;
     if (excludeKey && hourlyKey_(r) === excludeKey) return;
-    var t = str_(r.type), dept = str_(r.dept), srn = str_(r.srn);
-    if (t === 'STITCH') addTo_(out.stitched, k2_(dept, srn), r.qty);
+    var t = str_(r.type), dept = str_(r.dept), srn = str_(r.srn), d = str_(r.date);
+    if (t === 'STITCH') { addTo_(out.stitched, k2_(dept, srn), r.qty); out.keys['S|' + k2_(dept, srn) + '|' + d] = 1; }
     else if (t === 'ENDLINE') {
       addTo_(out.endChecked, k2_(dept, srn), r.checked);
       addTo_(out.endPass, k2_(dept, srn), r.pass);
       addTo_(out.endPassSrn, srn, r.pass);
-    } else if (t === 'PACKING') addTo_(out.packed, srn, r.qty);
+      out.keys['E|' + k2_(dept, srn) + '|' + d] = 1;
+    } else if (t === 'PACKING') { addTo_(out.packed, srn, r.qty); out.keys['P|' + srn + '|' + d] = 1; }
   });
   if (!excludeKey) cachePutBig_('app_agg', out, 120);
   return out;
@@ -100,7 +105,15 @@ function mergeAgg_(a, b) {
 }
 
 function ledger_(excludeKey) {
-  var L = mergeAgg_(historyAgg_(), appAgg_(excludeKey));
+  var H = historyAgg_(), A = appAgg_(excludeKey), keys = A.keys || {};
+  var NUM = ['stitched', 'endChecked', 'endPass', 'endPassSrn', 'packed'];
+  var hb = {}, ab = {}; NUM.forEach(function(f) { hb[f] = H[f] || {}; ab[f] = A[f] || {}; });
+  var L = mergeAgg_(hb, ab);
+  var late = H.late || { stitched: {}, endChecked: {}, endPass: {}, packed: {} };
+  Object.keys(late.stitched).forEach(function(k) { if (keys['S|' + k]) return; var p = k.split('|'); addTo_(L.stitched, k2_(p[0], p[1]), late.stitched[k]); });
+  Object.keys(late.endChecked).forEach(function(k) { if (keys['E|' + k]) return; var p = k.split('|'); addTo_(L.endChecked, k2_(p[0], p[1]), late.endChecked[k]); });
+  Object.keys(late.endPass).forEach(function(k) { if (keys['E|' + k]) return; var p = k.split('|'); addTo_(L.endPass, k2_(p[0], p[1]), late.endPass[k]); addTo_(L.endPassSrn, p[1], late.endPass[k]); });
+  Object.keys(late.packed).forEach(function(k) { if (keys['P|' + k]) return; var p = k.split('|'); addTo_(L.packed, p[0], late.packed[k]); });
   var ld = loadingAgg_();
   L.loaded = ld.loaded; L.loadedSrn = ld.loadedSrn; L.srnInfo = ld.srnInfo; L.deptSrns = ld.deptSrns; L.lastLoad = ld.lastLoad || {};
   return L;
@@ -167,7 +180,7 @@ function ordersActive_(req, user) {
 }
 
 function ordersRefresh_(req, user) {
-  cacheDelBig_('loading_agg'); cacheDelBig_('hist_agg'); cacheDelBig_('app_agg');
+  cacheDelBig_('loading_agg'); cacheDelBig_('hist_agg'); cacheDelBig_('hist_agg2'); cacheDelBig_('app_agg');
   var L = loadingAgg_();
   return { ok: true, srns: Object.keys(L.loadedSrn).length };
 }
