@@ -93,11 +93,13 @@
       });
       html += '<button class="lnk" id="hour-add">+ kisi line me dusra SRN</button>';
     }
+    var y = window.scrollY || 0;
     $('#hour-list').innerHTML = html;
     mountPickers();
     H.initial = snapshot(); H.dirty = false;
     $('#btn-hour-save').disabled = !depts.length;
-    var first = $('#hour-list .hline:not(.done) input[type=number]'); if (first) setTimeout(function () { first.focus(); }, 80);
+    if (y > 40) window.scrollTo(0, y);
+    else { var first = $('#hour-list .hline:not(.done) input[type=number]'); if (first) setTimeout(function () { first.focus({ preventScroll: true }); }, 80); }
   }
 
   function collect() {

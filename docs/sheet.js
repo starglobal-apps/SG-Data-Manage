@@ -19,7 +19,8 @@
       var cb = S.sheet.onClose; S.sheet.onClose = null; if (cb) cb();
       if (history.state && history.state.sheet) { S.skipPop(); try { history.back(); } catch (e) {} }
     },
-    onClose: null
+    onClose: null,
+    keepScroll: function (fn) { var b = $('#sheet .sheet-body'), y = b ? b.scrollTop : 0; fn(); if (b) b.scrollTop = y; }
   };
   $('#sheet-close').addEventListener('click', S.sheet.close);
   $('#sheet-bg').addEventListener('click', S.sheet.close);

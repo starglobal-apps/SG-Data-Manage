@@ -329,11 +329,15 @@
   }
   var QC_ROLES = ['End Line Checker', 'Line Qc.', 'Final Checker'];
   function qcNeed() { var n = 0; collectAttRows().forEach(function (r) { if (QC_ROLES.indexOf(r.role) >= 0) n += r.count; }); return n; }
-  function renderQc() {
+  var qcKey = '';
+  function renderQc(force) {
     var need = qcNeed(), wrap = $('#att-qc-wrap');
     wrap.hidden = !need || attType() === 'PACKING';
-    if (wrap.hidden) return;
+    if (wrap.hidden) { qcKey = ''; return; }
     var all = (att.staff && att.staff.qcs) || [], sel = att.qc || [];
+    var key = need + '|' + sel.join(',') + '|' + all.length;
+    if (!force && key === qcKey) return;
+    qcKey = key;
     $('#att-qc-need').textContent = '(' + sel.length + ' / ' + need + ' chuno)';
     $('#att-qc').innerHTML = all.map(function (n) { return '<button type="button" data-qc="' + esc(n) + '" class="' + (sel.indexOf(n) >= 0 ? 'on' : '') + '">' + esc(n) + '</button>'; }).join('') +
       '<button type="button" data-qcadd="1" class="qc" style="border-style:dashed">+ naya naam</button>';
