@@ -178,7 +178,7 @@ function readDaily_(name) {
 }
 function invalidateDaily_(name) { delete DAILY_MEM_[name]; cacheDelBig_('daily:' + name); }
 function clearAllCaches_() {
-  ['loading_agg', 'hist_agg', 'app_agg', 'masters_rows', 'users_rows'].forEach(cacheDelBig_);
+  ['loading_agg', 'hist_agg', 'app_agg', 'masters_rows', 'users_rows', 'hist_qc', 'defects_master'].forEach(cacheDelBig_);
   Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); });
 }
 
