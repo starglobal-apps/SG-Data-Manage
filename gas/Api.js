@@ -74,7 +74,10 @@ function routes_() {
     'day.submit':     daySubmit_,
     'review.list':    reviewList_,
     'review.decide':  reviewDecide_,
-    'review.send':    reviewSend_
+    'review.send':    reviewSend_,
+    'att.today':      attToday_,
+    'att.send':       attSend_,
+    'admin.importNow': adminImportNow_
   };
 }
 

@@ -24,7 +24,7 @@ function attHours_(rows, shift) {
 // Builds Draft rows for (date, factory[, dept]). Existing Draft/Rejected rows for the same keys are replaced;
 // Submitted/Approved/Sent rows are left alone and reported back.
 function dayBuild_(req, user) {
-  var date = str_(req.date), factory = str_(req.factory), onlyDept = str_(req.dept);
+  var date = str_(req.date), factory = str_(req.factory), onlyDept = str_(req.dept), onlyType = str_(req.onlyType);
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
   if (CFG.FACTORIES.indexOf(factory) < 0) return fail_('FACTORY', 'Factory galat');
 
@@ -43,6 +43,7 @@ function dayBuild_(req, user) {
   Object.keys(attKeys).forEach(function(k) {
     var p = k.split('|'), dept = p[0], shift = p[1];
     if (onlyDept && dept !== onlyDept) return;
+    if (onlyType && onlyType !== 'ATT') return;
     var eff = effectiveAttendance_(date, factory, dept, shift, att, events);
     var flags = [];
     if (!eff.length) flags.push({ level: 'warn', msg: 'Attendance khali' });
@@ -53,7 +54,7 @@ function dayBuild_(req, user) {
 
   // ---- STITCH: per dept + srn + shift
   var groups = {};
-  hourly.filter(function(r) { return str_(r.type) === 'STITCH'; }).forEach(function(r) {
+  hourly.filter(function(r) { return str_(r.type) === 'STITCH' && (!onlyType || onlyType === 'STITCH'); }).forEach(function(r) {
     var k = [str_(r.dept), str_(r.srn), str_(r.shift)].join('|');
     (groups[k] = groups[k] || []).push(r);
   });
@@ -82,7 +83,7 @@ function dayBuild_(req, user) {
 
   // ---- ENDLINE: per dept + srn + checker (+ shift)
   groups = {};
-  hourly.filter(function(r) { return str_(r.type) === 'ENDLINE'; }).forEach(function(r) {
+  hourly.filter(function(r) { return str_(r.type) === 'ENDLINE' && (!onlyType || onlyType === 'ENDLINE'); }).forEach(function(r) {
     var k = [str_(r.dept), str_(r.srn), str_(r.checker), str_(r.shift)].join('|');
     (groups[k] = groups[k] || []).push(r);
   });
@@ -111,7 +112,7 @@ function dayBuild_(req, user) {
 
   // ---- PACKING: per packing dept + srn (+ shift)
   groups = {};
-  hourly.filter(function(r) { return str_(r.type) === 'PACKING'; }).forEach(function(r) {
+  hourly.filter(function(r) { return str_(r.type) === 'PACKING' && (!onlyType || onlyType === 'PACKING'); }).forEach(function(r) {
     var k = [str_(r.dept), str_(r.srn), str_(r.shift)].join('|');
     (groups[k] = groups[k] || []).push(r);
   });
@@ -140,7 +141,7 @@ function dayBuild_(req, user) {
   var kept = [], written = 0;
   withLock_(function() {
     var existing = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
-      return str_(r.date) === date && str_(r.factory) === factory && (!onlyDept || str_(r.dept) === onlyDept);
+      return str_(r.date) === date && str_(r.factory) === factory && (!onlyDept || str_(r.dept) === onlyDept) && (!onlyType || str_(r.type) === onlyType);
     });
     var del = [];
     existing.forEach(function(r) {
@@ -154,7 +155,7 @@ function dayBuild_(req, user) {
     appendRows_(CFG.TABS.DAY_SUMMARY, toWrite.map(function(r) {
       return { id: uuid_(), date: r.date, factory: r.factory, line: r.line, dept: r.dept, type: r.type, srn: r.srn, shift: r.shift,
                payload: JSON.stringify(r.payload), status: 'Draft', flags: JSON.stringify(r.flags), submitted_by: '', submitted_at: '',
-               reviewed_by: '', reviewed_at: '', remark: '' };
+               reviewed_by: '', reviewed_at: '', remark: '', cleaned_at: '' };
     }));
     written = toWrite.length;
   });
@@ -344,9 +345,10 @@ function reviewSend_(req, user) {
       sh.getRange(r._row, cs).setValue('Sent'); sh.getRange(r._row, cb).setValue(userName_(user)); sh.getRange(r._row, ca).setValue(stamp);
     });
   });
-  cacheDelBig_('hist_agg'); cacheDelBig_('app_agg'); invalidateDaily_(CFG.TABS.DAY_SUMMARY);
-  audit_(user, 'review.send', sentIds.join(','), log);
-  return { ok: true, sent: sentIds.length, log: log, skipped: skipped };
+  cacheDelBig_('hist_agg'); cacheDelBig_('hist_agg2'); cacheDelBig_('app_agg'); invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+  var scheduled = sentIds.length ? scheduleAfterSend_() : false;
+  audit_(user, 'review.send', sentIds.join(','), log.concat(['import trigger: ' + scheduled]));
+  return { ok: true, sent: sentIds.length, log: log, skipped: skipped, importScheduled: scheduled };
 }
 
 // Writes rows into the target sheet, only the mapped columns, starting at the first empty row of keyCol.

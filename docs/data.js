@@ -50,7 +50,9 @@
     if (seg === 'out') {
       var keys = S.slots().filter(function (s) { return sl[s.key]; });
       body = '<div class="dt-head"><span>' + (type === 'PACKING' ? 'Packing' : 'Stitching output') + ' · ' + esc(S.fmtDay(state.date)) + '</span>' + editBtn(type) + '</div>';
-      if (!keys.length) body += '<div class="empty">Is din koi output entry nahi<br><button class="btn primary" data-edit="' + type + '" style="margin-top:10px">Bharo</button></div>';
+      var sentT = statuses[type] && statuses[type].status === 'Sent';
+      if (!keys.length && sentT) body += '<div class="empty">Ye din Sent ho chuka — data main sheet / MASTER DATA me hai ✓</div>';
+      else if (!keys.length) body += '<div class="empty">Is din koi output entry nahi<br><button class="btn primary" data-edit="' + type + '" style="margin-top:10px">Bharo</button></div>';
       else {
         body += '<table class="tbl"><thead><tr><th>Slot</th><th>SRN</th><th class="num">' + (type === 'PACKING' ? 'Pcs' : 'Output') + '</th>' + (type === 'PACKING' ? '<th class="num">Ctn</th>' : '') + '</tr></thead><tbody>';
         keys.forEach(function (s) {

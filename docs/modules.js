@@ -282,7 +282,35 @@
     if (!S.isAdmin()) { toast('Sirf admin', 'bad'); return; }
     loadReview();
   }
+  function loadAttReview() {
+    var date = $('#rv-date').value || S.todayStr();
+    api('att.today', { date: date, factory: state.factory }, { quiet: true }).then(function (d) {
+      var box = $('#rv-att'); if (!box) return;
+      if (!d.items.length) { box.innerHTML = ''; return; }
+      var open = d.items.filter(function (x) { return x.status !== 'Sent'; });
+      box.innerHTML = '<div class="card" style="margin:0 0 8px"><div class="dt-head"><span>Attendance · ' + esc(S.fmtDay(date)) + ' · ' + d.items.length + ' line</span>' + (open.length ? '<label class="chk" style="margin:0"><input type="checkbox" id="rva-all"> All</label>' : '') + '</div>' +
+        d.items.map(function (x) {
+          var sent = x.status === 'Sent';
+          return '<div class="rv-item" style="padding:6px 0"><input type="checkbox" data-att="' + esc(x.dept) + '"' + (sent ? ' disabled' : '') + '><div class="body"><div class="title">' + esc(S.shortLine(x.dept)) + ' · ' + esc(x.shift === 'Final' ? 'Day' : x.shift) + (x.srn ? ' · ' + esc(x.srn) : '') + (x.status ? S.pill(x.status) : '') + '</div><div class="nums">' + x.manpower + ' mp · ' + x.manhours + ' hrs' + (x.supervisor ? ' · ' + esc(x.supervisor) : '') + (x.incharge ? ' / ' + esc(x.incharge) : '') + ' · by ' + esc(x.by) + '</div></div></div>';
+        }).join('') +
+        (open.length ? '<button class="btn ok big" id="btn-rva-send" style="margin-top:8px">Attendance approve &amp; send to sheet</button>' : '<div class="hint">Sab attendance Sent ho chuki ✓</div>') + '</div>';
+    }).catch(function () { var box = $('#rv-att'); if (box) box.innerHTML = ''; });
+  }
+  $('#rv-att').addEventListener('change', function (e) { if (e.target.id === 'rva-all') $$('#rv-att input[data-att]:not(:disabled)').forEach(function (c) { c.checked = e.target.checked; }); });
+  $('#rv-att').addEventListener('click', function (e) {
+    if (!e.target.closest('#btn-rva-send')) return;
+    var depts = $$('#rv-att input[data-att]:checked').map(function (c) { return c.dataset.att; });
+    if (!depts.length) { toast('Line select karo', 'bad'); return; }
+    var date = $('#rv-date').value || S.todayStr();
+    S.ask(depts.length + ' line ki attendance approve karke attendance sheet me likh dein? Ye wapas nahi hota.', { ok: 'Approve & send', cancel: 'Ruko' }).then(function (ok) {
+      if (!ok) return;
+      api('att.send', { date: date, factory: state.factory, depts: depts })
+        .then(function (d) { toast('Attendance sent · ' + d.sent + ' · ' + (d.importScheduled ? 'import + cleanup 1 min me' : 'Main → Import + cleanup chalao'), 'ok', 7000); S.invalidateAll(); loadReview(); })
+        .catch(function (er) { toast(er.message, 'bad', 7000); });
+    });
+  });
   function loadReview() {
+    loadAttReview();
     $('#rv-list').innerHTML = '<div class="empty">Loading…</div>';
     api('review.list', { factory: state.factory, status: $('#rv-status').value, date: $('#rv-date').value })
       .then(function (d) {
@@ -329,7 +357,7 @@
     S.ask('Selected Approved rows ko source sheets me likh dein? Ye wapas nahi hota.', { ok: 'Send to Final', cancel: 'Ruko' }).then(function (ok) {
       if (!ok) return;
       api('review.send', { ids: ids })
-        .then(function (d) { toast('Sent ' + d.sent + ' · ' + d.log.join(' | '), 'ok', 8000); loadReview(); })
+        .then(function (d) { toast('Sent ' + d.sent + ' · ' + d.log.join(' | ') + (d.importScheduled ? ' · import + cleanup 1 min me chalega' : ' · Main → "Import + cleanup" chalao'), 'ok', 9000); S.invalidateAll(); loadReview(); })
         .catch(function (e) { toast(e.message, 'bad', 6000); });
     });
   });

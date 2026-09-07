@@ -26,7 +26,7 @@ var CFG = {
     ATT_DAILY:       ['id', 'date', 'factory', 'dept', 'shift', 'role', 'hours', 'count', 'entered_by', 'entered_at', 'srn', 'supervisor', 'incharge', 'qc_names'],
     HOURLY_LOG:      ['id', 'date', 'factory', 'line', 'dept', 'srn', 'floor', 'type', 'shift', 'slot', 'qty', 'checked', 'pass', 'reject', 'cartons', 'pcs_per_ctn', 'checker', 'entered_by', 'entered_at', 'defects'],
     MANPOWER_EVENTS: ['id', 'date', 'factory', 'dept', 'role', 'event', 'count', 'time', 'eff_hours', 'note', 'entered_by', 'entered_at'],
-    DAY_SUMMARY:     ['id', 'date', 'factory', 'line', 'dept', 'type', 'srn', 'shift', 'payload', 'status', 'flags', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'remark'],
+    DAY_SUMMARY:     ['id', 'date', 'factory', 'line', 'dept', 'type', 'srn', 'shift', 'payload', 'status', 'flags', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'remark', 'cleaned_at'],
     ACTIVE_ORDERS:   ['factory', 'line', 'dept', 'srn', 'loaded', 'stitched', 'balance', 'last_loading'],
     TRANSFERS:       ['id', 'date', 'factory', 'from_dept', 'to_dept', 'role', 'count', 'time', 'srn', 'status', 'note', 'by', 'at', 'decided_by', 'decided_at', 'to_user', 'items', 'allocations'],
     AUDIT_LOG:       ['at', 'user', 'action', 'ref', 'detail']
