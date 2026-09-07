@@ -101,7 +101,7 @@
 
   function renderQuick(srns) {
     var rows = rowsHere(), remembered = S.recall('srn_' + q.type + '_' + state.line);
-    q.srn = rows.length ? rows[0].srn : (srns.some(function (x) { return x.srn === remembered; }) ? remembered : (srns[0] ? srns[0].srn : ''));
+    q.srn = q.restore && q.restore.srn ? q.restore.srn : rows.length ? rows[0].srn : (srns.some(function (x) { return x.srn === remembered; }) ? remembered : (srns[0] ? srns[0].srn : ''));
     var html = '';
     if (!srns.length) {
       html += '<div class="banner">' + (q.type === 'STITCH' ? 'Is line par koi loading nahi mili. Loading sheet me entry hone ke baad refresh dabao.' : q.type === 'ENDLINE' ? 'Is line par stitching output nahi hai — pehle stitching bharo.' : 'Koi SRN nahi jiska endline-pass balance ho.') + '</div><button class="btn primary big" data-refresh="1">Loading refresh</button>';
@@ -125,6 +125,7 @@
     var info = (srns || []).filter(function (x) { return x.srn === q.srn; })[0];
     var html = '';
     if (q.type === 'ENDLINE') {
+      q.defects = q.restore ? q.restore.defects : (cur.defects || []);
       html += '<label>Checker</label><input id="f-checker" type="text" value="' + esc(cur.checker || S.recall('checker_' + state.line)) + '" placeholder="Checker ka naam">';
       html += '<div class="three"><div class="field"><label>Checked</label><input id="f-checked" type="number" inputmode="numeric" value="' + (cur.checked || '') + '"></div><div class="field"><label>Pass</label><input id="f-pass" type="number" inputmode="numeric" value="' + (cur.pass || '') + '"></div><div class="field"><label>Reject</label><input id="f-reject" type="number" inputmode="numeric" value="' + (cur.reject || '') + '"></div></div>';
     } else if (q.type === 'PACKING') {
@@ -132,8 +133,21 @@
     } else {
       html += '<label>Is ghante ka output</label><input id="f-qty" class="bigin" type="number" inputmode="numeric" value="' + (cur.qty || '') + '" placeholder="0">';
     }
+    if (q.type === 'ENDLINE') html += '<button type="button" class="btn ghost dbtn" id="f-def" style="margin-top:6px"' + (num(cur.reject) > 0 ? '' : ' hidden') + '>Defect ' + S.defectTotal(cur.defects) + '/' + num(cur.reject) + '</button>';
     if (info) html += '<p class="hint">' + esc((info.item || '').slice(0, 40)) + ' · limit <b>' + info.limit + '</b> · ho chuka <b>' + info.used + '</b> · balance <b>' + info.balance + '</b></p>';
     $('#q-fields').innerHTML = html;
+    var fd = $('#f-def');
+    if (fd) {
+      var syncD = function () { var rej = num($('#f-rej').value), tot = S.defectTotal(q.defects); fd.hidden = !(rej > 0); fd.textContent = 'Defect ' + tot + '/' + rej; fd.classList.toggle('need', rej > 0 && tot !== rej); };
+      $('#f-rej').addEventListener('input', syncD);
+      if (q.restore) { $('#f-checker').value = q.restore.checker; $('#f-checked').value = q.restore.checked; $('#f-pass').value = q.restore.pass; $('#f-rej').value = q.restore.reject; if (q.restore.touched) $('#f-pass').dataset.touched = '1'; q.restore = null; }
+      syncD();
+      fd.onclick = function () {
+        var rej = num($('#f-rej').value); if (!rej) { toast('Pehle reject bharo', ''); return; }
+        var snap = { srn: q.srn, checker: $('#f-checker').value, checked: $('#f-checked').value, pass: $('#f-pass').value, reject: $('#f-rej').value, touched: !!$('#f-pass').dataset.touched, defects: q.defects };
+        S.defectPicker({ srn: q.srn, reject: rej, value: q.defects, onDone: function (list) { snap.defects = list; q.restore = snap; S.quick(q.type, q.slot); } });
+      };
+    }
     var first = $('#f-qty') || $('#f-checked'); if (first) setTimeout(function () { first.focus(); }, 60);
     var c = $('#f-checked'), r = $('#f-reject'), p = $('#f-pass');
     if (c && r && p) { var auto = function () { if (!p.dataset.touched) p.value = Math.max(0, num(c.value) - num(r.value)); }; c.addEventListener('input', auto); r.addEventListener('input', auto); p.addEventListener('input', function () { p.dataset.touched = '1'; }); }
@@ -157,7 +171,9 @@
     else if (q.type === 'ENDLINE') {
       p.checker = $('#f-checker').value.trim(); p.checked = num($('#f-checked').value); p.pass = num($('#f-pass').value); p.reject = num($('#f-reject').value);
       if (!p.checker) { toast('Checker ka naam likho', 'bad'); return; }
-      if (p.pass + p.reject > p.checked) { toast('Pass + reject checked se zyada', 'bad'); return; }
+      if (p.checked && p.pass + p.reject !== p.checked) { toast('Checked = pass + reject hona chahiye', 'bad'); return; }
+      p.defects = q.defects || [];
+      if (p.reject > 0 && S.defectTotal(p.defects) !== p.reject) { toast(p.reject + ' reject → ' + p.reject + ' defect chuno (abhi ' + S.defectTotal(p.defects) + ')', 'bad', 6000); return; }
       S.remember('checker_' + state.line, p.checker);
     } else {
       p.qty = num($('#f-qty').value);

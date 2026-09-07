@@ -97,7 +97,7 @@ function hourGet_(req, user) {
     if (str_(r.floor) && (!lastFloor[dept] || lastFloor[dept].at < at)) lastFloor[dept] = { v: str_(r.floor), at: at };
     if (str_(r.slot) !== slot) return;
     if (!rowsBy[lk]) rowsBy[lk] = [];
-    rowsBy[lk].push({ srn: str_(r.srn), qty: num_(r.qty), checked: num_(r.checked), pass: num_(r.pass), reject: num_(r.reject), cartons: num_(r.cartons), checker: str_(r.checker), by: str_(r.entered_by) });
+    rowsBy[lk].push({ srn: str_(r.srn), qty: num_(r.qty), checked: num_(r.checked), pass: num_(r.pass), reject: num_(r.reject), cartons: num_(r.cartons), checker: str_(r.checker), by: str_(r.entered_by), defects: parseJsonArr_(r.defects) });
   });
   var lineFloor = masterMap_('LINE_FLOOR');
 
@@ -143,8 +143,11 @@ function slotUpsert_(p, user, ctx) {
   if (type === 'ENDLINE') {
     row.checked = num_(p.checked); row.pass = num_(p.pass); row.reject = num_(p.reject);
     if (row.checked < 0 || row.pass < 0 || row.reject < 0) return fail_('VAL', 'Negative nahi chalega');
-    if (row.pass + row.reject > row.checked) return fail_('VAL', 'Pass + reject checked se zyada');
+    if (row.checked && row.pass + row.reject !== row.checked) return fail_('VAL', 'Checked (' + row.checked + ') = pass + reject hona chahiye (' + (row.pass + row.reject) + ')');
     if (row.checked && !str_(p.checker)) return fail_('VAL', 'Checker ka naam likho');
+    var df = cleanDefects_(p.defects);
+    if (row.reject > 0 && df.total !== row.reject) return fail_('DEFECT', row.reject + ' reject → ' + row.reject + ' defect chuno (abhi ' + df.total + ')');
+    row.defects = row.reject > 0 ? JSON.stringify(df.list) : '';
   } else {
     row.qty = num_(p.qty);
     if (row.qty < 0) return fail_('VAL', 'Negative nahi chalega');
@@ -175,7 +178,7 @@ function slotUpsert_(p, user, ctx) {
   if (newAmt > 0) {
     var nr = { id: uuid_(), date: date, factory: factory, line: lineOf_(dept), dept: dept, srn: srn, floor: floor, type: type,
       shift: sd.shift, slot: slot, qty: row.qty, checked: row.checked, pass: row.pass, reject: row.reject, cartons: row.cartons,
-      pcs_per_ctn: row.pcs_per_ctn, checker: str_(p.checker), entered_by: userName_(user), entered_at: stamp };
+      pcs_per_ctn: row.pcs_per_ctn, checker: str_(p.checker), entered_by: userName_(user), entered_at: stamp, defects: row.defects || '' };
     appendRows_(CFG.TABS.HOURLY_LOG, [nr]);
     nr._row = tab_(CFG.TABS.HOURLY_LOG, true).getLastRow();
     ctx.rows.push(nr);

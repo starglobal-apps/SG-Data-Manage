@@ -63,7 +63,7 @@ function hourlySave_(req, user) {
     if (type === 'ENDLINE') {
       row.checked = num_(x.checked); row.pass = num_(x.pass); row.reject = num_(x.reject);
       if (row.checked < 0 || row.pass < 0 || row.reject < 0) throw new Error('Negative nahi chalega: ' + slot);
-      if (row.pass + row.reject > row.checked) throw new Error(slot + ': pass + reject checked se zyada');
+      if (row.checked && row.pass + row.reject !== row.checked) throw new Error(slot + ': checked = pass + reject hona chahiye');
       if (!row.checked) return;
       total += row.checked;
     } else {
@@ -293,7 +293,7 @@ function lineToday_(req, user) {
     if (!slots[t]) { slots[t] = {}; totals[t] = { qty: 0, checked: 0, pass: 0, reject: 0, cartons: 0, slots: 0 }; }
     if (!slots[t][sk]) { slots[t][sk] = []; totals[t].slots++; }
     slots[t][sk].push({ srn: str_(r.srn), qty: num_(r.qty), checked: num_(r.checked), pass: num_(r.pass), reject: num_(r.reject),
-                        cartons: num_(r.cartons), checker: str_(r.checker), floor: str_(r.floor), by: str_(r.entered_by) });
+                        cartons: num_(r.cartons), checker: str_(r.checker), floor: str_(r.floor), by: str_(r.entered_by), defects: parseJsonArr_(r.defects) });
     totals[t].qty += num_(r.qty); totals[t].checked += num_(r.checked); totals[t].pass += num_(r.pass); totals[t].reject += num_(r.reject); totals[t].cartons += num_(r.cartons);
   });
 

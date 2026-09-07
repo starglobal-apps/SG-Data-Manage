@@ -91,16 +91,17 @@ function dayBuild_(req, user) {
     if (onlyDept && dept !== onlyDept) return;
     var info = L.srnInfo[srn] || {};
     var floorName = str_(g[0].floor) || (lineFloor[dept] ? lineFloor[dept].value : '');
-    var slotMap = {}, slotSet = {};
+    var slotMap = {}, slotSet = {}, defects = {};
     g.forEach(function(r) {
       var sk = str_(r.slot); slotSet[sk] = true;
       if (!slotMap[sk]) slotMap[sk] = { pass: 0, reject: 0 };
       slotMap[sk].pass += num_(r.pass); slotMap[sk].reject += num_(r.reject);
+      parseJsonArr_(r.defects).forEach(function(x) { if (x && x.d) defects[x.d] = (defects[x.d] || 0) + num_(x.n); });
     });
     var payload = {
       entryDate: date, factoryName: 'FAC' + factory, date: date, srn: srn, item: info.item || '', dept: dept,
       qfloor: floorName.replace(/Stitching/i, 'Quality'), checker: checker, hours: Object.keys(slotSet).length,
-      checked: sum_(g, 'checked'), pass: sum_(g, 'pass'), reject: sum_(g, 'reject'), shift: shift, slots: slotMap
+      checked: sum_(g, 'checked'), pass: sum_(g, 'pass'), reject: sum_(g, 'reject'), shift: shift, slots: slotMap, defects: defects
     };
     var flags = [];
     if (!checker) flags.push({ level: 'warn', msg: 'Checker ka naam nahi' });

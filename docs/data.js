@@ -109,9 +109,11 @@
     var orig = r.srn ? esc(JSON.stringify({ srn: r.srn, qty: r.qty || 0, checked: r.checked || 0, pass: r.pass || 0, reject: r.reject || 0, cartons: r.cartons || 0, checker: r.checker || '' })) : '';
     var t = '<span class="t">' + (i ? '' : esc(s.label)) + '</span>';
     if (ed.type === 'ENDLINE') {
-      return '<div class="ed-row end" data-slot="' + esc(s.key) + '" data-orig="' + orig + '">' + t + srnSel(r.srn) +
+      var dtot = S.defectTotal(r.defects), rej = num(r.reject);
+      return '<div class="ed-row end" data-slot="' + esc(s.key) + '" data-orig="' + orig + '" data-defects="' + esc(JSON.stringify(r.defects || [])) + '">' + t + srnSel(r.srn) +
         '<input class="e-chk" type="number" inputmode="numeric" placeholder="chk" value="' + (r.checked || '') + '"><input class="e-pass" type="number" inputmode="numeric" placeholder="pass" value="' + (r.pass || '') + '"><input class="e-rej" type="number" inputmode="numeric" placeholder="rej" value="' + (r.reject || '') + '">' +
-        '<input class="e-checker" type="text" list="staff-qc" placeholder="checker ka naam" value="' + esc(r.checker || S.recall('checker_' + state.line) || '') + '"></div>';
+        '<input class="e-checker" type="text" list="staff-qc" placeholder="checker ka naam" value="' + esc(r.checker || S.recall('checker_' + state.line) || '') + '">' +
+        '<button type="button" class="dbtn' + (rej > 0 && dtot !== rej ? ' need' : '') + '" data-def="1"' + (rej > 0 ? '' : ' hidden') + '>Defect ' + dtot + '/' + rej + '</button></div>';
     }
     if (ed.type === 'PACKING') {
       return '<div class="ed-row pack" data-slot="' + esc(s.key) + '" data-orig="' + orig + '">' + t + srnSel(r.srn) +
@@ -139,9 +141,14 @@
     html += '<div class="ed-bar"><button class="btn ghost" data-cancel="1">Cancel</button><button class="btn primary" data-save="1">Save changes</button></div>';
     $('#data-body').innerHTML = html;
   }
+  function syncDef(row) {
+    var db = $('.dbtn', row); if (!db) return;
+    var rej = num(($('.e-rej', row) || {}).value), dv = []; try { dv = JSON.parse(row.dataset.defects || '[]'); } catch (e) {}
+    var tot = S.defectTotal(dv); db.hidden = !(rej > 0); db.textContent = 'Defect ' + tot + '/' + rej; db.classList.toggle('need', rej > 0 && tot !== rej);
+  }
   function rowVal(row) {
     var v = { srn: ($('.e-srn', row) || {}).value || '', qty: 0, checked: 0, pass: 0, reject: 0, cartons: 0, checker: '' };
-    if (ed.type === 'ENDLINE') { v.checked = num($('.e-chk', row).value); v.pass = num($('.e-pass', row).value); v.reject = num($('.e-rej', row).value); v.checker = ($('.e-checker', row).value || '').trim(); }
+    if (ed.type === 'ENDLINE') { v.checked = num($('.e-chk', row).value); v.pass = num($('.e-pass', row).value); v.reject = num($('.e-rej', row).value); v.checker = ($('.e-checker', row).value || '').trim(); try { v.defects = JSON.parse(row.dataset.defects || '[]'); } catch (e) { v.defects = []; } }
     else { v.qty = num($('.e-qty', row).value); if (ed.type === 'PACKING') v.cartons = num($('.e-ctn', row).value); }
     return v;
   }
@@ -151,7 +158,7 @@
     $$('#data-body .ed-row').forEach(function (row) {
       var slot = row.dataset.slot, v = rowVal(row), o = row.dataset.orig ? JSON.parse(row.dataset.orig) : null;
       row.classList.remove('bad');
-      var same = o && o.srn === v.srn && ['qty', 'checked', 'pass', 'reject', 'cartons', 'checker'].every(function (f) { return (o[f] || 0) === (v[f] || 0) || (o[f] === '' && v[f] === ''); });
+      var same = o && o.srn === v.srn && ['qty', 'checked', 'pass', 'reject', 'cartons', 'checker'].every(function (f) { return (o[f] || 0) === (v[f] || 0) || (o[f] === '' && v[f] === ''); }) && (ed.type !== 'ENDLINE' || JSON.stringify(v.defects || []) === (row.dataset.defects || '[]'));
       if (same || (!o && !amt(v))) return;
       var lf = S.M('LINE_FLOOR').filter(function (x) { return x.key === state.line; })[0], floor = lf ? lf.value : '';
       var base = function (srn) { return { slot: slot, type: ed.type, srn: srn, floor: floor }; };
@@ -160,8 +167,9 @@
         if (!v.srn) { errs.push((S.slotDef(slot) || {}).label + ': SRN chuno'); row.classList.add('bad'); return; }
         if (ed.type === 'ENDLINE') {
           if (!v.checker) { errs.push((S.slotDef(slot) || {}).label + ': checker ka naam'); row.classList.add('bad'); return; }
-          if (v.pass + v.reject > v.checked) { errs.push((S.slotDef(slot) || {}).label + ': pass + reject > checked'); row.classList.add('bad'); return; }
-          items.push(Object.assign(base(v.srn), { checked: v.checked, pass: v.pass, reject: v.reject, checker: v.checker }));
+          if (v.pass + v.reject !== v.checked) { errs.push((S.slotDef(slot) || {}).label + ': checked = pass + reject hona chahiye'); row.classList.add('bad'); return; }
+          if (v.reject > 0 && S.defectTotal(v.defects) !== v.reject) { errs.push((S.slotDef(slot) || {}).label + ': ' + v.reject + ' reject → ' + v.reject + ' defect chuno'); row.classList.add('bad'); return; }
+          items.push(Object.assign(base(v.srn), { checked: v.checked, pass: v.pass, reject: v.reject, checker: v.checker, defects: v.defects || [] }));
         } else items.push(Object.assign(base(v.srn), { qty: v.qty, cartons: v.cartons }));
       }
     });
@@ -194,6 +202,14 @@
     var b = e.target.closest('button');
     if (b) {
       if (b.dataset.edit) { startEdit(b.dataset.edit); return; }
+      if (b.dataset.def) {
+        var drow = b.closest('.ed-row'), dsrn = ($('.e-srn', drow) || {}).value, drej = num(($('.e-rej', drow) || {}).value);
+        if (!dsrn) { toast('Pehle SRN chuno', 'bad'); return; }
+        if (!drej) { toast('Pehle reject bharo', ''); return; }
+        var dv = []; try { dv = JSON.parse(drow.dataset.defects || '[]'); } catch (e2) {}
+        S.defectPicker({ srn: dsrn, reject: drej, value: dv, onDone: function (list) { drow.dataset.defects = JSON.stringify(list); syncDef(drow); } });
+        return;
+      }
       if (b.dataset.cancel) { ed.on = false; S.tabs.data(); return; }
       if (b.dataset.save) { saveEdit(); return; }
       if (b.dataset.ot) { ed.ot = true; S.loadToday().then(render); return; }
@@ -216,7 +232,7 @@
   $('#data-body').addEventListener('input', function (e) {
     var row = e.target.closest('.ed-row'); if (!row) return;
     row.classList.remove('bad'); var m = $('.msg', row); if (m) m.remove();
-    if (ed.type === 'ENDLINE') { var c = $('.e-chk', row), r = $('.e-rej', row), p = $('.e-pass', row); if (e.target === p) p.dataset.touched = '1'; else if (!p.dataset.touched) p.value = Math.max(0, num(c.value) - num(r.value)); }
+    if (ed.type === 'ENDLINE') { var c = $('.e-chk', row), r = $('.e-rej', row), p = $('.e-pass', row); if (e.target === p) p.dataset.touched = '1'; else if (!p.dataset.touched) p.value = Math.max(0, num(c.value) - num(r.value)); syncDef(row); }
     if (e.target.classList.contains('e-checker') && e.target.value.trim()) S.remember('checker_' + state.line, e.target.value.trim());
   });
   $('#data-body').addEventListener('keydown', function (e) {

@@ -281,13 +281,15 @@
     var r = S.swr('report.check', { factory: state.factory, date: state.date }, fresh ? 0 : 30000);
     return r.promise.then(function (d) { return d.alerts || []; });
   };
-  S.reportAll = function () {
-    S.push('reportall', 'Review & send · ' + S.fmtDay(state.date));
+  S.reportAll = function (onlyType) {
+    onlyType = onlyType || '';
+    S.push('reportall', 'Review & send · ' + (onlyType ? labelOf(onlyType) + ' · ' : '') + S.fmtDay(state.date));
     $('#ra-info').innerHTML = '<div class="empty">PMS check + reports ban rahe hain…</div>'; $('#ra-list').innerHTML = ''; RA.files = []; RA.alerts = [];
     $('#btn-ra-share').disabled = true; $('#btn-ra-dl').disabled = true;
     S.reportAlerts(true).then(function (alerts) { RA.alerts = alerts; return S.loadFactory(); }).then(function (d) {
       var list = [];
       d.depts.forEach(function (x) { var srn = (d.daySrn && d.daySrn[x.dept]) || (d.attSrn && d.attSrn[x.dept]); if (!srn) return; if (x.cat === 'PACKING') list.push({ t: 'PACKING', dept: x.dept, srn: srn }); else { list.push({ t: 'STITCH', dept: x.dept, srn: srn }); list.push({ t: 'ENDLINE', dept: x.dept, srn: srn }); } });
+      if (onlyType) list = list.filter(function (x) { return x.t === onlyType; });
       if (!list.length) { $('#ra-info').innerHTML = '<div class="empty">Is din kisi line ka SRN / attendance nahi</div>'; return; }
       var seq = Promise.resolve(), done = 0;
       list.forEach(function (x) {

@@ -21,7 +21,12 @@
     var lines = d.depts.filter(function (x) { return d.att[x.dept + '|Final']; });
     html += '<h2>Reports · ' + esc(S.fmtDay(state.date)) + ' · ' + lines.length + ' line</h2>';
     var alerts = AL.alerts, blocked = alerts && alerts.length;
-    if (lines.length) html += S.alertsHtml(alerts) + '<button class="btn primary big" data-all="1" style="margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:8px"' + (blocked ? ' disabled' : '') + '>' + icon('review') + (blocked ? ' Mismatch hai — send band' : alerts === null ? ' Check ho raha hai…' : ' Review & send all reports') + '</button>';
+    if (lines.length) {
+      var hasPk = lines.some(function (x) { return x.cat === 'PACKING'; }), hasSt = lines.some(function (x) { return x.cat !== 'PACKING'; });
+      var rb = function (t, label) { return '<button class="btn primary" data-all="' + t + '"' + (blocked || alerts === null ? ' disabled' : '') + '>' + icon('review') + '<span>' + label + '</span></button>'; };
+      html += S.alertsHtml(alerts) + '<div class="ra-btns">' + (hasSt ? rb('STITCH', 'Stitching reports') + rb('ENDLINE', 'Endline FTR') : '') + (hasPk ? rb('PACKING', 'Packing reports') : '') + '</div>' +
+        '<p class="hint" style="margin:0 0 10px">' + (blocked ? 'Mismatch hai — send band' : alerts === null ? 'PMS check ho raha hai…' : 'Ek type ke saare reports ek saath review karke WhatsApp par bhejo') + '</p>';
+    }
     if (!lines.length) html += '<div class="empty">Is din kisi line ki attendance nahi — report attendance ke baad banti hai</div>';
     lines.forEach(function (x) {
       var attS = (d.attSrn && d.attSrn[x.dept]) || '', srn = attS || (d.daySrn && d.daySrn[x.dept]) || '', pk = x.cat === 'PACKING';
@@ -57,7 +62,7 @@
     var r = e.target.closest('[data-rep]'); if (r) { var p = r.dataset.rep.split('|'); S.report(p[0], p[1], p[2]); return; }
     var a = e.target.closest('[data-att]'); if (a) { S.openAttendance('Final', a.dataset.att); return; }
     if (e.target.closest('[data-print]')) { S.printSrn(); return; }
-    if (e.target.closest('[data-all]')) { S.reportAll(); return; }
+    var al = e.target.closest('[data-all]'); if (al) { S.reportAll(al.dataset.all); return; }
     var g = e.target.closest('[data-go]'); if (g) S.go(g.dataset.go);
   });
 })();

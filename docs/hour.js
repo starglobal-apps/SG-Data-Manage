@@ -49,7 +49,10 @@
       ? '<input class="f-chk sm" type="number" inputmode="numeric" placeholder="chk" value="' + (r.checked || '') + '"><input class="f-pass sm" type="number" inputmode="numeric" placeholder="pass" value="' + (r.pass || '') + '"><input class="f-rej sm" type="number" inputmode="numeric" placeholder="rej" value="' + (r.reject || '') + '">'
       : '<input class="f-qty" type="number" inputmode="numeric" placeholder="' + (type === 'PACKING' ? 'pcs' : 'qty') + '" value="' + (r.qty || '') + '">' + (type === 'PACKING' ? '<input class="f-ctn sm" type="number" inputmode="numeric" placeholder="ctn" value="' + (r.cartons || '') + '">' : '');
     var qcs = d.qcNames || [], defQc = qcFixed || r.checker || d.checker || (qcs.length === 1 ? qcs[0] : '');
-    var checker = type === 'ENDLINE' ? '<div class="chk-name">' + icon('qc') + (qcs.length ? '<select class="f-checker">' + (defQc && qcs.indexOf(defQc) < 0 ? '<option>' + esc(defQc) + '</option>' : '') + qcs.map(function (n) { return '<option' + (n === defQc ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' : '<input class="f-checker" type="text" list="staff-qc" placeholder="checker ka naam" value="' + esc(defQc) + '">') + '</div>' : '';
+    var dtot = S.defectTotal(r.defects), rej = num(r.reject);
+    var dbtn = type === 'ENDLINE' ? '<button type="button" class="act dbtn' + (rej > 0 && dtot !== rej ? ' need' : '') + '" data-def="1"' + (rej > 0 ? '' : ' hidden') + '>Defect ' + dtot + '/' + rej + '</button>' : '';
+    var dattr = type === 'ENDLINE' ? ' data-defects="' + esc(JSON.stringify(r.defects || [])) + '"' : '';
+    var checker = type === 'ENDLINE' ? '<div class="chk-name">' + icon('qc') + (qcs.length ? '<select class="f-checker">' + (defQc && qcs.indexOf(defQc) < 0 ? '<option>' + esc(defQc) + '</option>' : '') + qcs.map(function (n) { return '<option' + (n === defQc ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' : '<input class="f-checker" type="text" list="staff-qc" placeholder="checker ka naam" value="' + esc(defQc) + '">') + dbtn + '</div>' : '';
     if (type === 'PACKING') {
       // two lines: [name · mp · actions] / [SRN search · pcs · ctn]
       return '<div class="hline pack ' + cls + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' +
@@ -57,7 +60,7 @@
         '<div class="bot"><div class="srnp-mount" data-sel="' + esc(sel) + '"></div>' + inputs + warnChip + '</div></div>';
     }
     var nmCell = extra ? '<span class="nm"><small>' + (qcFixed ? '↳ ' + esc(qcFixed) : '+ dusra SRN') + '</small></span>' : nm;
-    return '<div class="hline ' + cls + (checker ? ' wrap' : '') + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '">' + nmCell + (extra || type === 'ENDLINE' ? '' : mp) + srnSel(opts, sel) + inputs + warnChip + (extra || type === 'ENDLINE' ? '' : acts) + checker + '</div>';
+    return '<div class="hline ' + cls + (checker ? ' wrap' : '') + '" data-i="' + d._i + '" data-type="' + type + '" data-extra="' + (extra ? 1 : 0) + '"' + dattr + '>' + nmCell + (extra || type === 'ENDLINE' ? '' : mp) + srnSel(opts, sel) + inputs + warnChip + (extra || type === 'ENDLINE' ? '' : acts) + checker + '</div>';
   }
   // ENDLINE: one row per QC of the line (each QC's checked/pass/reject saved separately)
   function endlineRows(d) {
@@ -104,7 +107,7 @@
       var srn = sel.value, chk = type === 'ENDLINE' ? (($('.f-checker', row) || { value: '' }).value || '').trim() : '';
       var k = d.dept + '|' + srn + (type === 'ENDLINE' ? '|' + chk : ''); if (!srn || seen[k]) return; seen[k] = true;
       var it = { type: type, dept: d.dept, srn: srn, floor: d.floor };
-      if (type === 'ENDLINE') { it.checked = num($('.f-chk', row).value); it.pass = num($('.f-pass', row).value); it.reject = num($('.f-rej', row).value); it.checker = chk; }
+      if (type === 'ENDLINE') { it.checked = num($('.f-chk', row).value); it.pass = num($('.f-pass', row).value); it.reject = num($('.f-rej', row).value); it.checker = chk; try { it.defects = JSON.parse(row.dataset.defects || '[]'); } catch (e) { it.defects = []; } }
       else { it.qty = num($('.f-qty', row).value); if (type === 'PACKING') it.cartons = num(($('.f-ctn', row) || { value: 0 }).value); }
       items.push(it);
     });
@@ -116,8 +119,8 @@
   function save() {
     var items = collect().filter(function (it) { return it.qty > 0 || it.checked > 0 || it.checker === 'x'; });
     if (!items.length) { toast('Kuch bhara nahi', 'bad'); return; }
-    var bad = items.filter(function (it) { return it.type === 'ENDLINE' && it.checked > 0 && (it.pass + it.reject > it.checked || !it.checker); })[0];
-    if (bad) { toast(S.shortLine(bad.dept) + ': ' + (!bad.checker ? 'checker ka naam likho' : 'pass + reject > checked'), 'bad'); return; }
+    var bad = items.filter(function (it) { return it.type === 'ENDLINE' && it.checked > 0 && (it.pass + it.reject !== it.checked || !it.checker || (it.reject > 0 && S.defectTotal(it.defects) !== it.reject)); })[0];
+    if (bad) { toast(S.shortLine(bad.dept) + ': ' + (!bad.checker ? 'checker ka naam likho' : bad.pass + bad.reject !== bad.checked ? 'checked = pass + reject hona chahiye' : bad.reject + ' reject → ' + bad.reject + ' defect chuno (abhi ' + S.defectTotal(bad.defects) + ')'), 'bad', 6000); return; }
     var savedType = H.type;
     // only lines whose numbers differ from what is already saved (the server skips the rest too)
     var unchanged = function (it) {
@@ -157,6 +160,12 @@
       .catch(function (e) { toast(e.message, 'bad', 6000); });
   }
 
+  function syncDefBtn(row) {
+    var db = $('.dbtn', row); if (!db) return;
+    var rej = num(($('.f-rej', row) || {}).value), dv = []; try { dv = JSON.parse(row.dataset.defects || '[]'); } catch (e) {}
+    var tot = S.defectTotal(dv);
+    db.hidden = !(rej > 0); db.textContent = 'Defect ' + tot + '/' + rej; db.classList.toggle('need', rej > 0 && tot !== rej);
+  }
   function nextSlot(dir) { var all = S.slots(), i = all.findIndex(function (s) { return s.key === H.slot; }); return all[i + dir] || null; }
   function slotTime() { var h = S.slotStart(H.slot); return pad(h) + ':00'; }
   function nowTime() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
@@ -245,6 +254,14 @@
     if (b.dataset.t) { var sw = function () { H.type = b.dataset.t; render(); }; if (H.dirty && snapshot() !== H.initial) S.ask('Bina save kiye tab badlein?', { ok: 'Haan, badlo', cancel: 'Ruko' }).then(function (ok) { if (ok) sw(); }); else sw(); return; }
     if (b.dataset.done) { S.back(); return; }
     if (b.dataset.warn) { toast('⚠ ' + b.dataset.warn + ' — Report / Day Close se pehle theek karo', '', 6000); return; }
+    if (b.dataset.def) {
+      var drow = b.closest('.hline'), dsel = $('.f-srn', drow), drej = num(($('.f-rej', drow) || {}).value);
+      if (!dsel || !dsel.value) { toast('Pehle SRN chuno', 'bad'); return; }
+      if (!drej) { toast('Pehle reject bharo', ''); return; }
+      var dv = []; try { dv = JSON.parse(drow.dataset.defects || '[]'); } catch (e2) {}
+      S.defectPicker({ srn: dsel.value, reject: drej, value: dv, onDone: function (list) { drow.dataset.defects = JSON.stringify(list); H.dirty = true; syncDefBtn(drow); } });
+      return;
+    }
     if (b.dataset.mp !== undefined) { mpSheet(H.data.depts[Number(b.dataset.mp)]); return; }
     if (b.dataset.tr !== undefined) { trSheet(H.data.depts[Number(b.dataset.tr)]); return; }
     if (b.id === 'hour-add') {
@@ -265,6 +282,7 @@
     if (row.dataset.type === 'ENDLINE') {
       var c = $('.f-chk', row), r = $('.f-rej', row), p = $('.f-pass', row);
       if (e.target === p) p.dataset.touched = '1'; else if (p && !p.dataset.touched) p.value = Math.max(0, num(c.value) - num(r.value));
+      syncDefBtn(row);
     }
     var any = $$('input[type=number]', row).some(function (i) { return num(i.value) > 0; });
     row.classList.toggle('done', any);
