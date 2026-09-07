@@ -77,6 +77,10 @@ function hourlySave_(req, user) {
   });
 
   var key = [date, factory, type, dept, srn].join('|');
+  if (total > 0) {
+    var gctx = { att: readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; }) };
+    for (var gi = 0; gi < clean.length; gi++) { var gate = attGate_(gctx, dept, clean[gi].shift, type, checker); if (gate) return fail_('ATT', gate); }
+  }
   var chk = chainCheck_(ledger_(key), type, dept, srn, total);
   if (!chk.ok) return { ok: false, error: 'CHAIN', message: chk.msg, limit: chk.limit, used: chk.used };
 

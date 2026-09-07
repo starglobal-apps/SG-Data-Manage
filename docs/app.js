@@ -403,13 +403,17 @@
       })
       .catch(function (e) { toast(e.message, 'bad'); renderAttRows([]); });
   }
+  // shift working hours: the largest hours entered for the shift (day 9–6 = 8, but the day can end early; OT / night vary)
+  function shiftWorkHours(rows) { var h = 0; (rows || []).forEach(function (r) { if (r.count > 0 && r.hours > h) h = r.hours; }); return h || shiftDef().hours; }
   function renderAttRows(rows) {
     var sd = shiftDef(), byRole = {};
     rows.forEach(function (r) { byRole[r.role] = r; });
     var roles = rolesForDept(att.dept);
     rows.forEach(function (r) { if (roles.indexOf(r.role) < 0) roles.push(r.role); });
+    var wh = shiftWorkHours(rows); $('#att-hours').value = wh;
     $('#att-rows').innerHTML = roles.map(function (role) {
-      var r = byRole[role] || { hours: sd.hours, count: 0 }, opts = sd.hourOptions.slice();
+      var r = byRole[role] || { hours: wh, count: 0 }, opts = sd.hourOptions.slice();
+      if (opts.indexOf(wh) < 0) opts.unshift(wh);
       if (opts.indexOf(r.hours) < 0 && r.hours) opts.push(r.hours);
       return '<tr data-role="' + esc(role) + '" class="' + (r.count ? 'filled' : '') + '"><td>' + esc(role) + '</td>' +
         '<td><select class="att-hrs">' + opts.map(function (h) { return '<option value="' + h + '"' + (h === r.hours ? ' selected' : '') + '>' + h + '</option>'; }).join('') + '</select></td>' +
@@ -597,6 +601,16 @@
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
   $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; $('#att-inc-wrap').hidden = attType() === 'PACKING'; loadAttendance(); });
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
+  // one number for the whole shift: every role's hours follow it (a single role can still be changed below)
+  $('#att-hours').addEventListener('change', function () {
+    var h = Number(this.value); if (!(h > 0)) { this.value = shiftWorkHours(collectAttRows()); return; }
+    h = Math.round(h * 2) / 2; this.value = h;
+    $$('#att-rows select.att-hrs').forEach(function (sel) {
+      if (![].some.call(sel.options, function (o) { return Number(o.value) === h; })) sel.insertAdjacentHTML('afterbegin', '<option value="' + h + '">' + h + '</option>');
+      sel.value = String(h);
+    });
+    updateAttTotals();
+  });
   $('#att-rows').addEventListener('input', function () { updateAttTotals(); renderQc(); });
   $('#att-rows').addEventListener('click', function (e) {
     var b = e.target.closest('.st-dec, .st-inc'); if (!b) return;

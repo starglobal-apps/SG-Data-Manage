@@ -136,6 +136,8 @@ function slotUpsert_(p, user, ctx) {
   if (!canWrite_(user, factory, dept)) return fail_('PERM', 'Permission nahi');
   var status = ctx.status[dept + '|' + type] || '';
   if (isLocked_(status)) return fail_('LOCKED', status + ' hai — edit band');
+  var gateAmt = type === 'ENDLINE' ? num_(p.checked) : num_(p.qty);
+  if (gateAmt > 0) { var gate = attGate_(ctx, dept, sd.shift, type, str_(p.checker)); if (gate) return fail_('ATT', gate); }
 
   var row = { qty: 0, checked: 0, pass: 0, reject: 0, cartons: 0, pcs_per_ctn: 0 };
   if (type === 'ENDLINE') {
@@ -188,7 +190,19 @@ function slotUpsert_(p, user, ctx) {
 }
 
 function batchCtx_(date, factory) {
-  return { L: ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory) };
+  var att = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  return { L: ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory), att: att };
+}
+// Output needs that shift's attendance for the line; endline also needs the checker to be one of the attendance QC names
+function attGate_(ctx, dept, shift, type, checker) {
+  var rows = (ctx.att || []).filter(function(r) { return str_(r.dept) === dept && str_(r.shift) === shift; });
+  if (!rows.length) return (shift === 'Final' ? 'Day' : shift) + ' attendance nahi bhari — pehle attendance bharo, phir output';
+  if (type === 'ENDLINE') {
+    var qc = {}; rows.forEach(function(r) { csv_(r.qc_names).forEach(function(n) { qc[n.toLowerCase()] = 1; }); });
+    if (!Object.keys(qc).length) return 'Attendance me Endline QC ka naam nahi — pehle attendance me End Line Checker + naam daalo';
+    if (checker && !qc[checker.toLowerCase()]) return 'Checker "' + checker + '" attendance me nahi — attendance ke QC naam: ' + Object.keys(qc).join(', ');
+  }
+  return '';
 }
 
 // { date, factory, slot, items: [{type, dept, srn, qty|checked,pass,reject,checker|qty,cartons, floor}] }

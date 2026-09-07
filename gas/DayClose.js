@@ -15,6 +15,12 @@ function shiftHours_(shift) {
 
 function sum_(rows, f) { var t = 0; rows.forEach(function(r) { t += num_(r[f]); }); return t; }
 
+// Working hours of a shift as entered in attendance (the largest hours bucket); falls back to the shift default
+function attHours_(rows, shift) {
+  var h = 0; rows.forEach(function(r) { if (num_(r.count) > 0 && num_(r.hours) > h) h = num_(r.hours); });
+  return h || shiftHours_(shift);
+}
+
 // Builds Draft rows for (date, factory[, dept]). Existing Draft/Rejected rows for the same keys are replaced;
 // Submitted/Approved/Sent rows are left alone and reported back.
 function dayBuild_(req, user) {
@@ -58,10 +64,11 @@ function dayBuild_(req, user) {
     var byRole = {}; effAtt.forEach(function(r) { byRole[r.role] = (byRole[r.role] || 0) + r.count; });
     var names = attNames_(att, dept, shift === 'Final' ? 'Final' : '');
     var closeS = shift === 'Final' ? lineClose_(events, dept) : null;
+    var attHrs = attHours_(effAtt, shift);
     var payload = {
       date: date, line: lineOf_(dept), dept: dept, srn: srn,
       floor: str_(g[0].floor) || (lineFloor[dept] ? lineFloor[dept].value : ''),
-      shift: shift, manpower: sum_(effAtt, 'count'), hours: closeS ? Math.min(shiftHours_(shift), closeS.eff) : shiftHours_(shift), output: sum_(g, 'qty'),
+      shift: shift, manpower: sum_(effAtt, 'count'), hours: closeS ? Math.min(attHrs, closeS.eff) : attHrs, output: sum_(g, 'qty'),
       supervisor: names.supervisor, incharge: names.incharge, slots: g.length
     };
     CFG.STITCH_ROLE_COLS.forEach(function(role, i) { payload['r' + (i + 1)] = byRole[role] || 0; });
@@ -116,8 +123,9 @@ function dayBuild_(req, user) {
     effP.forEach(function(r) { byRoleP[r.role] = (byRoleP[r.role] || 0) + r.count; });
     var info = L.srnInfo[srn] || {};
     var closeP = shift === 'Final' ? lineClose_(events, dept) : null;
+    var attHrsP = attHours_(effP, shift);
     var payload = { srn: srn, date: date, qty: qty, cartons: cartons, pcs_per_ctn: cartons ? Math.round(qty / cartons) : num_(g[0].pcs_per_ctn),
-                    factory: shift === 'Final' ? factory : 'OT-' + factory, supervisor: staff.supervisor || '', hours: closeP ? Math.min(shiftHours_(shift), closeP.eff) : shiftHours_(shift), floor: dept, shift: shift,
+                    factory: shift === 'Final' ? factory : 'OT-' + factory, supervisor: staff.supervisor || '', hours: closeP ? Math.min(attHrsP, closeP.eff) : attHrsP, floor: dept, shift: shift,
                     item: info.item || '', manpower: sum_(effP, 'count') };
     Object.keys(CFG.PACK_ROLE_COLS).forEach(function(f) { payload[f] = byRoleP[CFG.PACK_ROLE_COLS[f]] || 0; });
     var flags = [];
