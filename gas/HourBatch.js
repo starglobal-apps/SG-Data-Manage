@@ -198,9 +198,9 @@ function attGate_(ctx, dept, shift, type, checker) {
   var rows = (ctx.att || []).filter(function(r) { return str_(r.dept) === dept && str_(r.shift) === shift; });
   if (!rows.length) return (shift === 'Final' ? 'Day' : shift) + ' attendance nahi bhari — pehle attendance bharo, phir output';
   if (type === 'ENDLINE') {
-    var qc = {}; rows.forEach(function(r) { csv_(r.qc_names).forEach(function(n) { qc[n.toLowerCase()] = 1; }); });
+    var qc = {}; rows.forEach(function(r) { csv_(r.qc_names).forEach(function(n) { qc[n.toLowerCase()] = n; }); });
     if (!Object.keys(qc).length) return 'Attendance me Endline QC ka naam nahi — pehle attendance me End Line Checker + naam daalo';
-    if (checker && !qc[checker.toLowerCase()]) return 'Checker "' + checker + '" attendance me nahi — attendance ke QC naam: ' + Object.keys(qc).join(', ');
+    if (checker && !qc[checker.toLowerCase()]) return 'Checker "' + checker + '" attendance me nahi — attendance ke QC naam: ' + Object.keys(qc).map(function(k) { return qc[k]; }).join(', ');
   }
   return '';
 }
