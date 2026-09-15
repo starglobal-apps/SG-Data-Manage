@@ -404,3 +404,45 @@ a.btn { color: #fff; }
 .ra-btns .btn { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; font-size: 14px; }
 
 .def-row .step input.def-n { width: 54px; min-height: 36px; font-size: 16px; }
+/* ---- v3 recorder flow: Aaj, wizard, grid, attendance list ---- */
+.nowcard .hero-btn { background: #fff; color: var(--primary); font-weight: 800; font-size: 18px; min-height: 52px; }
+.aj-list .task.aj { min-height: 56px; padding: 10px 12px; border: 1px solid var(--line); }
+.aj-list .task.aj .ic { width: 40px; height: 40px; border-radius: 12px; font-weight: 800; font-size: 18px; }
+.aj-list .task.aj .ic.done { background: var(--ok-soft); color: var(--ok); } .aj-list .task.aj .ic.now { background: var(--primary); color: #fff; } .aj-list .task.aj .ic.warn { background: var(--warn-soft); color: var(--warn); } .aj-list .task.aj .ic.todo { background: var(--soft); color: var(--muted); }
+.aj-list .task.aj.now { border-color: var(--primary); box-shadow: 0 0 0 3px var(--soft); } .aj-list .task.aj.dim { opacity: .55; }
+.aj-list .task.aj .n { font-size: 17px; } .aj-list .task.aj .s { font-size: 13px; white-space: normal; }
+.wz-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; } .wz-head .hour-title { flex: 1; text-align: center; }
+.dots { display: flex; gap: 4px; margin: 0 0 10px; } .dots i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); } .dots i.on { background: var(--ok); } .dots i.now { background: var(--primary); } .dots i.bad { background: var(--bad); }
+.linebig { background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; padding: 14px 14px 12px; text-align: center; margin: 0 0 10px; }
+.linebig.bad { border-color: var(--bad); }
+.linebig .name { font-weight: 800; font-size: 26px; line-height: 1.15; } .linebig .name small { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+.linebig .srnchip { display: inline-block; margin-top: 8px; background: var(--soft); color: var(--primary); border: 0; font-weight: 800; padding: 8px 14px; border-radius: 999px; font-size: 16px; } .linebig .srnchip small { font-weight: 500; opacity: .85; font-size: 13px; }
+.linebig .qcname { margin-top: 6px; font-size: 13px; color: var(--muted); display: flex; justify-content: center; align-items: center; gap: 4px; } .linebig .qcname svg { width: 14px; height: 14px; }
+.linebig .mpline { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.linebig .num { font-weight: 800; font-size: 58px; line-height: 1; margin: 12px 0 2px; min-height: 60px; } .linebig .num.empty { color: var(--line); }
+.linebig .hint { margin: 0; }
+.linebig .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 8px; }
+.linebig .fld { background: var(--bg); border: 2px solid var(--line); border-radius: 14px; padding: 8px 10px; text-align: center; }
+.linebig .fld .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; } .linebig .fld .v { font-weight: 800; font-size: 36px; line-height: 1.1; } .linebig .fld .v .ph { color: var(--line); }
+.linebig .fld.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--soft); background: var(--card); }
+.linebig .fld.auto { background: var(--ok-soft); border-color: transparent; margin: 0 0 8px; } .linebig .fld.auto .v { color: var(--ok); font-size: 28px; }
+.linebig .dbtn.big { width: 100%; min-height: 44px; font-size: 15px; margin: 4px 0 0; }
+.wz-err { margin-top: 10px; background: var(--bad-soft); color: var(--bad); border-radius: 12px; padding: 10px 12px; font-weight: 600; font-size: 14px; } .wz-err .lnk { display: block; margin: 4px auto 0; font-size: 15px; }
+.quick { display: flex; gap: 8px; margin: 0 0 10px; } .quick button { flex: 1; border: 1.5px solid var(--line); background: var(--card); color: var(--text); border-radius: 12px; padding: 12px 6px; font-weight: 700; font-size: 14px; min-height: 46px; }
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pad button { border: 1px solid var(--line); background: var(--card); border-radius: 14px; font-weight: 800; font-size: 28px; min-height: 58px; color: var(--text); }
+.pad button.act { background: var(--soft); color: var(--primary); font-size: 18px; } .pad button.act.go { background: var(--primary); color: #fff; }
+.wz-links { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: center; margin: 12px 0 20px; } .wz-links .lnk { font-size: 13px; }
+.gridwrap { overflow-x: auto; background: var(--card); border-radius: var(--r); padding: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.hgrid { border-collapse: separate; border-spacing: 4px; font-size: 13px; }
+.hgrid th { font-weight: 700; color: var(--muted); font-size: 12px; text-align: center; padding: 2px 0; }
+.hgrid td { min-width: 40px; height: 40px; text-align: center; font-weight: 800; border-radius: 9px; background: var(--bg); border: 1px solid var(--line); }
+.hgrid td.ln { text-align: left; padding: 0 8px; white-space: nowrap; font-size: 13px; background: transparent; border-color: transparent; }
+.hgrid td.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; } .hgrid td.half { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.hgrid td.now { background: var(--primary); color: #fff; border-color: transparent; } .hgrid td.miss { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.hgrid td.na { background: transparent; border-color: transparent; color: var(--line); } .hgrid td.fut { color: transparent; }
+.chk-line { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 0 0 8px; }
+.chk-line.done { border-color: var(--ok); } .chk-line .b { flex: 1; min-width: 0; } .chk-line .n { font-weight: 800; font-size: 17px; } .chk-line .m { font-size: 13px; color: var(--muted); }
+.chk-line .btn.small { margin: 0; min-height: 44px; } .chk-line .btn.same { background: var(--ok); color: #fff; }
+#attlist-body { padding-bottom: 80px; }
+.lg { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 3px; } .lg.ok { background: var(--ok-soft); border: 1px solid var(--ok); } .lg.half { background: var(--warn-soft); border: 1px solid var(--warn); } .lg.now { background: var(--primary); } .lg.miss { background: var(--bad-soft); border: 1px solid var(--bad); }

@@ -102,6 +102,25 @@ function attNames_(attRows, dept, shift) {
   return { supervisor: sup || staff.supervisor, incharge: inc || staff.incharge };
 }
 
+// { date, factory } -> for every writable line/floor: today's Final attendance (if any) and the latest earlier day's
+// Final attendance (rows + names + SRN) so the recorder can save "kal jaisa hi" with one tap.
+function attPrev_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory);
+  if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
+  var depts = writableDepts_(user, factory), all = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.factory) === factory && str_(r.shift) === 'Final'; });
+  var out = depts.map(function(d) {
+    var mine = all.filter(function(r) { return str_(r.dept) === d.dept; });
+    var today = mine.filter(function(r) { return str_(r.date) === date; });
+    var earlier = mine.filter(function(r) { return str_(r.date) < date; });
+    var latest = earlier.reduce(function(a, r) { return str_(r.date) > a ? str_(r.date) : a; }, '');
+    var prev = earlier.filter(function(r) { return str_(r.date) === latest; });
+    var sum = function(rows) { var c = 0, h = 0; rows.forEach(function(r) { c += num_(r.count); h += num_(r.count) * num_(r.hours); }); return { count: c, hours: h }; };
+    var pack = function(rows) { if (!rows.length) return null; var s = sum(rows); return { date: str_(rows[0].date), count: s.count, manhours: s.hours, srn: str_(rows[0].srn), supervisor: str_(rows[0].supervisor), incharge: str_(rows[0].incharge), qc_names: csv_(rows[0].qc_names), rows: rows.map(attRowOut_), by: str_(rows[0].entered_by) }; };
+    return { dept: d.dept, cat: d.cat, today: pack(today), prev: pack(prev) };
+  });
+  return { ok: true, date: date, items: out };
+}
+
 // Staff names: STAFF master (managed in the app) + LINE_STAFF from the stitching sheet + names typed earlier
 function staffList_(req, user) {
   var sup = {}, inc = {}, qc = {};

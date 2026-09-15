@@ -71,6 +71,9 @@
     <div id="home-timeline"></div>
   </section>
 
+  <section id="tab-grid" class="screen tab" hidden><div id="grid-body"></div></section>
+  <section id="scr-wiz" class="screen" hidden><div id="wiz-body"></div></section>
+  <section id="scr-attlist" class="screen" hidden><div id="attlist-body"></div></section>
   <section id="tab-reports" class="screen tab" hidden>
     <div id="reports-list"></div>
   </section>
@@ -226,7 +229,8 @@
 </main>
 
 <nav id="nav" class="nav" hidden>
-  <button data-tab="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
+  <button data-tab="home"><svg><use href="#i-home"/></svg><span>Aaj</span></button>
+  <button data-tab="grid"><svg><use href="#i-table"/></svg><span>Ghante</span></button>
   <button data-tab="reports"><svg><use href="#i-table"/></svg><span>Report</span></button>
   <button data-tab="data"><svg><use href="#i-data"/></svg><span>Data</span></button>
   <button data-tab="pms"><svg><use href="#i-pms"/></svg><span>PMS</span></button>
@@ -253,6 +257,8 @@
 <script src="reports.js"></script>
 <script src="data.js"></script>
 <script src="hour.js"></script>
+<script src="wizard.js"></script>
+<script src="grid.js"></script>
 <script src="users.js"></script>
 <script src="staff.js"></script>
 <script src="pms.js"></script>

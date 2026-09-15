@@ -8,3 +8,5 @@ node_modules/
 # See Sources.example.js for the shape.
 gas/Sources.js
 .clasp.json
+.claude/launch.json
+docs/mock.js

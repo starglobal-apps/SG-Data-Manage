@@ -57,6 +57,7 @@ function routes_() {
     'pms.get':        pmsGet_,
     'report.check':   reportCheck_,
     'staff.list':     staffList_,
+    'att.prev':       attPrev_,
     'defects.list':   defectsList_,
     'defects.add':    defectsAdd_,
     'staff.save':     staffSave_,

@@ -260,8 +260,8 @@
       .then(function (d) {
         renderDayRows(d.rows, d.locked);
         var blocks = d.rows.some(function (r) { return (r.flags || []).some(function (f) { return f.level === 'block'; }); });
-        $('#btn-dc-submit').disabled = !d.rows.length || blocks;
-        if (blocks) toast('Block flag hai — pehle sudharo', 'bad', 5000);
+        $('#btn-dc-submit').disabled = !d.rows.length;
+        if (blocks) toast('Mismatch hai — submit ho jayega, admin review me dikhega', '', 6000);
       })
       .catch(function (e) { toast(e.message, 'bad'); });
   });

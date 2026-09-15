@@ -173,13 +173,14 @@
   function nowTime() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 
   // ---- manpower change sheet (someone left / came) ----
-  function mpSheet(d) {
+  function mpSheet(d, allDepts, after) {
+    allDepts = allDepts || (H.data ? H.data.depts : [d]); after = after || function () { load(true); };
     var evs = (state.masters.mpEvents || []).filter(function (e) { return e.key !== 'TRANSFER_IN' && e.key !== 'TRANSFER_OUT'; });
     if (!evs.some(function (e) { return e.key === 'LINE_CLOSED'; })) evs.push({ key: 'LINE_CLOSED', label: 'Line band / shift khatam', needsTime: true });
     var html = '<div class="row"><div class="field"><label>Kya hua</label><select id="m-ev">' + evs.map(function (e) { return '<option value="' + esc(e.key) + '"' + (e.key === 'LEFT_AT' ? ' selected' : '') + '>' + esc(e.label) + '</option>'; }).join('') + '</select></div>' +
       '<div class="field small" id="m-count-wrap"><label>Kitne</label><input id="m-count" type="number" inputmode="numeric" value="1" min="1"></div></div>' +
       '<div id="m-role-wrap"><label>Role</label><select id="m-role">' + S.rolesForDept(d.dept).map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select></div>' +
-      '<div id="m-close-wrap" hidden><label class="chk"><input type="checkbox" id="m-all"> Sab lines band (poori factory) — ' + H.data.depts.length + ' line</label><p class="hint" style="margin:4px 0 8px">Is time ke baad ke ghante "baaki" nahi dikhenge; man-hours yahin tak ginenge.</p></div>' +
+      '<div id="m-close-wrap" hidden><label class="chk"><input type="checkbox" id="m-all"> Sab lines band (poori factory) — ' + allDepts.length + ' line</label><p class="hint" style="margin:4px 0 8px">Is time ke baad ke ghante "baaki" nahi dikhenge; man-hours yahin tak ginenge.</p></div>' +
       '<div class="row"><div class="field small"><label>Time</label><input id="m-time" type="time" value="' + (S.isToday() ? nowTime() : slotTime()) + '"></div><div class="field"><label>Note</label><input id="m-note" type="text" placeholder="optional"></div></div>' +
       '<button class="btn primary big" id="m-save">Save</button>';
     S.sheet.open(S.shortLine(d.dept) + ' · manpower change', html);
@@ -190,12 +191,12 @@
       if (!e.target.closest('#m-save')) return;
       var ev = $('#m-ev').value, needs = (evs.filter(function (x) { return x.key === ev; })[0] || {}).needsTime, close = ev === 'LINE_CLOSED';
       var p = { date: state.date, factory: state.factory, dept: d.dept, role: close ? 'ALL' : $('#m-role').value, event: ev, count: close ? 0 : num($('#m-count').value), time: needs ? $('#m-time').value : '', note: $('#m-note').value.trim() };
-      if (close && $('#m-all').checked) p.depts = H.data.depts.map(function (x) { return x.dept; });
+      if (close && $('#m-all').checked) p.depts = allDepts.map(function (x) { return x.dept; });
       if (!close && p.count < 1) { toast('Count 1 ya zyada', 'bad'); return; }
       if (close && !p.time) { toast('Time daalo', 'bad'); return; }
       api('manpower.save', p).then(function (r) {
         toast(close ? 'Line band · ' + p.time + ' (' + r.eff_hours + ' hrs)' + (p.depts ? ' · ' + p.depts.length + ' lines' : '') : 'Saved (' + r.eff_hours + ' hrs)', 'ok');
-        S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); load(true);
+        S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); after();
         setTimeout(function () { S.offerGroup(close ? 'Line band — group me bhejein?' : 'Manpower change group me bhejein?'); }, 400);
       }).catch(function (er) { toast(er.message, 'bad'); });
     };
@@ -213,8 +214,9 @@
     });
     return out;
   }
-  function trSheet(d) {
-    if (!S.factoryData()) { toast('Data aa raha hai…', ''); S.loadFactory().then(function () { trSheet(d); }).catch(function (e) { toast(e.message, 'bad'); }); return; }
+  function trSheet(d, after) {
+    after = after || function () { load(true); };
+    if (!S.factoryData()) { toast('Data aa raha hai…', ''); S.loadFactory().then(function () { trSheet(d, after); }).catch(function (e) { toast(e.message, 'bad'); }); return; }
     var avail = availByRole(d), roles = Object.keys(avail).filter(function (r) { return avail[r] > 0; });
     if (!roles.length) roles = S.rolesForDept(d.dept);
     var html = '<div class="hint" style="margin:0 0 6px">Se: <b>' + esc(S.shortLine(d.dept)) + '</b> · abhi ' + d.mp + ' mp</div>' +
@@ -240,12 +242,13 @@
       if (!items.length) { toast('Kitne log — qty daalo', 'bad'); return; }
       api('transfer.create', p).then(function (r) {
         toast('Transfer bheja · ' + r.to_name + ' adjust karega', 'ok');
-        S.invalidateAll(); S.clearLocalCaches(); load(true);
+        S.invalidateAll(); S.clearLocalCaches(); after();
         S.sendTransferToGroup({ from_dept: d.dept, to_name: r.to_name, items: items, time: p.time, note: p.note });
       }).catch(function (er) { toast(er.message, 'bad'); });
     };
   }
 
+  S.mpSheet = mpSheet; S.trSheet = trSheet;
   $('#hour-head').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-nav]'); if (!b) return;
     var go = function () { var n = nextSlot(Number(b.dataset.nav)); if (n) { H.slot = n.key; H.dirty = false; load(); } };

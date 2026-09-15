@@ -87,7 +87,8 @@ function hourGet_(req, user) {
   var depts = writableDepts_(user, factory).filter(function(d) { return (d.cat === 'STITCH' || d.cat === 'PACKING') && hasAtt[d.dept]; });
   var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
 
-  var rowsBy = {}, lastSrn = {}, lastChecker = {}, lastFloor = {};
+  var rowsBy = {}, lastSrn = {}, lastChecker = {}, lastFloor = {}, prevBy = {};
+  var si = CFG.SLOTS.map(function(s) { return s.key; }).indexOf(slot), prevSlot = si > 0 ? CFG.SLOTS[si - 1].key : '';
   readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.factory) !== factory) return;
     var dept = str_(r.dept), t = str_(r.type), at = str_(r.entered_at);
@@ -95,6 +96,7 @@ function hourGet_(req, user) {
     if (!lastSrn[lk] || lastSrn[lk].at < at) lastSrn[lk] = { srn: str_(r.srn), at: at };
     if (t === 'ENDLINE' && str_(r.checker) && (!lastChecker[dept] || lastChecker[dept].at < at)) lastChecker[dept] = { v: str_(r.checker), at: at };
     if (str_(r.floor) && (!lastFloor[dept] || lastFloor[dept].at < at)) lastFloor[dept] = { v: str_(r.floor), at: at };
+    if (prevSlot && str_(r.slot) === prevSlot) { var pk = lk + '|' + str_(r.srn); prevBy[pk] = (prevBy[pk] || 0) + (t === 'ENDLINE' ? num_(r.checked) : num_(r.qty)); }
     if (str_(r.slot) !== slot) return;
     if (!rowsBy[lk]) rowsBy[lk] = [];
     rowsBy[lk].push({ srn: str_(r.srn), qty: num_(r.qty), checked: num_(r.checked), pass: num_(r.pass), reject: num_(r.reject), cartons: num_(r.cartons), checker: str_(r.checker), by: str_(r.entered_by), defects: parseJsonArr_(r.defects) });
@@ -118,6 +120,9 @@ function hourGet_(req, user) {
     types.forEach(function(t) {
       o.srns[t] = srnOptions_(L, d.dept, t);
       o.rows[t] = (rowsBy[d.dept + '|' + t] || []).map(function(r) { r.warn = rowWarn(t, d.dept, r.srn); return r; });
+      // previous slot's amount per SRN ("pichhle ghante jaisa")
+      o.prev = o.prev || {}; o.prev[t] = {};
+      Object.keys(prevBy).forEach(function(pk) { var p = pk.split('|'); if (p[0] === d.dept && p[1] === t) o.prev[t][p[2]] = prevBy[pk]; });
       // default SRN: what attendance said the line is running today, else the last one used
       o.lastSrn[t] = attSrn[d.dept] || (lastSrn[d.dept + '|' + t] ? lastSrn[d.dept + '|' + t].srn : '');
       var s = st[d.dept + '|' + t]; if (isLocked_(s)) o.locked[t] = s;
@@ -224,7 +229,7 @@ function hourSave_(req, user) {
       var r;
       try { r = slotUpsert_(p, user, ctx); } catch (e) { r = fail_('ERR', String(e && e.message || e)); }
       if (r.ok && !r.skipped) saved++; else if (!r.ok) failed++;
-      results.push({ type: str_(it.type), dept: str_(it.dept), srn: str_(it.srn), ok: r.ok, skipped: !!r.skipped, unchanged: !!r.unchanged, message: r.message || '', warn: r.warn || '', balance: r.balance });
+      results.push({ type: str_(it.type), dept: str_(it.dept), srn: str_(it.srn), ok: r.ok, skipped: !!r.skipped, unchanged: !!r.unchanged, message: r.message || '', warn: r.warn || '', balance: r.balance, limit: r.limit, used: r.used, error: r.error || '' });
     });
   });
   invalidateAppAgg_();

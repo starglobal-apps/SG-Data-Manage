@@ -170,7 +170,7 @@ function daySubmit_(req, user) {
   if (!built.ok) return built;
   var blocks = [];
   built.rows.forEach(function(r) { r.flags.forEach(function(f) { if (f.level === 'block') blocks.push(r.dept + ' ' + r.srn + ': ' + f.msg); }); });
-  if (blocks.length) return { ok: false, error: 'BLOCK', message: 'Submit ruka: ' + blocks[0] + (blocks.length > 1 ? ' (+' + (blocks.length - 1) + ')' : ''), blocks: blocks };
+  // mismatches do not stop the recorder any more: the rows carry the flags and the admin decides in Review
   var n = 0, stamp = nowStr_();
   withLock_(function() {
     var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = CFG.HEADERS.DAY_SUMMARY;
@@ -185,8 +185,8 @@ function daySubmit_(req, user) {
     });
   });
   invalidateDaily_(CFG.TABS.DAY_SUMMARY);
-  audit_(user, 'day.submit', date + '|' + factory + '|' + onlyDept, { rows: n });
-  return { ok: true, submitted: n, rows: built.rows };
+  audit_(user, 'day.submit', date + '|' + factory + '|' + onlyDept, { rows: n, blocks: blocks.length });
+  return { ok: true, submitted: n, rows: built.rows, blocks: blocks };
 }
 
 function setDayStatus_(date, factory, dept, type, status, user, remark) {

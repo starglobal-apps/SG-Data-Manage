@@ -31,10 +31,9 @@
   };
 
   function render(d, stale) {
-    var now = S.isToday() ? S.nowHour() : 24, todayFlag = S.isToday();
+    var now = S.isToday() ? S.nowHour() : 24, todayFlag = S.isToday(), closed = d.closed || {};
     var nAll = d.depts.length;
     var attDone = d.depts.filter(function (x) { return d.att[x.dept + '|Final']; }).length;
-    var nOut = d.depts.filter(function (x) { return outType(x.cat) && d.att[x.dept + '|Final']; }).length;
     var attMp = d.depts.reduce(function (t, x) { return t + (d.att[x.dept + '|Final'] || 0); }, 0);
     var otAttDone = d.depts.filter(function (x) { return d.att[x.dept + '|OT']; }).length;
     var locked = function (dept, t) { var s = d.statuses[dept + '|' + t]; return s === 'Submitted' || s === 'Approved' || s === 'Sent'; };
@@ -43,83 +42,145 @@
 
     var anyOT = S.slots('OT').some(function (s) { return d.slots[s.key]; });
     var showOT = ui.showOT || anyOT || now >= 18;
-    var pending = [], current = null, upcoming = null, doneSlots = 0, totalPcs = 0;
+    var rows = [], current = null, upcoming = null, doneSlots = 0, totalPcs = 0, missed = [];
     S.slots('Final').concat(showOT ? S.slots('OT') : []).forEach(function (s) {
       var st = S.slotStart(s.key), inf = S.slotInfo(d, s);
       totalPcs += inf.pcs;
       var isNow = todayFlag && now >= st && now < st + 1, past = now >= st + 1, future = now < st;
-      if (inf.full) { doneSlots++; return; }                       // finished -> lives in the Hourly tab
+      var state_ = inf.full ? 'done' : isNow ? 'now' : (past && s.shift === 'Final') ? 'miss' : (inf.done ? 'part' : 'todo');
+      if (inf.full) doneSlots++;
       if (isNow) current = { s: s, inf: inf };
-      if (future && !upcoming) upcoming = s;
-      if (!future || inf.done) pending.push({ s: s, inf: inf, isNow: isNow, past: past && s.shift === 'Final' });
+      if (future && !inf.full && !upcoming) upcoming = s;
+      if (state_ === 'miss') missed.push({ s: s, inf: inf });
+      rows.push({ s: s, inf: inf, st: state_, future: future });
     });
     var hasOTout = S.slots('OT').some(function (s) { return S.slotInfo(d, s).done; });
-    var missed = pending.filter(function (p) { return p.past; });
 
+    // ---- hero: the one thing to do now
     var nc;
-    if (!nAll) nc = { cls: 'warn', k: 'Setup', t: 'Koi line nahi mili', s: 'USERS depts / MASTERS check karo', btn: 'Main', go: 'main' };
-    else if (!todayFlag && missed.length) nc = { cls: 'warn', k: S.fmtDay(state.date) + ' · purana din', t: missed.length + ' slot adhoore', s: missed.map(function (m) { return m.s.label + ' (' + m.inf.done + '/' + m.inf.total + ')'; }).slice(0, 3).join(', ') + (otAttDone < nAll ? ' · OT hua ho to pehle OT attendance, phir OT output' : ''), btn: missed[0].s.label + ' bharo', go: 'hour:' + missed[0].s.key };
-    else if (!todayFlag && lockedLines < nAll) nc = { cls: '', k: S.fmtDay(state.date) + ' · purana din', t: 'Din band karna baaki', s: totalPcs + ' pcs · ' + attMp + ' mp · ' + lockedLines + '/' + nAll + ' submitted', btn: 'Din band karo', go: 'dayclose' };
-    else if (!todayFlag) nc = { cls: 'done', k: S.fmtDay(state.date), t: totalPcs + ' pcs · ' + attMp + ' mp', s: lockedLines + '/' + nAll + ' lines submitted', btn: 'Reports dekho', go: 'reports' };
-    else if (lockedLines === nAll) nc = { cls: 'done', k: 'Aaj', t: 'Sab lines submit ho gayi', s: totalPcs + ' pcs · manager review me', btn: 'Reports dekho', go: 'reports' };
-    else if (now < 8.5) nc = { cls: '', k: 'Subah', t: 'Din shuru hone wala hai', s: '9:00 par ' + nAll + ' lines ki attendance + SRN', btn: 'Attendance shuru karo', go: 'attlist:Final' };
-    else if (attDone < nAll) nc = { cls: 'warn', k: 'Pehla kaam', t: 'Attendance: ' + (nAll - attDone) + ' line baaki', s: attDone + '/' + nAll + ' ho gayi · ' + attMp + ' mp', btn: 'Attendance bharo', go: 'attlist:Final' };
-    else if (current) nc = { cls: '', k: 'Abhi · ' + current.s.label, t: 'Output update karo', s: current.inf.done + '/' + current.inf.total + ' lines' + (missed.length ? ' · ' + missed.length + ' purana slot adhoora' : ''), btn: current.s.label + ' bharo', go: 'hour:' + current.s.key };
-    else if (missed.length) nc = { cls: 'warn', k: 'Adhoora', t: missed.length + ' slot adhoore', s: missed.map(function (m) { return m.s.label + ' (' + m.inf.done + '/' + m.inf.total + ')'; }).slice(0, 3).join(', '), btn: missed[0].s.label + ' poora karo', go: 'hour:' + missed[0].s.key };
+    if (!nAll) nc = { cls: 'warn', k: 'Setup', t: 'Koi line nahi mili', s: 'Admin se line access lo', btn: 'Main', go: 'main' };
+    else if (!todayFlag && missed.length) nc = { cls: 'warn', k: S.fmtDay(state.date) + ' · purana din', t: missed.length + ' ghante adhoore', s: missed.map(function (m) { return m.s.label + ' (' + m.inf.done + '/' + m.inf.total + ')'; }).slice(0, 3).join(', ') + (otAttDone < nAll ? ' · OT hua ho to pehle OT attendance' : ''), btn: missed[0].s.label + ' bharo', go: 'wiz:' + missed[0].s.key };
+    else if (!todayFlag && lockedLines < nAll) nc = { cls: '', k: S.fmtDay(state.date) + ' · purana din', t: 'Din band karna baaki', s: totalPcs + ' pcs · ' + attMp + ' log · ' + lockedLines + '/' + nAll + ' submitted', btn: 'Din band karo', go: 'dayclose' };
+    else if (!todayFlag) nc = { cls: 'done', k: S.fmtDay(state.date), t: totalPcs + ' pcs · ' + attMp + ' log', s: lockedLines + '/' + nAll + ' lines submitted', btn: 'Aaj par wapas', go: 'day:' + S.todayStr() };
+    else if (lockedLines === nAll) nc = { cls: 'done', k: 'Aaj', t: 'Sab submit ho gaya ✓', s: totalPcs + ' pcs · admin review me', btn: 'Ghante dekho', go: 'grid' };
+    else if (now < 8.5) nc = { cls: '', k: 'Subah', t: 'Din shuru hone wala hai', s: '9:00 par ' + nAll + ' lines ki attendance', btn: 'Attendance shuru karo', go: 'attlist' };
+    else if (attDone < nAll) nc = { cls: 'warn', k: 'Pehla kaam', t: 'Attendance: ' + (nAll - attDone) + ' line baaki', s: attDone + '/' + nAll + ' ho gayi · ' + attMp + ' log', btn: 'Attendance bharo', go: 'attlist' };
+    else if (missed.length) nc = { cls: 'warn', k: 'Chhoot gaya', t: missed[0].s.label + ' ka output baaki', s: missed[0].inf.done + '/' + missed[0].inf.total + ' lines' + (missed.length > 1 ? ' · +' + (missed.length - 1) + ' aur ghante' : ''), btn: missed[0].s.label + ' bharo', go: 'wiz:' + missed[0].s.key };
+    else if (current) nc = { cls: '', k: 'Agla kaam · ' + current.s.label, t: current.s.label + ' ka output bharo', s: current.inf.done + '/' + current.inf.total + ' lines ho gayi', btn: current.inf.done ? 'Baaki lines bharo' : 'Shuru karo · ' + current.inf.total + ' lines', go: 'wiz:' + current.s.key };
     else if (now >= 18 && hasOTout && otAttDone < nAll) nc = { cls: 'warn', k: 'Shaam', t: 'OT attendance baaki', s: otAttDone + '/' + nAll + ' lines', btn: 'OT attendance', go: 'attlist:OT' };
     else if (now >= 17.75) nc = { cls: '', k: 'Shaam', t: 'Din band karo', s: lockedLines + '/' + nAll + ' submitted · ' + totalPcs + ' pcs', btn: 'Din band karo', go: 'dayclose' };
-    else nc = { cls: 'done', k: 'Sab up to date', t: totalPcs + ' pcs · ' + attMp + ' mp', s: upcoming ? 'Agla: ' + hhmm(S.slotStart(upcoming.key) + 1) + ' par ' + upcoming.label : 'Shaam ko din band karna hai', btn: upcoming ? upcoming.label + ' pehle se bharo' : 'Reports dekho', go: upcoming ? 'hour:' + upcoming.key : 'reports' };
+    else nc = { cls: 'done', k: 'Sab up to date', t: totalPcs + ' pcs · ' + attMp + ' log', s: upcoming ? 'Agla: ' + hhmm(S.slotStart(upcoming.key) + 1) + ' par ' + upcoming.label : 'Shaam ko din band karna hai', btn: upcoming ? upcoming.label + ' pehle se bharo' : 'Ghante dekho', go: upcoming ? 'wiz:' + upcoming.key : 'grid' };
 
     var slotsSoFar = S.slots('Final').filter(function (s) { return now >= S.slotStart(s.key) + 1 || (todayFlag && now >= S.slotStart(s.key)); }).length;
     var total = nAll + slotsSoFar + nAll, done = attDone + doneSlots + lockedLines, pct = total ? Math.round(done / total * 100) : 0;
-    $('#home-now').innerHTML = '<div class="nowcard ' + nc.cls + '"><div class="k">' + esc(nc.k) + (stale ? ' · refresh…' : '') + '</div><div class="t">' + esc(nc.t) + '</div><div class="s">' + esc(nc.s) + '</div><button class="btn" data-go="' + esc(nc.go) + '">' + esc(nc.btn) + '</button>' +
+    $('#home-now').innerHTML = '<div class="nowcard ' + nc.cls + '"><div class="k">' + esc(nc.k) + (stale ? ' · refresh…' : '') + '</div><div class="t">' + esc(nc.t) + '</div><div class="s">' + esc(nc.s) + '</div><button class="btn hero-btn" data-go="' + esc(nc.go) + '">' + esc(nc.btn) + '</button>' +
       '<div class="prog"><i style="width:' + pct + '%"></i></div><div class="meta"><span>' + doneSlots + ' ghante ho gaye</span><span>' + totalPcs + ' pcs · ' + nAll + ' lines</span></div></div>';
 
-    // ---- pending timeline
+    // ---- checklist
     var task = function (o) {
-      return '<div class="task ' + (o.cls || '') + (o.sub ? ' sub' : '') + '" data-go="' + esc(o.go) + '"><div class="ic">' + icon(o.ic) + '</div><div class="b"><div class="n">' + o.n + '</div>' + (o.s ? '<div class="s">' + o.s + '</div>' : '') + '</div>' + (o.raw ? o.raw : (o.v !== undefined && o.v !== '' ? '<span class="v ' + (o.cls === 'done' ? 'ok' : '') + '">' + o.v + '</span>' : '')) + '<span class="chev">' + icon('chev') + '</span></div>';
+      return '<div class="task aj ' + (o.cls || '') + '" data-go="' + esc(o.go) + '"><div class="ic ' + (o.ic || '') + '">' + (o.mark || '') + '</div><div class="b"><div class="n">' + o.n + '</div>' + (o.s ? '<div class="s">' + o.s + '</div>' : '') + '</div>' + (o.v ? '<span class="v">' + o.v + '</span>' : '') + '<span class="chev">' + icon('chev') + '</span></div>';
     };
-    var hour = function (time, dotCls, future, inner) { return '<div class="tl-h' + (future ? ' future' : '') + '"><span class="time' + (dotCls === 'now' ? ' now' : '') + '">' + time + '</span><span class="dotp ' + dotCls + '"></span>' + inner + '</div>'; };
     var html = '';
-
-    if (todayFlag && (d.openDays || []).length) {
-      d.openDays.forEach(function (od) {
-        html += task({ go: 'day:' + od.date, ic: 'moon', cls: 'warn', n: 'Kal ka din adhoora · ' + esc(S.fmtDay(od.date)), s: od.lines + ' line band nahi hui — night / OT bharo, phir Day Close', v: '' });
-      });
-    }
-    var attCls = attDone === nAll ? 'done' : now >= 9 ? 'warn' : '';
-    var attTask = task({ go: 'attlist:Final', ic: 'att', cls: attCls, n: 'Attendance + SRN', s: attDone + '/' + nAll + ' lines' + (attDone < nAll && now >= 9 ? ' · baaki hai' : ''), v: attMp ? attMp + ' mp' : '' });
-    if (attDone) attTask += task({ go: 'wa:Final', ic: 'wa', sub: true, cls: '', n: 'Send to group', s: 'WhatsApp me ' + attDone + ' lines ka manpower', v: '' });
-    if (attDone < nAll || now < 9.5 || (attDone && now < 11)) html += hour('9:00', attCls, false, attTask);
-    else if (attDone) html += '<button class="lnk tl-more" data-go="wa:Final">' + icon('wa') + ' Attendance group me bhejo</button>';
-    pending.forEach(function (p) {
-      var cls = p.isNow ? 'now' : p.past ? 'warn' : '';
-      var future = !p.past && !p.isNow;
-      html += hour(p.s.label.replace(/\s?(AM|PM)$/, ''), cls, future && !p.inf.done, task({ go: 'hour:' + p.s.key, ic: 'out', cls: p.isNow ? '' : cls, n: 'Output' + (p.isNow ? ' <small style="color:var(--primary)">· abhi</small>' : ''),
-        s: p.inf.done ? p.inf.done + '/' + p.inf.total + ' lines · baaki ' + (p.inf.total - p.inf.done) : (p.past ? 'Entry baaki' : p.isNow ? 'Tap karke sab lines bharo' : ''), raw: triVal(p.inf) }));
+    if (todayFlag && (d.openDays || []).length) d.openDays.forEach(function (od) {
+      html += task({ go: 'day:' + od.date, ic: 'warn', mark: '!', cls: 'warn', n: 'Kal ka din adhoora · ' + esc(S.fmtDay(od.date)), s: od.lines + ' line band nahi hui — OT / night bharo, phir din band' });
+    });
+    var attOk = attDone === nAll;
+    html += task({ go: 'attlist', ic: attOk ? 'done' : (now >= 9 ? 'warn' : 'todo'), mark: attOk ? '✓' : (now >= 9 ? '!' : '○'), cls: attOk ? 'done' : '', n: 'Attendance', s: attDone + '/' + nAll + ' lines' + (attMp ? ' · ' + attMp + ' log' : '') + (attOk ? ' · group me bhejne ke liye tap' : ' · kal jaisa hai to ek tap'), v: '' });
+    rows.forEach(function (r) {
+      var lab = r.s.label, inf = r.inf, m = { done: '✓', now: '●', miss: '!', part: '●', todo: '○' }[r.st];
+      var s = r.st === 'done' ? inf.pcs + ' pcs' + (inf.eLines ? ' · endline ' + inf.pass : '') : r.st === 'now' ? (inf.done ? inf.done + '/' + inf.total + ' ho gayi · baaki ' + (inf.total - inf.done) : 'Abhi bharna hai') : r.st === 'miss' ? 'Chhoot gaya · ' + inf.done + '/' + inf.total : r.st === 'part' ? inf.done + '/' + inf.total + ' lines' : (todayFlag ? hhmm(S.slotStart(r.s.key) + 1) + ' ke baad' : '');
+      html += task({ go: 'wiz:' + r.s.key, ic: r.st === 'done' ? 'done' : r.st === 'now' ? 'now' : r.st === 'miss' ? 'warn' : 'todo', mark: m, cls: r.st === 'now' ? 'now' : r.st === 'done' ? 'done' : r.st === 'todo' && r.future ? 'dim' : '', n: lab, s: s, v: inf.closedN ? '<small>' + inf.closedN + ' band</small>' : '' });
     });
     if (!showOT && nAll) html += '<button class="lnk tl-more" data-go="showOT">+ OT slots (6–10 PM)</button>';
-    if (showOT && (hasOTout || now >= 18) && otAttDone < nAll) {
-      html += '<div class="tl-label">OT</div>' + hour('6:00', hasOTout ? 'warn' : '', false, task({ go: 'attlist:OT', ic: 'att', cls: hasOTout ? 'warn' : '', n: 'OT attendance', s: otAttDone + '/' + nAll + ' lines' + (hasOTout ? ' · OT output hai' : ''), v: '' }));
-    }
+    if (showOT && (hasOTout || now >= 18) && otAttDone < nAll) html += task({ go: 'attlist:OT', ic: hasOTout ? 'warn' : 'todo', mark: hasOTout ? '!' : '○', n: 'OT attendance', s: otAttDone + '/' + nAll + ' lines' + (hasOTout ? ' · OT output hai, attendance nahi' : '') });
     var tr = d.transfers || { incoming: [], outgoing: [] };
-    tr.incoming.forEach(function (t) {
-      html += task({ go: 'transfer:' + t.id, ic: 'mp', cls: 'warn', n: 'Manpower aaya · ' + t.count + ' log', s: (t.items || []).map(function (x) { return x.count + ' ' + x.role; }).join(', ') + ' · ' + esc(S.shortLine(t.from_dept)) + ' se · ' + esc(t.by), v: 'Adjust' });
-    });
-    tr.outgoing.forEach(function (t) {
-      html += task({ go: 'noop', ic: 'mp', sub: true, cls: '', n: 'Transfer bheja · ' + esc(S.shortLine(t.from_dept)) + ' se ' + t.count + ' log', s: (t.items || []).map(function (x) { return x.count + ' ' + x.role; }).join(', ') + ' · adjust ka wait', v: '' });
-    });
-    var closedN = Object.keys(d.closed || {}).length;
-    if (d.events) html += task({ go: 'manpower', ic: 'mp', sub: true, cls: 'done', n: 'Manpower change', s: d.events + ' event aaj' + (closedN ? ' · ' + closedN + ' line band' : ''), v: '' });
-    else html += '<button class="lnk tl-more" data-go="manpower">+ Manpower change (koi gaya / late aaya)</button>';
-    var sub = {}; Object.keys(d.statuses).forEach(function (k) { sub[d.statuses[k]] = (sub[d.statuses[k]] || 0) + 1; });
-    html += '<div class="tl-label">Shaam</div>';
-    if (lockedLines < nAll) html += hour('End', '', now < 17.5, task({ go: 'dayclose', ic: 'moon', cls: '', n: 'Din band karo', s: Object.keys(sub).length ? Object.keys(sub).map(function (k) { return sub[k] + ' ' + k; }).join(' · ') : 'Sab bhar ke submit karo', v: lockedLines ? lockedLines + '/' + nAll : '' }));
-    if (doneSlots) html += task({ go: 'report', ic: 'table', sub: true, cls: '', n: 'Day report (image)', s: 'Line · SRN ka Making / Packing report group me', v: '' });
-    if (!html) html = '<div class="empty">Aaj ka sab kaam ho gaya ✓</div>';
-    $('#home-timeline').innerHTML = '<div class="tl">' + html + '</div>';
+    tr.incoming.forEach(function (t) { html += task({ go: 'transfer:' + t.id, ic: 'warn', mark: '↓', cls: 'warn', n: 'Manpower aaya · ' + t.count + ' log', s: (t.items || []).map(function (x) { return x.count + ' ' + x.role; }).join(', ') + ' · ' + esc(S.shortLine(t.from_dept)) + ' se', v: 'Adjust' }); });
+    tr.outgoing.forEach(function (t) { html += task({ go: 'noop', ic: 'todo', mark: '↑', n: 'Transfer bheja · ' + t.count + ' log', s: esc(S.shortLine(t.from_dept)) + ' se · adjust ka wait' }); });
+    var closedN = Object.keys(closed).length;
+    html += task({ go: 'mpq', ic: d.events ? 'done' : 'todo', mark: '±', n: 'Koi gaya / aaya?', s: d.events ? d.events + ' badlav aaj' + (closedN ? ' · ' + closedN + ' line band' : '') : 'Line se koi nikla, late aaya, transfer, ya line band' });
+    if (lockedLines < nAll) html += task({ go: 'dayclose', ic: now >= 17.5 ? 'now' : 'todo', mark: '☾', cls: now < 17.5 && todayFlag ? 'dim' : '', n: 'Din band karo', s: now < 17.5 && todayFlag ? '6 PM ke baad · sab bharne par' : 'Sab check karke admin ko bhejo', v: lockedLines ? lockedLines + '/' + nAll : '' });
+    if (!S.isRecorder() && doneSlots) html += task({ go: 'report', ic: 'todo', mark: '▤', n: 'Day report (image)', s: 'Line · SRN ka Making / Packing report group me' });
+    $('#home-timeline').innerHTML = '<div class="aj-list">' + html + '</div>';
     if (!stale && (current || missed.length)) S.swr('hour.get', { date: state.date, factory: state.factory, slot: (current ? current.s : missed[0].s).key }, 10000).promise.catch(function () {});
   }
+
+  // ---------- attendance list: "kal jaisa hi?" ----------
+  var AL = { items: [], shift: 'Final', busy: {} };
+  S.screens.attlist = function (shift) {
+    AL.shift = shift || 'Final';
+    S.push('attlist', (AL.shift === 'Final' ? 'Attendance' : AL.shift + ' attendance') + ' · ' + S.fmtDay(state.date));
+    $('#attlist-body').innerHTML = '<div class="empty">Lines aa rahi hain…</div>';
+    loadAttList();
+  };
+  function loadAttList() {
+    if (AL.shift !== 'Final') { renderAttOT(); return; }
+    S.api('att.prev', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) { AL.items = d.items; renderAttList(); })
+      .catch(function (e) { $('#attlist-body').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+  }
+  function renderAttList() {
+    var done = AL.items.filter(function (x) { return x.today; }).length, n = AL.items.length;
+    var pend = AL.items.filter(function (x) { return !x.today && x.prev; }).length;
+    var html = '<p class="hint" style="margin:0 0 8px">Kal jaisa hai to <b>Same</b> dabao — SRN, supervisor, incharge, QC sab kal ke lag jayenge. Kuch badla ho to <b>Badlo</b>.</p>';
+    if (pend > 1) html += '<button class="btn big ok" data-sameall="1" style="margin:0 0 10px">Sab ' + pend + ' lines kal jaisa hi</button>';
+    html += AL.items.map(function (x) {
+      var t = x.today, p = x.prev, busy = AL.busy[x.dept];
+      var sub = t ? t.count + ' log · ' + (t.srn || 'SRN nahi') + (t.by ? ' · ' + esc(t.by) : '') : p ? esc(S.fmtDay(p.date)) + ' ko ' + p.count + ' log' + (p.srn ? ' · ' + esc(p.srn) : '') : 'Pehli baar — bharo';
+      return '<div class="chk-line' + (t ? ' done' : '') + '"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + sub + '</div></div>' +
+        (t ? '<button class="btn small ghost" data-edit="' + esc(x.dept) + '">✓ ' + t.count + ' · Badlo</button>'
+           : (p ? '<button class="btn small same" data-same="' + esc(x.dept) + '"' + (busy ? ' disabled' : '') + '>' + (busy ? '…' : 'Same ' + p.count) + '</button>' : '') + '<button class="btn small ghost" data-edit="' + esc(x.dept) + '">' + (p ? 'Badlo' : 'Bharo') + '</button>') + '</div>';
+    }).join('');
+    html += '<div class="sticky-bottom">' + (done === n && n ? '<button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Sab ho gayi · WhatsApp group me bhejo</button>' : '<button class="btn big" disabled>' + (n - done) + ' line baaki</button>') + '</div>';
+    $('#attlist-body').innerHTML = html;
+  }
+  function renderAttOT() {
+    var d = S.factoryData() || { depts: [], att: {} };
+    var html = '<p class="hint" style="margin:0 0 8px">OT ke log aur ghante bharo.</p>' + d.depts.map(function (x) {
+      var mp = d.att[x.dept + '|OT'];
+      return '<div class="chk-line' + (mp ? ' done' : '') + '"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + (mp ? mp + ' log OT' : 'OT attendance nahi') + '</div></div><button class="btn small ghost" data-edit="' + esc(x.dept) + '">' + (mp ? 'Badlo' : 'Bharo') + '</button></div>';
+    }).join('');
+    html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="OT" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' OT attendance group me bhejo</button></div>';
+    $('#attlist-body').innerHTML = html;
+  }
+  function saveSame(dept, quiet) {
+    var x = AL.items.filter(function (i) { return i.dept === dept; })[0]; if (!x || !x.prev) return Promise.resolve();
+    var p = x.prev;
+    AL.busy[dept] = true; renderAttList();
+    return S.api('att.save', { date: state.date, factory: state.factory, dept: dept, shift: 'Final', srn: p.srn, supervisor: p.supervisor, incharge: p.incharge, qc_names: p.qc_names, rows: p.rows.map(function (r) { return { role: r.role, hours: r.hours, count: r.count }; }) })
+      .then(function () { delete AL.busy[dept]; x.today = { count: p.count, srn: p.srn, by: state.user.name }; if (!quiet) { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); } else renderAttList(); })
+      .catch(function (e) { delete AL.busy[dept]; renderAttList(); S.toast(S.shortLine(dept) + ': ' + e.message + ' — Badlo dabao', 'bad', 7000); });
+  }
+  $('#attlist-body').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.same) { saveSame(b.dataset.same); return; }
+    if (b.dataset.sameall) { S.ask('Baaki sab lines ki attendance kal jaisi save karein?', { ok: 'Haan, sab same' }).then(function (ok) { if (!ok) return; var list = AL.items.filter(function (x) { return !x.today && x.prev; }).map(function (x) { return x.dept; }); var seq = Promise.resolve(); list.forEach(function (dept) { seq = seq.then(function () { return saveSame(dept, true); }); }); seq.then(function () { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); }); }); return; }
+    if (b.dataset.edit) { S.openAttendance(AL.shift, b.dataset.edit); return; }
+    if (b.dataset.wa) { S.sendToGroup(b.dataset.wa); return; }
+  });
+  
+  // "Koi gaya / aaya?" — pick the line, then the manpower change sheet (same one the hour screen uses)
+  function mpQuick() {
+    var d = S.factoryData(); if (!d) { S.loadFactory().then(mpQuick); return; }
+    var lines = d.depts.filter(function (x) { return d.att[x.dept + '|Final']; });
+    if (!lines.length) { S.toast('Pehle attendance bharo', 'bad'); return; }
+    S.sheet.open('Kis line par?', '<div class="chips" style="flex-wrap:wrap">' + lines.map(function (x) { return '<button data-l="' + esc(x.dept) + '">' + esc(S.shortLine(x.dept)) + '<small>' + (d.mpNow && d.mpNow[x.dept] !== undefined ? d.mpNow[x.dept] + ' log abhi' : '') + '</small></button>'; }).join('') + '</div>' +
+      '<p class="hint">Transfer (dusre recorder ko log dena) bhi yahin se.</p>');
+    $('#sheet-content').onclick = function (e) {
+      var b = e.target.closest('[data-l]'); if (!b) return;
+      var dept = b.dataset.l; S.sheet.close();
+      S.sheet.open(S.shortLine(dept), '<div class="chips" style="flex-wrap:wrap"><button data-do="mp">Koi gaya / late aaya / line band</button><button data-do="tr">Transfer dusri line ko</button></div>');
+      $('#sheet-content').onclick = function (ev) {
+        var x = ev.target.closest('[data-do]'); if (!x) return;
+        var slot = S.slots('Final').filter(function (s) { var st = S.slotStart(s.key); return S.nowHour() >= st && S.nowHour() < st + 1; })[0] || S.slots('Final')[0];
+        S.sheet.close();
+        S.api('hour.get', { date: state.date, factory: state.factory, slot: slot.key }, { quiet: true }).then(function (h) {
+          var dd = h.depts.filter(function (q) { return q.dept === dept; })[0]; if (!dd) { S.toast('Line nahi mili', 'bad'); return; }
+          if (x.dataset.do === 'mp') S.mpSheet(dd, h.depts, function () { S.invalidateAll(); S.refresh(); });
+          else S.trSheet(dd, function () { S.invalidateAll(); S.refresh(); });
+        }).catch(function (er) { S.toast(er.message, 'bad'); });
+      };
+    };
+  }
+  S.mpQuick = mpQuick;
 
   // Receiving recorder places every transferred person on one of their lines / floors
   var shownPopup = {};
@@ -175,20 +236,6 @@
     transferSheet(fresh[0].id);
   };
 
-  function attList(shift) {
-    var d = S.factoryData(); if (!d) return;
-    var html = '<div class="line-list">' + d.depts.map(function (x) {
-      var mp = d.att[x.dept + '|' + shift], srn = d.attSrn && d.attSrn[x.dept];
-      return '<div class="task ' + (mp ? 'done' : '') + '" data-att="' + esc(x.dept) + '"><div class="ic">' + icon(x.cat === 'PACKING' ? 'box' : 'att') + '</div><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="s">' + esc(srn ? 'SRN ' + srn : S.catLabel(x.cat)) + '</div></div><span class="v ' + (mp ? 'ok' : '') + '">' + (mp ? mp + ' mp' : 'baaki') + '</span><span class="chev">' + icon('chev') + '</span></div>';
-    }).join('') + '</div>';
-    html += '<button class="btn big wa" data-wa="' + shift + '" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send to group (WhatsApp)</button>';
-    S.sheet.open((shift === 'Final' ? 'Attendance' : 'OT attendance') + ' · line chuno', html);
-    $('#sheet-content').onclick = function (e) {
-      var w = e.target.closest('[data-wa]'); if (w) { S.sendToGroup(w.dataset.wa); return; }
-      var t = e.target.closest('[data-att]'); if (!t) return; S.sheet.close(); S.openAttendance(shift, t.dataset.att);
-    };
-  }
-
   $('#tab-home').addEventListener('click', function (e) { var el = e.target.closest('[data-go]'); if (el) S.go(el.dataset.go); });
 
   S.go = function (go) {
@@ -199,12 +246,16 @@
     else if (go === 'reports') S.tab('reports');
     else if (p[0] === 'day') S.setDate(p[1]);
     else if (go === 'main') S.tab('main');
-    else if (p[0] === 'attlist') attList(p[1] || 'Final');
+    else if (p[0] === 'attlist') S.screens.attlist(p[1] || 'Final');
     else if (p[0] === 'wa') S.sendToGroup(p[1] || 'Final');
     else if (p[0] === 'transfer') transferSheet(p[1]);
     else if (go === 'noop') return;
     else if (p[0] === 'att') S.openAttendance(p[1]);
-    else if (p[0] === 'hour') S.screens.hour(p[1], p[2]);
+    else if (p[0] === 'hour') S.screens.wiz(p[1], p[2]);
+    else if (p[0] === 'wiz') S.screens.wiz(p[1], p[2]);
+    else if (go === 'grid') S.tab('grid');
+    else if (go === 'mpq') mpQuick();
+    else if (p[0] === 'hourold') S.screens.hour(p[1], p[2]);
     else if (p[0] === 'slot') S.quick(p[1], p[2]);
     else if (p[0] === 'pick') S.pickSlot(p[1]);
     else if (p[0] === 'table') S.screens.hourly(state.line, p[1]);

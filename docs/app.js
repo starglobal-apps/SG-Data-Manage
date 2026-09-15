@@ -79,6 +79,8 @@
   function tab(name) {
     if (!state.user) return;
     if (name === 'review' && !isAdmin()) name = 'home';
+    if (isRecorder() && (name === 'reports' || name === 'data' || name === 'pms')) name = 'home';
+    applyRoleNav();
     if (nav.sub || nav.tab !== name) pushHist({ tab: name });
     nav.tab = name; nav.sub = null;
     showOnly('tab-' + name);
@@ -88,6 +90,7 @@
     $('#hdr-refresh').hidden = false; $('#hdr-bell').hidden = false;
     if (name === 'home' || name === 'reports' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : name === 'reports' ? 'Reports · ' + (isToday() ? 'aaj' : 'is din ke') : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
+    else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
     else setHeader('Main', state.user.name, false);
     if (tabs[name]) tabs[name]();
@@ -216,6 +219,12 @@
 
   function M(type) { return (state.masters && state.masters.masters && state.masters.masters[type]) || []; }
   function isManager() { return !!state.user && (state.user.role === 'Manager' || state.user.role === 'Admin'); }
+  function isRecorder() { return !!state.user && !isManager(); }
+  // recorder: Aaj · Ghante · Main only; manager/admin: everything
+  function applyRoleNav() {
+    var rec = isRecorder();
+    $$('#nav button').forEach(function (b) { var t = b.dataset.tab; if (t === 'reports' || t === 'data' || t === 'pms') b.hidden = rec; if (t === 'review') b.hidden = !isAdmin(); });
+  }
   function isAdmin() { return !!state.user && state.user.role === 'Admin'; }
   function allowedFactories() {
     var all = (state.masters && state.masters.factories) || ['666', '117'];
@@ -632,7 +641,7 @@
     $: $, $$: $$, esc: esc, api: api, toast: toast, busy: busy, pill: pill, icon: icon,
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
-    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall,
+    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,
