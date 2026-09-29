@@ -90,6 +90,7 @@
     $('#hdr-refresh').hidden = false; $('#hdr-bell').hidden = false;
     if (name === 'home' || name === 'reports' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : name === 'reports' ? 'Reports · ' + (isToday() ? 'aaj' : 'is din ke') : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
+    else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
     else setHeader('Main', state.user.name, false);
