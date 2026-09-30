@@ -499,3 +499,11 @@ div.al-srn { font-size: 12px; margin-top: 4px; }
 .mo-pend button { display: flex; align-items: center; gap: 8px; width: 100%; background: var(--bg); border: 0; border-radius: 10px; padding: 10px 12px; margin: 4px 0 0; color: var(--text); text-align: left; }
 .mo-pend button span { font-weight: 800; } .mo-pend button small { flex: 1; color: var(--muted); } .mo-pend button b { color: var(--primary); }
 .mo-card em.ot { font-style: normal; font-size: 12px; background: var(--soft); color: var(--primary); border-radius: 6px; padding: 1px 6px; vertical-align: 2px; }
+.al-tg { margin-top: 4px; font-size: 14px; color: var(--ok); } .al-tg b { font-size: 16px; } .al-tg small { color: var(--muted); font-size: 12px; }
+.att-tg { background: var(--ok-soft); border-radius: 12px; padding: 10px 12px; margin: 8px 0 0; text-align: center; font-size: 15px; } .att-tg b { font-size: 20px; }
+/* phone: attendance form header row wraps so the line name is readable (computer layout unchanged) */
+@media (max-width: 820px) {
+  #scr-att .card > .row:first-child { flex-wrap: wrap; }
+  #scr-att .card > .row:first-child .field:first-child { flex: 1 1 100%; }
+}
+.al-tg .lnk { font-size: 13px; padding: 0 0 0 4px; }

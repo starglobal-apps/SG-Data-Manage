@@ -120,7 +120,7 @@
     if (phone()) {
       // phone: one light call has everything (SRNs per line, manpower now, changes, status, WhatsApp data)
       S.api('m.att', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
-        AL.items = d.items; AL.wa = d.wa;
+        AL.items = d.items; AL.wa = d.wa; S.samMap = d.sam || {};
         d.items.forEach(function (x) {
           if (x.cat !== 'STITCH') return;
           AL.srns[x.dept] = x.srns || [];
@@ -155,8 +155,8 @@
       html += AL.items.map(function (x) {
         var t = x.today, p = x.prev, busy = AL.busy[x.dept], st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent';
         if (t) {
-          var now = x.mpNow, ev = evText(x);
-          return '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + (t.srn ? esc(t.srn) + ' · ' : '') + t.count + ' log' + (now !== undefined && now !== t.count ? ' · abhi <b>' + now + '</b>' : '') + (x.ot ? ' · OT ' + x.ot + ' log' : '') + '</div>' + (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') + '</div>' +
+          var now = x.mpNow, ev = evText(x), tg = S.hourlyTarget(t.srn, t.count);
+          return '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + (t.srn ? esc(t.srn) + ' · ' : '') + t.count + ' log' + (now !== undefined && now !== t.count ? ' · abhi <b>' + now + '</b>' : '') + (x.ot ? ' · OT ' + x.ot + ' log' : '') + '</div>' + (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (t.srn ? '<div class="al-tg">' + tg.html + '</div>' : '') + (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') + '</div>' +
             (lock ? '' : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>') + '</div>';
         }
         var sub = p ? esc(S.fmtDay(p.date)) + ' ko ' + p.count + ' log' : 'Pehli baar — bharo';
@@ -207,6 +207,14 @@
       S.sendToGroup(b.dataset.wa); return;
     }
     if (b.dataset.retry) { loadAttList(); return; }
+    if (b.dataset.setsam) {
+      var srn = b.dataset.setsam;
+      S.askText(srn + ' ka SAM (making, minute per piece)', { ok: 'Save' }).then(function (v) {
+        var n = Number(v); if (!v) return; if (!(n > 0)) { S.toast('SAM minute me daalo (jaise 12.5)', 'bad'); return; }
+        S.api('target.sam', { srn: srn, sam: n }).then(function () { S.samMap = S.samMap || {}; S.samMap[srn.toUpperCase()] = n; S.toast(srn + ' ka SAM ' + n + ' saved', 'ok'); renderAttList(); }).catch(function (er) { S.toast(er.message, 'bad'); });
+      });
+      return;
+    }
     if (b.dataset.ot) { S.openAttendance('OT', b.dataset.ot); return; }
     if (b.dataset.day) { S.setDate(b.dataset.day); return; }
     if (b.dataset.mp) {

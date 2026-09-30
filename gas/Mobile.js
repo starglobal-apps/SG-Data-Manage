@@ -43,7 +43,10 @@ function mAtt_(req, user) {
     wa.mpNow[x.dept] = x.mpNow;
     return x;
   });
-  return { ok: true, date: date, items: items, wa: wa };
+  // SAM (minutes / piece) per SRN, saved once from the Target tab -> hourly target shown on the phone (display only)
+  var sam = {};
+  mastersRows_().forEach(function(r) { if (str_(r.type) === 'SAM' && isTrue_(r.active) && num_(r.value) > 0) sam[str_(r.key).toUpperCase()] = num_(r.value); });
+  return { ok: true, date: date, items: items, wa: wa, sam: sam };
 }
 
 // { date, factory } -> stitching lines that worked that day (attendance filled), per shift (Day / OT),

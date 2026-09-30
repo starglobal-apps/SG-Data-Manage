@@ -407,10 +407,10 @@
   function loadAttSrns() {
     att.srns = null; renderAttSrns();
     api('orders.active', { factory: state.factory, dept: att.dept, type: attType() }, { quiet: true })
-      .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all) att.srn = d.srns[0].srn; renderAttSrns(); })
+      .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all) att.srn = d.srns[0].srn; renderAttSrns(); updateAttTotals(); })
       .catch(function () { att.srns = []; renderAttSrns(); });
   }
-  $('#att-srn').addEventListener('change', function (e) { if (e.target.id === 'att-srn-sel') att.srn = e.target.value; });
+  $('#att-srn').addEventListener('change', function (e) { if (e.target.id === 'att-srn-sel') { att.srn = e.target.value; updateAttTotals(); } });
   $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('.chips button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
   function openAttendance(shift, dept) {
     var depts = deptsFor(state.factory);
@@ -460,10 +460,23 @@
     updateAttTotals();
   }
   function collectAttRows() { return $$('#att-rows tr').map(function (tr) { return { role: tr.dataset.role, hours: Number($('.att-hrs', tr).value), count: Number($('.att-count', tr).value || 0) }; }); }
+  // hourly target = total manpower × 60 ÷ SAM of the SRN (display only, nothing is saved)
+  function hourlyTarget(srn, mp) {
+    var sam = srn ? Number((SG.samMap || {})[String(srn).toUpperCase()]) || 0 : 0;
+    if (!sam) return { v: 0, html: 'Hourly target: <span class="muted">' + esc(srn || 'SRN') + ' ka SAM set nahi</span>' + (srn ? ' <button type="button" class="lnk" data-setsam="' + esc(srn) + '">SAM daalo</button>' : '') };
+    var v = mp > 0 ? Math.round(mp * 60 / sam) : 0;
+    return { v: v, html: 'Hourly target <b>' + v + ' pcs</b> <small>(' + mp + ' log × 60 ÷ ' + sam + ' SAM)</small>' };
+  }
+  function updateAttTarget(c) {
+    var el = $('#att-target'); if (!el) return;
+    el.hidden = !isMobile() || attType() === 'PACKING' || att.shift !== 'Final';
+    if (!el.hidden) el.innerHTML = hourlyTarget(att.srn, c).html;
+  }
   function updateAttTotals() {
     var c = 0, h = 0;
     collectAttRows().forEach(function (r) { c += r.count; h += r.count * r.hours; });
     $('#att-total-count').textContent = c; $('#att-total-hrs').textContent = h;
+    updateAttTarget(c);
     $$('#att-rows tr').forEach(function (tr) { tr.classList.toggle('filled', Number($('.att-count', tr).value || 0) > 0); });
   }
   function saveAttendance() {
@@ -697,7 +710,7 @@
     $: $, $$: $$, esc: esc, api: api, toast: toast, busy: busy, pill: pill, icon: icon,
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
-    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile,
+    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, hourlyTarget: hourlyTarget,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,
