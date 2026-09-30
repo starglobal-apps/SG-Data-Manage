@@ -84,6 +84,11 @@ function dayBuild_(req, user) {
       shift: shift, manpower: sum_(effAtt, 'count'), hours: closeS ? Math.min(attHrs, closeS.eff) : attHrs, output: sum_(g, 'qty'),
       supervisor: names.supervisor, incharge: names.incharge, slots: g.length, splits: splits
     };
+    // plan output = hourly target (manpower × 60 ÷ SAM of the SRN) × working hours — i.e. worked man-minutes ÷ SAM
+    // (half-day people count only for the hours they worked). Blank when the SRN has no SAM yet.
+    var samP = samOf_(srn), manHrs = effAtt.reduce(function(t, r) { return t + num_(r.count) * Math.min(num_(r.hours), payload.hours || num_(r.hours)); }, 0);
+    payload.sam = samP ? samP.sam : 0;
+    payload.plan = samP && samP.sam > 0 && manHrs > 0 ? Math.round(manHrs * 60 / samP.sam) : '';
     CFG.STITCH_ROLE_COLS.forEach(function(role, i) { payload['r' + (i + 1)] = byRole[role] || 0; });
     var flags = [];
     if (!payload.manpower) flags.push({ level: 'warn', msg: 'Is dept ki ' + shift + ' attendance nahi hai' });
@@ -297,10 +302,10 @@ function finalRow_(r, p) {
     var sp = p.splits || [];
     if (sp.length > 1) {
       return { target: t, rows: sp.map(function(g, i) {
-        return Object.assign({}, base, { manpower: g.manpower, hours: i === 0 ? p.hours : g.hours, output: i === 0 ? p.output : 0, r1: g.r1, r2: g.r2, r3: g.r3, r4: g.r4, r5: g.r5, remark: g.remark || '' });
+        return Object.assign({}, base, { manpower: g.manpower, hours: i === 0 ? p.hours : g.hours, output: i === 0 ? p.output : 0, plan: i === 0 ? (p.plan === undefined ? '' : p.plan) : '', r1: g.r1, r2: g.r2, r3: g.r3, r4: g.r4, r5: g.r5, remark: g.remark || '' });
       }) };
     }
-    return { target: t, rows: [Object.assign({}, base, { manpower: p.manpower, hours: p.hours, output: p.output, r1: p.r1, r2: p.r2, r3: p.r3, r4: p.r4, r5: p.r5 })] };
+    return { target: t, rows: [Object.assign({}, base, { manpower: p.manpower, hours: p.hours, output: p.output, plan: p.plan === undefined ? '' : p.plan, r1: p.r1, r2: p.r2, r3: p.r3, r4: p.r4, r5: p.r5 })] };
   }
   if (type === 'ENDLINE') {
     var row2 = { entryDate: fmtSheetDate_(todayStr_()), factoryName: p.factoryName, date: fmtSheetDate_(p.date),
