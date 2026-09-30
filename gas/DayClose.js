@@ -63,6 +63,10 @@ function dayBuild_(req, user) {
     var p = k.split('|'), dept = p[0], srn = p[1], shift = p[2], g = groups[k];
     if (onlyDept && dept !== onlyDept) return;
     var effAtt = effectiveAttendanceDetail_(date, factory, dept, shift, att, events);
+    if (!effAtt.length) {   // attendance only in the main sheet (typed there): take manpower from it
+      var sa = sheetAttAgg_()[date + '|' + dept + '|' + shift];
+      if (sa) effAtt = Object.keys(sa.roles).map(function(role) { return { role: role, hours: sa.hours, count: sa.roles[role], remark: '' }; });
+    }
     var byRole = {}; effAtt.forEach(function(r) { byRole[r.role] = (byRole[r.role] || 0) + r.count; });
     // one final row per working-hours group: the longest-hours group carries the output, the others output 0
     var byH = {};

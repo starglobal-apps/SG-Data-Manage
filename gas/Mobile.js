@@ -16,100 +16,114 @@ function mSrns_(L, dept) {
   return srnOptions_(L, dept, 'STITCH').map(function(o) { return { srn: o.srn, balance: o.balance, limit: o.limit, used: o.used }; });
 }
 
-// { date, factory }
+// Attendance typed straight into the main attendance sheets (MASTER DATA cols A/B/C), recent days only. Cached 30 min.
+//   A FAC666 Final [date, location, dept, designation, hours, count] · C FAC117 Final [date, location, dept, designation, hours, count, …]
+//   B OT (both) [date, location, line, 'OT', designation, OT hours, count, …]
+var PHONE_FROM = '2026-09-29';   // the phone app's output list starts here (user, 30 Sep 2026)
+function sheetAttAgg_() {
+  var hit = cacheGetBig_('sheet_att');
+  if (hit) return hit;
+  var out = {}, md = getSS_().getSheetByName(MASTER_SHEET_NAME);
+  var from = fmtDate_(new Date(new Date().getTime() - 21 * 86400000));
+  if (from > PHONE_FROM) from = PHONE_FROM;
+  if (md && md.getLastRow() >= 3) {
+    md.getRange(3, 1, md.getLastRow() - 2, 3).getValues().forEach(function(row) {
+      [[row[0], 'Final', 2, 3, 4, 5], [row[1], 'OT', 2, 4, 5, 6], [row[2], 'Final', 2, 3, 4, 5]].forEach(function(c) {
+        var a = parseJson_(c[0]); if (!a) return;
+        var d = dateKey_(a[0]); if (d === '9999-12-31' || d < from) return;
+        var dept = str_(a[c[2]]), role = str_(a[c[3]]), hours = num_(a[c[4]]), n = num_(a[c[5]]);
+        if (!dept || n <= 0) return;
+        var k = d + '|' + dept + '|' + c[1], o = out[k] = out[k] || { factory: str_(a[1]).replace(/\D/g, ''), count: 0, roles: {}, hours: 0 };
+        o.count += n; o.roles[role] = (o.roles[role] || 0) + n; if (hours > o.hours) o.hours = hours;
+      });
+    });
+  }
+  cachePutBig_('sheet_att', out, 1800);
+  return out;
+}
+
+// { date, factory } -> the phone Attendance tab: only lines with attendance on that date (app, or typed in the sheet),
+// the user's lines for the "line code" picker, manpower now, changes, status, SAM map, WhatsApp data.
 function mAtt_(req, user) {
   var date = str_(req.date), factory = str_(req.factory);
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
-  var base = attPrev_(req, user); if (!base.ok) return base;
-  var L = ledger_(), st = statusMap_(date, factory), slot = mNowSlot_();
-  var attToday = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  var depts = writableDepts_(user, factory), st = statusMap_(date, factory), slot = date === todayStr_() ? mNowSlot_() : '17-18';
+  var attDay = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
   var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
+  var sheet = sheetAttAgg_();
   var wa = { depts: [], att: {}, attRoles: {}, attSrn: {}, eventList: [], mpNow: {} };
-  var items = base.items.map(function(x) {
-    x.srns = x.cat === 'STITCH' ? mSrns_(L, x.dept) : [];
-    x.status = st[x.dept + '|ATT'] || '';
-    x.events = mEvents_(events, x.dept);
-    x.mpNow = x.today ? mpAtSlot_(attToday, events, x.dept, slot) : 0;
-    x.ot = attToday.filter(function(r) { return str_(r.dept) === x.dept && str_(r.shift) === 'OT'; }).reduce(function(t, r) { return t + num_(r.count); }, 0);
-    wa.depts.push({ dept: x.dept, cat: x.cat });
-    attToday.forEach(function(r) {
-      if (str_(r.dept) !== x.dept) return;
-      var k = x.dept + '|' + str_(r.shift);
-      wa.att[k] = (wa.att[k] || 0) + num_(r.count);
-      (wa.attRoles[k] = wa.attRoles[k] || {})[str_(r.role)] = (wa.attRoles[k][str_(r.role)] || 0) + num_(r.count);
-      if (str_(r.srn) && (str_(r.shift) === 'Final' || !wa.attSrn[x.dept])) wa.attSrn[x.dept] = str_(r.srn);
-    });
-    x.events.forEach(function(e) { wa.eventList.push({ dept: x.dept, role: e.role, event: e.event, count: e.count, time: e.time }); });
-    wa.mpNow[x.dept] = x.mpNow;
-    return x;
+  var items = [], pick = [];
+  depts.forEach(function(d) {
+    var fin = attDay.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === 'Final'; });
+    var ot = attDay.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === 'OT'; });
+    var shF = sheet[date + '|' + d.dept + '|Final'], shO = sheet[date + '|' + d.dept + '|OT'];
+    var roles = {}, count = 0, fromSheet = false, srn = '', sup = '', inc = '', by = '';
+    if (fin.length) {
+      fin.forEach(function(r) { roles[str_(r.role)] = (roles[str_(r.role)] || 0) + num_(r.count); count += num_(r.count); });
+      srn = str_(fin[0].srn); sup = str_(fin[0].supervisor); inc = str_(fin[0].incharge); by = str_(fin[0].entered_by);
+    } else if (shF) { roles = shF.roles; count = shF.count; fromSheet = true; }
+    var otCount = ot.length ? ot.reduce(function(t, r) { return t + num_(r.count); }, 0) : (shO ? shO.count : 0);
+    pick.push({ dept: d.dept, cat: d.cat, filled: count > 0 });
+    if (!count) return;
+    var ev = mEvents_(events, d.dept), mpNow = fromSheet ? count : mpAtSlot_(attDay, events, d.dept, slot);
+    items.push({ dept: d.dept, cat: d.cat, count: count, srn: srn, supervisor: sup, incharge: inc, by: by, fromSheet: fromSheet,
+                 ot: otCount, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow });
+    wa.depts.push({ dept: d.dept, cat: d.cat });
+    wa.att[d.dept + '|Final'] = count; wa.attRoles[d.dept + '|Final'] = roles; if (srn) wa.attSrn[d.dept] = srn;
+    ev.forEach(function(e) { wa.eventList.push({ dept: d.dept, role: e.role, event: e.event, count: e.count, time: e.time }); });
+    wa.mpNow[d.dept] = mpNow;
   });
-  // SAM (minutes / piece) per SRN, saved once from the Target tab -> hourly target shown on the phone (display only)
   var sam = {};
   mastersRows_().forEach(function(r) { if (str_(r.type) === 'SAM' && isTrue_(r.active) && num_(r.value) > 0) sam[str_(r.key).toUpperCase()] = num_(r.value); });
-  return { ok: true, date: date, items: items, wa: wa, sam: sam };
+  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: sam };
 }
 
-// { date, factory } -> stitching lines that worked that day (attendance filled), per shift (Day / OT),
-// plus earlier days whose output is still missing (not in the app and not typed into the sheet either).
+// Phone Output tab: every line / shift (from PHONE_FROM up to today) that has attendance — in the app or typed in the
+// sheet — but no stitching output yet (not in the app, not in the main sheet, not already with the admin; a line the
+// admin sent back is listed again). Plus today's lines already filled, for the WhatsApp message.
 var M_SLOT = { Final: '17-18', OT: '21-22' };
 function mOut_(req, user) {
-  var date = str_(req.date), factory = str_(req.factory);
-  if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
-  var depts = writableDepts_(user, factory).filter(function(d) { return d.cat === 'STITCH'; });
-  var att = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
-  var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
-  var hourly = readDaily_(CFG.TABS.HOURLY_LOG).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.type) === 'STITCH'; });
-  var st = statusMap_(date, factory), lineFloor = masterMap_('LINE_FLOOR'), L = ledger_();
-  var lines = [];
-  depts.forEach(function(d) {
-    var shifts = [], floor = '';
-    ['Final', 'OT'].forEach(function(sh) {
-      var rows = att.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === sh; });
-      if (!rows.length) return;
-      var by = {};
-      hourly.forEach(function(r) {
-        if (str_(r.dept) !== d.dept || (str_(r.shift) || 'Final') !== sh) return;
-        var e = by[str_(r.srn)] = by[str_(r.srn)] || { srn: str_(r.srn), total: 0, other: 0 };
-        e.total += num_(r.qty); if (str_(r.slot) !== M_SLOT[sh]) e.other += num_(r.qty);
-        if (str_(r.floor)) floor = str_(r.floor);
-      });
-      var hours = attHours_(rows.map(function(r) { return { role: str_(r.role), hours: num_(r.hours), count: num_(r.count) }; }), sh);
-      if (sh === 'Final') { var close = lineClose_(events, d.dept); if (close) hours = Math.min(hours, close.eff); }
-      var base = rows.reduce(function(t, r) { return t + num_(r.count); }, 0);
-      shifts.push({ shift: sh, slot: M_SLOT[sh], mpBase: base, mp: sh === 'Final' ? mpAtSlot_(att, events, d.dept, M_SLOT.Final) : base,
-                    hours: hours, attSrn: str_(rows[0].srn), entries: Object.keys(by).map(function(k) { return by[k]; }) });
-    });
-    if (!shifts.length) return;   // no attendance that day = the line did not work: not shown
-    var status = st[d.dept + '|STITCH'] || '';
-    lines.push({ dept: d.dept, floor: floor || (lineFloor[d.dept] ? lineFloor[d.dept].value : ''), events: mEvents_(events, d.dept),
-                 srns: mSrns_(L, d.dept), shifts: shifts, status: status, locked: isLocked_(status) ? status : '' });
+  var factory = str_(req.factory), today = todayStr_();
+  var from = fmtDate_(new Date(new Date().getTime() - 14 * 86400000)); if (from < PHONE_FROM) from = PHONE_FROM;
+  var depts = writableDepts_(user, factory).filter(function(d) { return d.cat === 'STITCH'; }), mine = {};
+  depts.forEach(function(d) { mine[d.dept] = 1; });
+  var inRange = function(r) { var d = str_(r.date); return str_(r.factory) === factory && d >= from && d <= today && mine[str_(r.dept)]; };
+  var att = readDaily_(CFG.TABS.ATT_DAILY).filter(inRange);
+  var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(inRange);
+  var hourly = readDaily_(CFG.TABS.HOURLY_LOG).filter(function(r) { return inRange(r) && str_(r.type) === 'STITCH'; });
+  var sheet = sheetAttAgg_(), sheetDays = historyAgg_().sheetDays || {};
+  var L = ledger_(), lineFloor = masterMap_('LINE_FLOOR'), stBy = {}, srnsBy = {};
+  var statusOf = function(d, dept) { var m = stBy[d] = stBy[d] || statusMap_(d, factory); return m[dept + '|STITCH'] || ''; };
+  var srnsOf = function(dept) { return srnsBy[dept] = srnsBy[dept] || mSrns_(L, dept); };
+  // every (date, dept, shift) with attendance
+  var keys = {};
+  att.forEach(function(r) { if (str_(r.shift) === 'Final' || str_(r.shift) === 'OT') keys[str_(r.date) + '|' + str_(r.dept) + '|' + str_(r.shift)] = 'app'; });
+  Object.keys(sheet).forEach(function(k) { var p = k.split('|'); if (p[0] >= from && p[0] <= today && mine[p[1]] && !keys[k] && sheet[k].factory === factory) keys[k] = 'sheet'; });
+  var groups = {}, done = [];
+  Object.keys(keys).sort().forEach(function(k) {
+    var p = k.split('|'), d = p[0], dept = p[1], sh = p[2], src = keys[k];
+    var outRows = hourly.filter(function(r) { return str_(r.date) === d && str_(r.dept) === dept && (str_(r.shift) || 'Final') === sh; });
+    var status = statusOf(d, dept);
+    var by = {}; outRows.forEach(function(r) { var e = by[str_(r.srn)] = by[str_(r.srn)] || { srn: str_(r.srn), total: 0, other: 0 }; e.total += num_(r.qty); if (str_(r.slot) !== M_SLOT[sh]) e.other += num_(r.qty); });
+    var entries = Object.keys(by).map(function(x) { return by[x]; });
+    var rows = att.filter(function(r) { return str_(r.date) === d && str_(r.dept) === dept && str_(r.shift) === sh; });
+    var dayEv = events.filter(function(e) { return str_(e.date) === d; });
+    var base, mp, hours, attSrn = '';
+    if (src === 'app') {
+      base = rows.reduce(function(t, r) { return t + num_(r.count); }, 0);
+      hours = attHours_(rows.map(function(r) { return { role: str_(r.role), hours: num_(r.hours), count: num_(r.count) }; }), sh);
+      if (sh === 'Final') { var close = lineClose_(dayEv, dept); if (close) hours = Math.min(hours, close.eff); }
+      mp = sh === 'Final' ? mpAtSlot_(rows, dayEv, dept, M_SLOT.Final) : base;
+      attSrn = str_(rows[0].srn);
+    } else { base = sheet[k].count; mp = base; hours = sheet[k].hours || (sh === 'OT' ? 2 : 8); }
+    var line = { date: d, dept: dept, shift: sh, slot: M_SLOT[sh], fromSheet: src === 'sheet', mp: mp, mpBase: base, hours: hours, attSrn: attSrn,
+                 floor: lineFloor[dept] ? lineFloor[dept].value : '', events: sh === 'Final' ? mEvents_(dayEv, dept) : [], entries: entries, status: status };
+    var hasOut = outRows.length > 0 || sheetDays[dept + '|' + d + '|' + sh];
+    if (d === today && outRows.length) done.push(line);
+    if (hasOut && status !== 'Rejected') return;
+    if (isLocked_(status)) return;
+    line.srns = srnsOf(dept);
+    (groups[d] = groups[d] || []).push(line);
   });
-  return { ok: true, date: date, lines: lines, pending: mPending_(user, factory, date, depts) };
-}
-
-// Last 7 days (not the day on screen, not today's future): lines with attendance but no stitching output in the app
-// and none typed into the main sheet (MASTER DATA) for that line / date / shift, and not already with the admin.
-function mPending_(user, factory, shownDate, depts) {
-  var today = todayStr_(), from = fmtDate_(new Date(new Date().getTime() - 7 * 86400000));
-  var mine = {}; depts.forEach(function(d) { mine[d.dept] = 1; });
-  var sheetDays = (historyAgg_().sheetDays) || {};
-  var attBy = {}, outBy = {};
-  readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) {
-    var d = str_(r.date); if (str_(r.factory) !== factory || !mine[str_(r.dept)] || d < from || d >= today || d === shownDate) return;
-    attBy[d + '|' + str_(r.dept) + '|' + str_(r.shift)] = 1;
-  });
-  readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
-    if (str_(r.type) !== 'STITCH' || str_(r.factory) !== factory) return;
-    outBy[str_(r.date) + '|' + str_(r.dept) + '|' + (str_(r.shift) || 'Final')] = 1;
-  });
-  var byDate = {}, stCache = {};
-  Object.keys(attBy).forEach(function(k) {
-    var p = k.split('|'), d = p[0], dept = p[1], sh = p[2];
-    if (sh !== 'Final' && sh !== 'OT') return;
-    if (outBy[k] || sheetDays[dept + '|' + d + '|' + sh]) return;
-    var st = stCache[d] = stCache[d] || statusMap_(d, factory);
-    if (isLocked_(st[dept + '|STITCH'] || '')) return;
-    (byDate[d] = byDate[d] || []).push({ dept: dept, shift: sh });
-  });
-  return Object.keys(byDate).sort().reverse().map(function(d) { return { date: d, lines: byDate[d] }; });
+  return { ok: true, today: today, groups: Object.keys(groups).sort().reverse().map(function(d) { return { date: d, lines: groups[d] }; }), done: done };
 }

@@ -93,7 +93,7 @@
     if (name === 'home' || name === 'reports' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : name === 'reports' ? 'Reports · ' + (isToday() ? 'aaj' : 'is din ke') : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
-    else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · poore din ka', false);
+    else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · jo baaki hai', false);
     else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);

@@ -203,11 +203,13 @@ function slotUpsert_(p, user, ctx) {
 
 function batchCtx_(date, factory) {
   var att = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
-  return { L: ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory), att: att };
+  return { L: ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory), att: att, date: date };
 }
 // Output needs that shift's attendance for the line; endline also needs the checker to be one of the attendance QC names
 function attGate_(ctx, dept, shift, type, checker) {
   var rows = (ctx.att || []).filter(function(r) { return str_(r.dept) === dept && str_(r.shift) === shift; });
+  // attendance typed straight into the main attendance sheet also counts (stitching / packing output)
+  if (!rows.length && type !== 'ENDLINE' && ctx.date && sheetAttAgg_()[ctx.date + '|' + dept + '|' + shift]) return '';
   if (!rows.length) return (shift === 'Final' ? 'Day' : shift) + ' attendance nahi bhari — pehle attendance bharo, phir output';
   if (type === 'ENDLINE') {
     var qc = {}; rows.forEach(function(r) { csv_(r.qc_names).forEach(function(n) { qc[n.toLowerCase()] = n; }); });

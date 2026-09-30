@@ -117,28 +117,9 @@
   };
   function loadAttList() {
     if (AL.shift !== 'Final') { renderAttOT(); return; }
-    if (phone()) {
-      // phone: one light call has everything (SRNs per line, manpower now, changes, status, WhatsApp data)
-      S.api('m.att', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
-        AL.items = d.items; AL.wa = d.wa; S.samMap = d.sam || {};
-        d.items.forEach(function (x) {
-          if (x.cat !== 'STITCH') return;
-          AL.srns[x.dept] = x.srns || [];
-          var prev = x.prev && x.prev.srn, has = function (s) { return AL.srns[x.dept].some(function (o) { return o.srn === s; }); };
-          if (!AL.pick[x.dept] || !has(AL.pick[x.dept])) AL.pick[x.dept] = prev && has(prev) ? prev : ((AL.srns[x.dept][0] || {}).srn || prev || '');
-        });
-        renderAttList();
-      }).catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-retry="1" style="margin-top:10px">Dobara try</button></div>'; });
-      return;
-    }
+    if (phone()) { loadPhoneAtt(); return; }
     S.api('att.prev', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) { AL.items = d.items; renderAttList(); })
       .catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
-  }
-  function srnSelect(x) {
-    var list = AL.srns[x.dept];
-    if (!list) return '<div class="al-srn muted">SRN aa rahe hain…</div>';
-    if (!list.length) return '<div class="al-srn muted">Is line par loading nahi mili</div>';
-    return '<select class="al-srn" data-pick="' + esc(x.dept) + '">' + list.map(function (s) { return '<option value="' + esc(s.srn) + '"' + (s.srn === AL.pick[x.dept] ? ' selected' : '') + '>' + esc(s.srn) + ' · ' + s.balance + ' baaki</option>'; }).join('') + '</select>';
   }
   function evText(x) {
     var lab = { HALF_DAY: 'half day', LEFT_AT: 'beech me gaya', LATE_JOIN: 'late aaya', ABSENT: 'absent', EXTRA: 'extra aaya', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer se aaya', LINE_CLOSED: 'line band' };
@@ -149,24 +130,6 @@
     var pend = AL.items.filter(function (x) { return !x.today && x.prev; }).length;
     var html = '<p class="hint" style="margin:0 0 8px">Kal jaisa hai to <b>Same</b> dabao — SRN, supervisor, incharge, QC sab kal ke lag jayenge. Kuch badla ho to <b>Badlo</b>.</p>';
     if (pend > 1) html += '<button class="btn big ok" data-sameall="1" style="margin:0 0 10px">Sab ' + pend + ' lines kal jaisa hi</button>';
-    if (phone()) {
-      html = (state.date !== S.todayStr() ? '<div class="mo-past"><div><b>' + esc(S.fmtDay(state.date)) + '</b> · purana din</div><button class="btn small" data-day="' + S.todayStr() + '">Aaj par wapas</button></div>' : '') +
-        '<p class="hint" style="margin:0 0 8px">SRN chuno, phir kal jaisa hai to <b>Same</b>, warna <b>Badlo</b>. Baad me koi absent / half day ho to <b>± Badlav</b>. OT hua to <b>+ OT</b>.</p>' + (pend > 1 ? '<button class="btn big ok" data-sameall="1" style="margin:0 0 10px">Sab ' + pend + ' lines kal jaisa hi</button>' : '');
-      html += AL.items.map(function (x) {
-        var t = x.today, p = x.prev, busy = AL.busy[x.dept], st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent';
-        if (t) {
-          var now = x.mpNow, ev = evText(x), tg = S.hourlyTarget(t.srn, t.count);
-          return '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + (t.srn ? esc(t.srn) + ' · ' : '') + t.count + ' log' + (now !== undefined && now !== t.count ? ' · abhi <b>' + now + '</b>' : '') + (x.ot ? ' · OT ' + x.ot + ' log' : '') + '</div>' + (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (t.srn ? '<div class="al-tg">' + tg.html + '</div>' : '') + (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') + '</div>' +
-            (lock ? '' : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>') + '</div>';
-        }
-        var sub = p ? esc(S.fmtDay(p.date)) + ' ko ' + p.count + ' log' : 'Pehli baar — bharo';
-        return '<div class="chk-line al-pend"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + sub + '</div>' + (x.cat === 'STITCH' ? srnSelect(x) : (p && p.srn ? '<div class="m">' + esc(p.srn) + '</div>' : '')) + '</div>' +
-          (p ? '<button class="btn small same" data-same="' + esc(x.dept) + '"' + (busy ? ' disabled' : '') + '>' + (busy ? '…' : 'Same ' + p.count) + '</button>' : '') + '<button class="btn small ghost" data-edit="' + esc(x.dept) + '">' + (p ? 'Badlo' : 'Bharo') + '</button></div>';
-      }).join('');
-      html += '<div class="sticky-bottom">' + (done ? '<button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Attendance group me bhejo' + (done < n ? ' · ' + done + '/' + n : '') + '</button>' : '<button class="btn big" disabled>' + n + ' line baaki</button>') + '</div>';
-      box().innerHTML = html;
-      return;
-    }
     html += AL.items.map(function (x) {
       var t = x.today, p = x.prev, busy = AL.busy[x.dept];
       var sub = t ? t.count + ' log · ' + (t.srn || 'SRN nahi') + (t.by ? ' · ' + esc(t.by) : '') : p ? esc(S.fmtDay(p.date)) + ' ko ' + p.count + ' log' + (p.srn ? ' · ' + esc(p.srn) : '') : 'Pehli baar — bharo';
@@ -195,6 +158,40 @@
       .then(function () { delete AL.busy[dept]; x.today = { count: p.count, srn: srn, by: state.user.name }; if (!quiet) { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); } else renderAttList(); })
       .catch(function (e) { delete AL.busy[dept]; renderAttList(); S.toast(S.shortLine(dept) + ': ' + e.message + ' — Badlo dabao', 'bad', 7000); });
   }
+  // ---------- phone Attendance tab: date + line code on top; below only the lines filled for that date ----------
+  var PA = { items: [], lines: [], wa: null };
+  function loadPhoneAtt() {
+    S.api('m.att', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
+      PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {};
+      renderPhoneAtt();
+    }).catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-retry="1" style="margin-top:10px">Dobara try</button></div>'; });
+  }
+  function renderPhoneAtt() {
+    var today = S.todayStr(), past = state.date !== today;
+    var html = '<div class="card pa-top"><div class="row">' +
+      '<div class="field small"><label>Date</label><input type="date" id="pa-date" value="' + esc(state.date) + '" max="' + today + '"></div>' +
+      '<div class="field"><label>Line code</label><select id="pa-line"><option value="">— line chuno —</option>' +
+        PA.lines.map(function (l) { return '<option value="' + esc(l.dept) + '">' + esc(S.shortLine(l.dept)) + (l.filled ? '  ✓' : '') + '</option>'; }).join('') + '</select></div></div>' +
+      '<div class="hint">' + (past ? '<b style="color:var(--warn)">' + esc(S.fmtDay(state.date)) + ' ki attendance</b> · <button class="lnk" data-day="' + today + '">aaj par wapas</button>' : 'Line chuno → attendance bharo → Save. Bhari hui line neeche aa jayegi.') + '</div></div>';
+    if (!PA.items.length) html += '<div class="empty">' + (past ? 'Is din ki koi attendance nahi' : 'Aaj abhi koi attendance nahi bhari') + '</div>';
+    PA.items.forEach(function (x) {
+      var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent', ev = evText(x);
+      var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, x.count) : null;
+      html += '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + (x.fromSheet ? ' <em class="ot">sheet se</em>' : '') + '</div>' +
+        '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' log' + (!x.fromSheet && x.mpNow !== x.count ? ' · abhi <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot + ' log' : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
+        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
+        (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') +
+        (x.fromSheet ? '<div class="m">Main sheet me bhari hui — yahan se badal nahi sakte</div>' : '') + '</div>' +
+        (lock || x.fromSheet ? '' : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>') + '</div>';
+    });
+    if (PA.items.length) html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Attendance group me bhejo · ' + PA.items.length + ' line</button></div>';
+    box().innerHTML = html;
+  }
+  $('#matt-body').addEventListener('change', function (e) {
+    if (e.target.id === 'pa-date') { var v = e.target.value; if (v && v <= S.todayStr()) S.setDate(v); else e.target.value = state.date; return; }
+    if (e.target.id === 'pa-line' && e.target.value) { var dept = e.target.value; e.target.value = ''; S.openAttendance('Final', dept); }
+  });
+
   // phone: the same list is the Attendance tab
   S.tabs.matt = function () { AL.box = '#matt-body'; AL.shift = 'Final'; box().innerHTML = '<div class="empty">Lines aa rahi hain…</div>'; loadAttList(); };
   function attListClick(e) {
@@ -203,7 +200,7 @@
     if (b.dataset.sameall) { S.ask('Baaki sab lines ki attendance kal jaisi save karein?', { ok: 'Haan, sab same' }).then(function (ok) { if (!ok) return; var list = AL.items.filter(function (x) { return !x.today && x.prev; }).map(function (x) { return x.dept; }); var seq = Promise.resolve(); list.forEach(function (dept) { seq = seq.then(function () { return saveSame(dept, true); }); }); seq.then(function () { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); }); }); return; }
     if (b.dataset.edit) { S.openAttendance(AL.shift, b.dataset.edit); return; }
     if (b.dataset.wa) {
-      if (phone() && AL.wa) { var txt = S.waAttendanceText(AL.wa, 'Final'); if (txt) S.shareText('Attendance group me bhejo', txt); else S.toast('Abhi koi attendance nahi bhari', 'bad'); return; }
+      if (phone() && PA.wa) { var txt = S.waAttendanceText(PA.wa, 'Final'); if (txt) S.shareText('Attendance group me bhejo', txt); else S.toast('Abhi koi attendance nahi bhari', 'bad'); return; }
       S.sendToGroup(b.dataset.wa); return;
     }
     if (b.dataset.retry) { loadAttList(); return; }
@@ -211,21 +208,20 @@
       var srn = b.dataset.setsam;
       S.askText(srn + ' ka SAM (making, minute per piece)', { ok: 'Save' }).then(function (v) {
         var n = Number(v); if (!v) return; if (!(n > 0)) { S.toast('SAM minute me daalo (jaise 12.5)', 'bad'); return; }
-        S.api('target.sam', { srn: srn, sam: n }).then(function () { S.samMap = S.samMap || {}; S.samMap[srn.toUpperCase()] = n; S.toast(srn + ' ka SAM ' + n + ' saved', 'ok'); renderAttList(); }).catch(function (er) { S.toast(er.message, 'bad'); });
+        S.api('target.sam', { srn: srn, sam: n }).then(function () { S.samMap = S.samMap || {}; S.samMap[srn.toUpperCase()] = n; S.toast(srn + ' ka SAM ' + n + ' saved', 'ok'); if (phone()) renderPhoneAtt(); else renderAttList(); }).catch(function (er) { S.toast(er.message, 'bad'); });
       });
       return;
     }
     if (b.dataset.ot) { S.openAttendance('OT', b.dataset.ot); return; }
     if (b.dataset.day) { S.setDate(b.dataset.day); return; }
     if (b.dataset.mp) {
-      var all = AL.items.filter(function (x) { return x.today; }).map(function (x) { return { dept: x.dept }; });
+      var all = PA.items.filter(function (x) { return !x.fromSheet; }).map(function (x) { return { dept: x.dept }; });
       S.mpSheet({ dept: b.dataset.mp }, all, function () { loadAttList(); }, true);
       return;
     }
   }
   $('#attlist-body').addEventListener('click', attListClick);
   $('#matt-body').addEventListener('click', attListClick);
-  $('#matt-body').addEventListener('change', function (e) { var s = e.target.closest('[data-pick]'); if (s) AL.pick[s.dataset.pick] = s.value; });
   
   // "Koi gaya / aaya?" — pick the line, then the manpower change sheet (same one the hour screen uses)
   function mpQuick() {

@@ -507,3 +507,5 @@ div.al-srn { font-size: 12px; margin-top: 4px; }
   #scr-att .card > .row:first-child .field:first-child { flex: 1 1 100%; }
 }
 .al-tg .lnk { font-size: 13px; padding: 0 0 0 4px; }
+.pa-top .row { align-items: flex-end; } .pa-top #pa-line { font-weight: 700; font-size: 16px; min-height: 44px; } .pa-top #pa-date { min-height: 44px; }
+h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; } h2.mo-date span { color: var(--warn); }
