@@ -105,8 +105,9 @@
   }
 
   // ---------- attendance list: "kal jaisa hi?" ----------
-  var AL = { items: [], shift: 'Final', busy: {}, box: '#attlist-body' };
+  var AL = { items: [], shift: 'Final', busy: {}, box: '#attlist-body', srns: {}, pick: {}, fd: null };
   function box() { return $(AL.box); }
+  function phone() { return AL.box === '#matt-body'; }
   S.screens.attlist = function (shift) {
     AL.shift = shift || 'Final';
     AL.box = '#attlist-body';
@@ -116,14 +117,55 @@
   };
   function loadAttList() {
     if (AL.shift !== 'Final') { renderAttOT(); return; }
-    S.api('att.prev', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) { AL.items = d.items; renderAttList(); })
-      .catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    S.api('att.prev', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
+      AL.items = d.items; renderAttList();
+      if (!phone()) return;
+      // phone: current manpower / changes of the day, and the SRNs loaded on each stitching line (dropdown)
+      S.loadFactory(true).then(function (fd) { AL.fd = fd; renderAttList(); }).catch(function () {});
+      d.items.forEach(function (x) {
+        if (x.cat !== 'STITCH' || AL.srns[x.dept]) return;
+        S.api('orders.active', { factory: state.factory, dept: x.dept, type: 'STITCH' }, { quiet: true }).then(function (o) {
+          AL.srns[x.dept] = o.srns || [];
+          var prev = x.prev && x.prev.srn;
+          if (!AL.pick[x.dept]) AL.pick[x.dept] = prev && AL.srns[x.dept].some(function (s) { return s.srn === prev; }) ? prev : ((AL.srns[x.dept][0] || {}).srn || prev || '');
+          renderAttList();
+        }).catch(function () {});
+      });
+    }).catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+  }
+  function srnSelect(x) {
+    var list = AL.srns[x.dept];
+    if (!list) return '<div class="al-srn muted">SRN aa rahe hain…</div>';
+    if (!list.length) return '<div class="al-srn muted">Is line par loading nahi mili</div>';
+    return '<select class="al-srn" data-pick="' + esc(x.dept) + '">' + list.map(function (s) { return '<option value="' + esc(s.srn) + '"' + (s.srn === AL.pick[x.dept] ? ' selected' : '') + '>' + esc(s.srn) + ' · ' + s.balance + ' baaki</option>'; }).join('') + '</select>';
+  }
+  function evText(dept) {
+    var fd = AL.fd; if (!fd) return '';
+    var lab = { HALF_DAY: 'half day', LEFT_AT: 'beech me gaya', LATE_JOIN: 'late aaya', ABSENT: 'absent', EXTRA: 'extra aaya', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer se aaya', LINE_CLOSED: 'line band' };
+    return (fd.eventList || []).filter(function (e) { return e.dept === dept; }).map(function (e) { return e.event === 'LINE_CLOSED' ? 'Line band ' + e.time : e.count + ' ' + e.role + ' ' + (lab[e.event] || e.event) + (e.time ? ' ' + e.time : ''); }).join(', ');
   }
   function renderAttList() {
     var done = AL.items.filter(function (x) { return x.today; }).length, n = AL.items.length;
     var pend = AL.items.filter(function (x) { return !x.today && x.prev; }).length;
     var html = '<p class="hint" style="margin:0 0 8px">Kal jaisa hai to <b>Same</b> dabao — SRN, supervisor, incharge, QC sab kal ke lag jayenge. Kuch badla ho to <b>Badlo</b>.</p>';
     if (pend > 1) html += '<button class="btn big ok" data-sameall="1" style="margin:0 0 10px">Sab ' + pend + ' lines kal jaisa hi</button>';
+    if (phone()) {
+      html = '<p class="hint" style="margin:0 0 8px">SRN chuno, phir kal jaisa hai to <b>Same</b>, warna <b>Badlo</b>. Baad me koi absent / half day ho to <b>± Badlav</b>.</p>' + (pend > 1 ? '<button class="btn big ok" data-sameall="1" style="margin:0 0 10px">Sab ' + pend + ' lines kal jaisa hi</button>' : '');
+      html += AL.items.map(function (x) {
+        var t = x.today, p = x.prev, busy = AL.busy[x.dept], fd = AL.fd, st = fd && fd.statuses ? fd.statuses[x.dept + '|ATT'] : '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent';
+        if (t) {
+          var now = fd && fd.mpNow ? fd.mpNow[x.dept] : undefined, ev = evText(x.dept);
+          return '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + (t.srn ? esc(t.srn) + ' · ' : '') + t.count + ' log' + (now !== undefined && now !== t.count ? ' · abhi <b>' + now + '</b>' : '') + '</div>' + (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') + '</div>' +
+            (lock ? '' : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button>') + '</div>';
+        }
+        var sub = p ? esc(S.fmtDay(p.date)) + ' ko ' + p.count + ' log' : 'Pehli baar — bharo';
+        return '<div class="chk-line al-pend"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + sub + '</div>' + (x.cat === 'STITCH' ? srnSelect(x) : (p && p.srn ? '<div class="m">' + esc(p.srn) + '</div>' : '')) + '</div>' +
+          (p ? '<button class="btn small same" data-same="' + esc(x.dept) + '"' + (busy ? ' disabled' : '') + '>' + (busy ? '…' : 'Same ' + p.count) + '</button>' : '') + '<button class="btn small ghost" data-edit="' + esc(x.dept) + '">' + (p ? 'Badlo' : 'Bharo') + '</button></div>';
+      }).join('');
+      html += '<div class="sticky-bottom">' + (done ? '<button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Attendance group me bhejo' + (done < n ? ' · ' + done + '/' + n : '') + '</button>' : '<button class="btn big" disabled>' + n + ' line baaki</button>') + '</div>';
+      box().innerHTML = html;
+      return;
+    }
     html += AL.items.map(function (x) {
       var t = x.today, p = x.prev, busy = AL.busy[x.dept];
       var sub = t ? t.count + ' log · ' + (t.srn || 'SRN nahi') + (t.by ? ' · ' + esc(t.by) : '') : p ? esc(S.fmtDay(p.date)) + ' ko ' + p.count + ' log' + (p.srn ? ' · ' + esc(p.srn) : '') : 'Pehli baar — bharo';
@@ -145,10 +187,11 @@
   }
   function saveSame(dept, quiet) {
     var x = AL.items.filter(function (i) { return i.dept === dept; })[0]; if (!x || !x.prev) return Promise.resolve();
-    var p = x.prev;
+    var p = x.prev, srn = phone() && x.cat === 'STITCH' && AL.pick[dept] ? AL.pick[dept] : p.srn;
+    if (phone() && x.cat === 'STITCH' && AL.srns[dept] && AL.srns[dept].length && !srn) { S.toast('Pehle SRN chuno', 'bad'); return Promise.resolve(); }
     AL.busy[dept] = true; renderAttList();
-    return S.api('att.save', { date: state.date, factory: state.factory, dept: dept, shift: 'Final', srn: p.srn, supervisor: p.supervisor, incharge: p.incharge, qc_names: p.qc_names, rows: p.rows.map(function (r) { return { role: r.role, hours: r.hours, count: r.count }; }) })
-      .then(function () { delete AL.busy[dept]; x.today = { count: p.count, srn: p.srn, by: state.user.name }; if (!quiet) { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); } else renderAttList(); })
+    return S.api('att.save', { date: state.date, factory: state.factory, dept: dept, shift: 'Final', srn: srn, supervisor: p.supervisor, incharge: p.incharge, qc_names: p.qc_names, rows: p.rows.map(function (r) { return { role: r.role, hours: r.hours, count: r.count }; }) })
+      .then(function () { delete AL.busy[dept]; x.today = { count: p.count, srn: srn, by: state.user.name }; if (!quiet) { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); } else renderAttList(); })
       .catch(function (e) { delete AL.busy[dept]; renderAttList(); S.toast(S.shortLine(dept) + ': ' + e.message + ' — Badlo dabao', 'bad', 7000); });
   }
   // phone: the same list is the Attendance tab
@@ -159,9 +202,15 @@
     if (b.dataset.sameall) { S.ask('Baaki sab lines ki attendance kal jaisi save karein?', { ok: 'Haan, sab same' }).then(function (ok) { if (!ok) return; var list = AL.items.filter(function (x) { return !x.today && x.prev; }).map(function (x) { return x.dept; }); var seq = Promise.resolve(); list.forEach(function (dept) { seq = seq.then(function () { return saveSame(dept, true); }); }); seq.then(function () { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); }); }); return; }
     if (b.dataset.edit) { S.openAttendance(AL.shift, b.dataset.edit); return; }
     if (b.dataset.wa) { S.sendToGroup(b.dataset.wa); return; }
+    if (b.dataset.mp) {
+      var all = AL.items.filter(function (x) { return x.today; }).map(function (x) { return { dept: x.dept }; });
+      S.mpSheet({ dept: b.dataset.mp }, all, function () { S.invalidateAll(); S.clearLocalCaches(); AL.fd = null; loadAttList(); });
+      return;
+    }
   }
   $('#attlist-body').addEventListener('click', attListClick);
   $('#matt-body').addEventListener('click', attListClick);
+  $('#matt-body').addEventListener('change', function (e) { var s = e.target.closest('[data-pick]'); if (s) AL.pick[s.dataset.pick] = s.value; });
   
   // "Koi gaya / aaya?" — pick the line, then the manpower change sheet (same one the hour screen uses)
   function mpQuick() {

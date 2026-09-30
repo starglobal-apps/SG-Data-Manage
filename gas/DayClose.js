@@ -44,12 +44,13 @@ function dayBuild_(req, user) {
     var p = k.split('|'), dept = p[0], shift = p[1];
     if (onlyDept && dept !== onlyDept) return;
     if (onlyType && onlyType !== 'ATT') return;
-    var eff = effectiveAttendance_(date, factory, dept, shift, att, events);
+    var eff = effectiveAttendanceDetail_(date, factory, dept, shift, att, events);
     var flags = [];
     if (!eff.length) flags.push({ level: 'warn', msg: 'Attendance khali' });
     var nm = attNames_(att, dept, shift);
+    var attSrnRow = att.filter(function(r) { return str_(r.dept) === dept && str_(r.shift) === shift && str_(r.srn); })[0];
     rows.push({ date: date, factory: factory, line: lineOf_(dept), dept: dept, type: 'ATT', srn: '', shift: shift,
-                payload: { rows: eff, manpower: sum_(eff, 'count'), manhours: eff.reduce(function(t, r) { return t + r.count * r.hours; }, 0), supervisor: nm.supervisor, incharge: nm.incharge }, flags: flags });
+                payload: { rows: eff, manpower: sum_(eff, 'count'), manhours: eff.reduce(function(t, r) { return t + r.count * r.hours; }, 0), supervisor: nm.supervisor, incharge: nm.incharge, srn: attSrnRow ? str_(attSrnRow.srn) : '' }, flags: flags });
   });
 
   // ---- STITCH: per dept + srn + shift
@@ -61,8 +62,13 @@ function dayBuild_(req, user) {
   Object.keys(groups).forEach(function(k) {
     var p = k.split('|'), dept = p[0], srn = p[1], shift = p[2], g = groups[k];
     if (onlyDept && dept !== onlyDept) return;
-    var effAtt = effectiveAttendance_(date, factory, dept, shift, att, events);
+    var effAtt = effectiveAttendanceDetail_(date, factory, dept, shift, att, events);
     var byRole = {}; effAtt.forEach(function(r) { byRole[r.role] = (byRole[r.role] || 0) + r.count; });
+    // one final row per working-hours group: the longest-hours group carries the output, the others output 0
+    var byH = {};
+    effAtt.forEach(function(r) { var g = byH[r.hours] = byH[r.hours] || { hours: r.hours, manpower: 0, roles: {}, remark: [] }; g.manpower += r.count; g.roles[r.role] = (g.roles[r.role] || 0) + r.count; if (r.remark) g.remark.push(r.role + ': ' + r.remark); });
+    var splits = Object.keys(byH).map(function(h) { return byH[h]; }).sort(function(a, b) { return b.hours - a.hours || b.manpower - a.manpower; })
+      .map(function(g) { var o = { hours: g.hours, manpower: g.manpower, remark: g.remark.join('; ') }; CFG.STITCH_ROLE_COLS.forEach(function(role, i) { o['r' + (i + 1)] = g.roles[role] || 0; }); return o; });
     var names = attNames_(att, dept, shift === 'Final' ? 'Final' : '');
     var closeS = shift === 'Final' ? lineClose_(events, dept) : null;
     var attHrs = attHours_(effAtt, shift);
@@ -70,7 +76,7 @@ function dayBuild_(req, user) {
       date: date, line: lineOf_(dept), dept: dept, srn: srn,
       floor: str_(g[0].floor) || (lineFloor[dept] ? lineFloor[dept].value : ''),
       shift: shift, manpower: sum_(effAtt, 'count'), hours: closeS ? Math.min(attHrs, closeS.eff) : attHrs, output: sum_(g, 'qty'),
-      supervisor: names.supervisor, incharge: names.incharge, slots: g.length
+      supervisor: names.supervisor, incharge: names.incharge, slots: g.length, splits: splits
     };
     CFG.STITCH_ROLE_COLS.forEach(function(role, i) { payload['r' + (i + 1)] = byRole[role] || 0; });
     var flags = [];
@@ -280,10 +286,15 @@ function finalRow_(r, p) {
   var type = str_(r.type), factory = str_(r.factory), shift = str_(r.shift);
   if (type === 'STITCH') {
     var t = factory === '117' ? 'STITCH_117' : 'STITCH_666';
-    var row = { date: fmtSheetDate_(p.date, factory === '117' ? 'us' : ''), line: p.line, dept: p.dept, srn: p.srn, floor: p.floor,
-                shift: shift === 'Final' ? 'Final' : 'OT', manpower: p.manpower, hours: p.hours, output: p.output,
-                master: p.incharge, supervisor: p.supervisor, r1: p.r1, r2: p.r2, r3: p.r3, r4: p.r4, r5: p.r5 };
-    return { target: t, rows: [row] };
+    var base = { date: fmtSheetDate_(p.date, factory === '117' ? 'us' : ''), line: p.line, dept: p.dept, srn: p.srn, floor: p.floor,
+                 shift: shift === 'Final' ? 'Final' : 'OT', master: p.incharge, supervisor: p.supervisor };
+    var sp = p.splits || [];
+    if (sp.length > 1) {
+      return { target: t, rows: sp.map(function(g, i) {
+        return Object.assign({}, base, { manpower: g.manpower, hours: i === 0 ? p.hours : g.hours, output: i === 0 ? p.output : 0, r1: g.r1, r2: g.r2, r3: g.r3, r4: g.r4, r5: g.r5, remark: g.remark || '' });
+      }) };
+    }
+    return { target: t, rows: [Object.assign({}, base, { manpower: p.manpower, hours: p.hours, output: p.output, r1: p.r1, r2: p.r2, r3: p.r3, r4: p.r4, r5: p.r5 })] };
   }
   if (type === 'ENDLINE') {
     var row2 = { entryDate: fmtSheetDate_(todayStr_()), factoryName: p.factoryName, date: fmtSheetDate_(p.date),
@@ -304,7 +315,8 @@ function finalRow_(r, p) {
     var staffA = lineStaffOf_(r.dept);
     var rows = (p.rows || []).map(function(x) {
       return { date: fmtSheetDate_(r.date, 'dd'), factory: Number(factory), dept: r.dept, role: x.role, hours: x.hours, count: x.count,
-               manhours: x.hours * x.count, supervisor: p.incharge || staffA.incharge || '' };
+               manhours: x.hours * x.count, incharge: p.incharge || staffA.incharge || '', supervisor: p.supervisor || staffA.supervisor || '',
+               srn: p.srn || '', remark: x.remark || '' };
     });
     return { target: t2, rows: rows };
   }

@@ -477,3 +477,19 @@ a.btn { color: #fff; }
 .mo-add { font-size: 13px; }
 .mo-total { display: flex; align-items: baseline; gap: 10px; background: var(--card); border-radius: 14px; padding: 12px 14px; border: 1px solid var(--line); margin: 4px 0 0; }
 .mo-total span { flex: 1; font-weight: 700; } .mo-total b { font-size: 24px; } .mo-total small { color: var(--muted); }
+/* phone attendance / output v2 */
+select.al-srn { width: 100%; margin-top: 6px; min-height: 42px; font-weight: 700; font-size: 15px; color: var(--primary); }
+div.al-srn { font-size: 12px; margin-top: 4px; }
+.chk-line.al-pend, .chk-line.al-done { flex-wrap: wrap; } .chk-line.al-pend .b, .chk-line.al-done .b { flex: 1 1 100%; }
+.chk-line.al-pend .btn.small, .chk-line.al-done .btn.small { flex: 1; }
+.al-ev { color: var(--warn) !important; }
+.mo-card { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--card); border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 0 0 8px; color: var(--text); }
+.mo-card.done { border-color: var(--ok); } .mo-card.lock { opacity: .8; } .mo-card.dim { opacity: .75; }
+.mo-card .b { flex: 1; min-width: 0; display: flex; flex-direction: column; } .mo-card .nm { font-weight: 800; font-size: 18px; } .mo-card .s { font-size: 13px; color: var(--muted); } .mo-card .st { font-size: 12px; font-weight: 700; color: var(--primary); margin-top: 2px; }
+.mo-card .v { font-weight: 800; font-size: 24px; text-align: right; } .mo-card .v small { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+.mo-info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 8px; } .mo-info div { background: var(--bg); border-radius: 10px; padding: 6px 8px; text-align: center; } .mo-info span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; } .mo-info b { font-size: 20px; } .mo-info small { display: block; font-size: 11px; color: var(--muted); }
+#mo-srn { width: 100%; min-height: 46px; font-weight: 800; font-size: 16px; }
+.mo-load { font-size: 13px; color: var(--muted); margin: 6px 0 2px; }
+.mo-big { width: 100%; min-height: 60px; font-size: 32px !important; font-weight: 800; text-align: center; }
+.mo-chk .warn { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 8px 10px; font-weight: 600; font-size: 14px; margin: 8px 0 0; }
+.mo-chk .okk { color: var(--ok); font-weight: 700; font-size: 14px; margin: 8px 0 0; }

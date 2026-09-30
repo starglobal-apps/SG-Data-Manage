@@ -392,6 +392,13 @@
       SG.srnPicker(box, { list: list, value: att.srn, placeholder: 'SRN number likho (jaise 596)', onPick: function (v) { att.srn = v; } });
       return;
     }
+    if (isMobile()) {
+      box.className = '';
+      if (!list.length) { box.innerHTML = '<span class="muted" style="font-size:12px">Is line par loading nahi mili</span>'; return; }
+      if (!att.srn) att.srn = list[0].srn;
+      box.innerHTML = '<select id="att-srn-sel" class="al-srn">' + (list.some(function (x) { return x.srn === att.srn; }) ? '' : '<option value="' + esc(att.srn) + '">' + esc(att.srn) + '</option>') + list.map(function (x) { return '<option value="' + esc(x.srn) + '"' + (x.srn === att.srn ? ' selected' : '') + '>' + esc(x.srn) + (x.balance !== '' ? ' · ' + x.balance + ' baaki' : '') + '</option>'; }).join('') + '</select>';
+      return;
+    }
     box.className = 'chips';
     if (att.srn && !list.some(function (x) { return x.srn === att.srn; })) list = [{ srn: att.srn, balance: '' }].concat(list);
     box.innerHTML = list.length ? list.map(function (x) { return '<button data-srn="' + esc(x.srn) + '" class="' + (x.srn === att.srn ? 'on' : '') + '">' + esc(x.srn) + (x.balance !== '' ? '<small>bal ' + x.balance + '</small>' : '') + '</button>'; }).join('')
@@ -403,6 +410,7 @@
       .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all) att.srn = d.srns[0].srn; renderAttSrns(); })
       .catch(function () { att.srns = []; renderAttSrns(); });
   }
+  $('#att-srn').addEventListener('change', function (e) { if (e.target.id === 'att-srn-sel') att.srn = e.target.value; });
   $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('.chips button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
   function openAttendance(shift, dept) {
     var depts = deptsFor(state.factory);

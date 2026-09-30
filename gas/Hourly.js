@@ -212,37 +212,62 @@ function manpowerDelete_(req, user) {
 
 // Attendance rows for (date, factory, dept, shift) after applying manpower events -> [{role, hours, count}]
 function effectiveAttendance_(date, factory, dept, shift, attRows, events) {
+  return effectiveAttendanceDetail_(date, factory, dept, shift, attRows, events).map(function(r) { return { role: r.role, hours: r.hours, count: r.count }; });
+}
+
+// Same, but every row carries a remark saying why it is a separate row:
+//   10 operators at 8 h, 1 absent, 2 half day  ->  Operator 8 h × 7 ("Absent 1") + Operator 4 h × 2 ("Half day 2")
+function effectiveAttendanceDetail_(date, factory, dept, shift, attRows, events) {
   var rows = attRows.filter(function(r) {
     return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === shift;
   });
   var out = {};
-  rows.forEach(function(r) { var k = str_(r.role) + '|' + num_(r.hours); out[k] = { role: str_(r.role), hours: num_(r.hours), count: (out[k] ? out[k].count : 0) + num_(r.count) }; });
-  if (shift !== 'Final') return Object.keys(out).map(function(k) { return out[k]; });
-
-  events.filter(function(e) { return str_(e.date) === date && str_(e.factory) === factory && str_(e.dept) === dept; })
-    .forEach(function(e) {
-      var role = str_(e.role), n = num_(e.count), eff = num_(e.eff_hours);
-      var def = CFG.MP_EVENTS.filter(function(d) { return d.key === str_(e.event); })[0] || {};
+  var put = function(role, hours, n, why) {
+    var k = role + '|' + hours, o = out[k] = out[k] || { role: role, hours: hours, count: 0, why: {} };
+    o.count += n; if (why && n > 0) o.why[why] = (o.why[why] || 0) + n;
+  };
+  rows.forEach(function(r) { put(str_(r.role), num_(r.hours), num_(r.count), ''); });
+  var absent = {};
+  if (shift === 'Final') {
+    var evs = events.filter(function(e) { return str_(e.date) === date && str_(e.factory) === factory && str_(e.dept) === dept; });
+    evs.forEach(function(e) {
+      var role = str_(e.role), n = num_(e.count), eff = num_(e.eff_hours), ev = str_(e.event), t = str_(e.time);
+      var def = CFG.MP_EVENTS.filter(function(d) { return d.key === ev; })[0] || {};
       if (def.close) return;   // handled below
-      if (def.add) { var ka = role + '|' + eff; out[ka] = out[ka] || { role: role, hours: eff, count: 0 }; out[ka].count += n; return; }
-      // take n people out of the fullest bucket for that role and re-add them at eff hours
+      var why = ev === 'HALF_DAY' ? 'Half day' : ev === 'LEFT_AT' ? 'Beech me gaya ' + t : ev === 'LATE_JOIN' ? 'Late aaya ' + t : ev === 'EXTRA' ? 'Extra aaya'
+              : ev === 'TRANSFER_IN' ? 'Transfer se aaya ' + t : ev === 'TRANSFER_OUT' ? 'Transfer gaya ' + t : (def.label || ev);
+      if (def.add) { put(role, eff, n, why); return; }
+      // take n people out of the fullest bucket(s) of that role and re-add them at eff hours
       var keys = Object.keys(out).filter(function(k) { return out[k].role === role && out[k].count > 0; })
         .sort(function(a, b) { return out[b].hours - out[a].hours; });
       var left = n;
       keys.forEach(function(k) { if (left <= 0) return; var take = Math.min(left, out[k].count); out[k].count -= take; left -= take; });
-      if (eff > 0) { var ke = role + '|' + eff; out[ke] = out[ke] || { role: role, hours: eff, count: 0 }; out[ke].count += n - left; }
+      var moved = n - left;
+      if (eff > 0) put(role, eff, moved, why);
+      else if (moved > 0) absent[role] = (absent[role] || 0) + moved;
     });
-  // line closed early: nobody works past that time
-  var close = lineClose_(events.filter(function(e) { return str_(e.date) === date && str_(e.factory) === factory; }), dept);
-  if (close) {
-    var capped = {};
-    Object.keys(out).forEach(function(k) {
-      var r = out[k], h = Math.min(r.hours, close.eff), kk = r.role + '|' + h;
-      capped[kk] = capped[kk] || { role: r.role, hours: h, count: 0 }; capped[kk].count += r.count;
-    });
-    out = capped;
+    // line closed early: nobody works past that time
+    var close = lineClose_(evs, dept);
+    if (close) {
+      var capped = {};
+      Object.keys(out).forEach(function(k) {
+        var r = out[k], h = Math.min(r.hours, close.eff), kk = r.role + '|' + h;
+        var c = capped[kk] = capped[kk] || { role: r.role, hours: h, count: 0, why: {} };
+        c.count += r.count; Object.keys(r.why).forEach(function(w) { c.why[w] = (c.why[w] || 0) + r.why[w]; });
+        if (h < r.hours && r.count > 0) c.why['Line band ' + close.time] = (c.why['Line band ' + close.time] || 0) + r.count;
+      });
+      out = capped;
+    }
   }
-  return Object.keys(out).map(function(k) { return out[k]; }).filter(function(r) { return r.count > 0; });
+  var list = Object.keys(out).map(function(k) { return out[k]; }).filter(function(r) { return r.count > 0; });
+  // absent people are simply not counted; the note goes on that role's main (longest-hours) row
+  Object.keys(absent).forEach(function(role) {
+    var main = list.filter(function(r) { return r.role === role; }).sort(function(a, b) { return b.hours - a.hours || b.count - a.count; })[0];
+    if (main) main.why['Absent'] = (main.why['Absent'] || 0) + absent[role];
+  });
+  return list.map(function(r) {
+    return { role: r.role, hours: r.hours, count: r.count, remark: Object.keys(r.why).map(function(w) { return w + ' ' + r.why[w]; }).join(', ') };
+  });
 }
 
 // ---------- checklist support ----------

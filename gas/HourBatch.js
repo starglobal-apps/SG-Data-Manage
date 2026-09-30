@@ -171,7 +171,11 @@ function slotUpsert_(p, user, ctx) {
   }
 
   var chk = chainCheck_(ctx.L, type, dept, srn, newAmt - oldAmt);
-  if (!chk.ok) return { ok: false, error: 'CHAIN', message: chk.msg, limit: chk.limit, used: chk.used };
+  if (!chk.ok) {
+    if (!p.allowOver) return { ok: false, error: 'CHAIN', message: chk.msg, limit: chk.limit, used: chk.used };
+    // the recorder saw the alert and saved anyway: keep it, the PMS flag goes to the admin's review
+    chk = { ok: true, level: 'warn', msg: 'Loading se zyada: ' + chk.msg, limit: chk.limit, used: chk.used, balance: num_(chk.limit) - num_(chk.used) - (newAmt - oldAmt) };
+  }
 
   var stamp = nowStr_();
   var floor = str_(p.floor) || (existing.length ? str_(existing[0].floor) : '');

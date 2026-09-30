@@ -156,13 +156,15 @@ CFG.FINAL_TARGETS = {
   PACKING:    { srcKey: 'PACKING', sheet: 'Finishing_Res', keyCol: 2, minRow: 2,
     cols: { 1: 'entryTs', 2: 'srn', 3: 'date', 5: 'qty', 6: 'cartons', 7: 'pcs_per_ctn', 9: 'factory',
             14: 'pressman', 15: 'supervisor', 16: 'checker', 17: 'threadcutter', 18: 'helper', 19: 'hours', 23: 'floor', 24: 'item' } },
+  // ' karigar att_666': C Date · D location · E department · F designation · G working hour · H manpower · I Blank · J Incharge · K Supervisor · L SRN · M Remark
   ATT_666:    { srcKey: 'ATT', sheet: ' karigar att_666', keyCol: 3, minRow: 1,
-    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count', 10: 'supervisor' } },
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count', 10: 'incharge', 11: 'supervisor', 12: 'srn', 13: 'remark' } },
+  // '117': C Date · D Location · E Department · F Degination · G Working hour · H Manpower · I Group (formula) · J Incharge · K Supervisor · L SRN · M Remark
   ATT_117:    { srcKey: 'ATT', sheet: '117', keyCol: 3, minRow: 2,
-    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count' } },
-  // verified with diagAttOT(): year/month/total-hours + cols L onward are formula-fed
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count', 10: 'incharge', 11: 'supervisor', 12: 'srn', 13: 'remark' } },
+  // 'OT att': C Date · D Location · E Line · F OT · G Degination · H OT hours · I Manpower · J total working hours (formula) · K Incharge · L Supervisor · M SRN · N Remark
   ATT_OT:     { srcKey: 'ATT', sheet: 'OT att', keyCol: 3, minRow: 2,
-    cols: { 3: 'date', 4: 'factory', 5: 'dept', 7: 'role', 8: 'hours', 9: 'count', 11: 'supervisor' } }
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 7: 'role', 8: 'hours', 9: 'count', 11: 'incharge', 12: 'supervisor', 13: 'srn', 14: 'remark' } }
 };
 
 CFG.STAFF_KINDS = ['Supervisor', 'Incharge', 'Endline QC'];
