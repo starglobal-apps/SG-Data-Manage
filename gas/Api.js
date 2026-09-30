@@ -58,6 +58,8 @@ function routes_() {
     'report.check':   reportCheck_,
     'staff.list':     staffList_,
     'att.prev':       attPrev_,
+    'm.att':          mAtt_,
+    'm.out':          mOut_,
     'target.get':     targetGet_,
     'target.sam':     targetSamSave_,
     'defects.list':   defectsList_,

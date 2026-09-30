@@ -173,7 +173,7 @@
   function nowTime() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 
   // ---- manpower change sheet (someone left / came) ----
-  function mpSheet(d, allDepts, after) {
+  function mpSheet(d, allDepts, after, light) {
     allDepts = allDepts || (H.data ? H.data.depts : [d]); after = after || function () { load(true); };
     var evs = (state.masters.mpEvents || []).filter(function (e) { return e.key !== 'TRANSFER_IN' && e.key !== 'TRANSFER_OUT'; });
     if (!evs.some(function (e) { return e.key === 'LINE_CLOSED'; })) evs.push({ key: 'LINE_CLOSED', label: 'Line band / shift khatam', needsTime: true });
@@ -196,7 +196,9 @@
       if (close && !p.time) { toast('Time daalo', 'bad'); return; }
       api('manpower.save', p).then(function (r) {
         toast(close ? 'Line band · ' + p.time + ' (' + r.eff_hours + ' hrs)' + (p.depts ? ' · ' + p.depts.length + ' lines' : '') : 'Saved (' + r.eff_hours + ' hrs)', 'ok');
-        S.sheet.close(); S.invalidateAll(); S.clearLocalCaches(); after();
+        S.sheet.close();
+        if (light) { after(); return; }   // phone: its own screen reloads (one light call); WhatsApp from the Attendance button
+        S.invalidateAll(); S.clearLocalCaches(); after();
         setTimeout(function () { S.offerGroup(close ? 'Line band — group me bhejein?' : 'Manpower change group me bhejein?'); }, 400);
       }).catch(function (er) { toast(er.message, 'bad'); });
     };

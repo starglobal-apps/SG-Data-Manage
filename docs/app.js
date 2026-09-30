@@ -89,7 +89,7 @@
     document.body.classList.add('has-nav');
     $('#nav').hidden = false;
     $$('#nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
-    $('#hdr-refresh').hidden = false; $('#hdr-bell').hidden = false;
+    $('#hdr-refresh').hidden = false; $('#hdr-bell').hidden = isMobile();
     if (name === 'home' || name === 'reports' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : name === 'reports' ? 'Reports · ' + (isToday() ? 'aaj' : 'is din ke') : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
@@ -589,6 +589,7 @@
 
   tabs.main = function () {
     var u = state.user, q = queue();
+    if (isMobile()) { phoneMain(u, q); return; }
     var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : ' · dono factory') + (u.depts && u.depts.length ? ' · ' + u.depts.length + ' dept' : '') + '</div></div></div>';
     if (u.role === 'Admin') html += '<h2>Admin</h2><div class="menu"><div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users & access</div><div class="s">Naya user, PIN, lines / floors, active</div></div>' + icon('chev') + '</div></div>';
     html += '<h2>Staff</h2><div class="menu"><div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Staff names</div><div class="s">Supervisor · Incharge · Endline QC</div></div>' + icon('chev') + '</div></div>';
@@ -612,6 +613,33 @@
     html += '<h2>App</h2><div class="menu"><div class="task" data-m="logout"><div class="ic" style="background:var(--bad-soft);color:var(--bad)">' + icon('logout') + '</div><div class="b"><div class="n">Logout</div><div class="s">SG Data v' + VERSION + '</div></div></div></div>';
     $('#main-body').innerHTML = html;
   };
+  function queueHtml(q) {
+    return '<h2>Offline pending (' + q.length + ')</h2><div class="list">' + q.map(function (x) {
+      var p = x.payload || {};
+      return '<div class="item"><div><div class="name">' + esc(x.action.replace('.save', '').replace('.slot', ' slot')) + ' · ' + esc(p.dept || '') + (p.srn ? ' · ' + esc(p.srn) : '') + '</div><div class="sub" style="color:' + (x.error ? 'var(--bad)' : 'var(--muted)') + '">' + esc(x.error || 'Sync ka wait') + '</div></div>' +
+        '<div class="actions-inline"><button class="btn small" data-retry="' + x.id + '">Retry</button><button class="btn danger small" data-drop="' + x.id + '">✕</button></div></div>';
+    }).join('') + '</div>';
+  }
+  // phone: profile, staff names (for attendance), one refresh, offline queue, logout
+  function phoneMain(u, q) {
+    var lines = deptsFor(state.factory).length;
+    var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : '') + ' · ' + lines + ' line / floor</div></div></div>';
+    html += '<div class="menu">';
+    html += '<div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Staff names</div><div class="s">Supervisor · Incharge · Endline QC — attendance me aate hain</div></div>' + icon('chev') + '</div>';
+    html += '<div class="task" data-m="prefresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Naya data lao</div><div class="s">Nayi loading / SRN, nayi line ya access badla ho to</div></div>' + icon('chev') + '</div>';
+    if (isManager()) html += '<div class="task" data-m="fullapp"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Poora app dikhao</div><div class="s">Review, Reports, PMS — computer wala app</div></div>' + icon('chev') + '</div>';
+    html += '</div>';
+    if (q.length) html += queueHtml(q);
+    html += '<div class="menu" style="margin-top:12px"><div class="task" data-m="logout"><div class="ic" style="background:var(--bad-soft);color:var(--bad)">' + icon('logout') + '</div><div class="b"><div class="n">Logout</div><div class="s">SG Data v' + VERSION + '</div></div></div></div>';
+    $('#main-body').innerHTML = html;
+  }
+  // phone refresh: new loading + masters + access, then only the current screen (no server-wide cache clear)
+  function phoneRefresh() {
+    busy(true);
+    Promise.all([api('orders.refresh', {}, { quiet: true }).catch(function () {}), api('me', {}, { quiet: true }).then(function (d) { setUser(d.user); }), loadMasters()])
+      .then(function () { busy(false); ensureLine(); toast('Naya data aa gaya', 'ok'); tab(nav.tab); })
+      .catch(function (e) { busy(false); toast(e.message, 'bad'); });
+  }
   $('#main-body').addEventListener('click', function (e) {
     var b = e.target.closest('button'); var t = e.target.closest('[data-m]');
     if (b && b.dataset.drop) { ask('Ye offline entry hata dein?', { danger: true, ok: 'Hatao' }).then(function (ok) { if (ok) { saveQueue(queue().filter(function (x) { return x.id !== b.dataset.drop; })); tabs.main(); } }); return; }
@@ -621,13 +649,14 @@
     if (m === 'ctx') openContext();
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
+    else if (m === 'prefresh') phoneRefresh();
     else if (m === 'import') ask('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', { ok: 'Chalao' }).then(function (ok) { if (!ok) return; api('admin.importNow', {}).then(function (d) { toast(d.running ? 'Import pehle se chal raha hai — 2 min baad Refresh karo' : 'Background me shuru · 2 min baad "Refresh sab data" dabao', 'ok', 8000); }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
     else if (m === 'print') SG.printSrn();
     else if (m === 'staff') screens.staff();
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
     else if (m === 'refresh') api('orders.refresh').then(function () { toast('Loading refresh ho gayi', 'ok'); invalidate(); }).catch(function (er) { toast(er.message, 'bad'); });
     else if (m === 'masters') loadMasters().then(function () { ensureLine(); toast('Masters reload ho gaye', 'ok'); }).catch(function (er) { toast(er.message, 'bad'); });
-    else if (m === 'fullapp') { try { localStorage.setItem('sg_full', isMobile() ? '1' : '0'); } catch (e2) {} applyRoleNav(); tab('main'); }
+    else if (m === 'fullapp') { try { localStorage.setItem('sg_full', isMobile() ? '1' : '0'); } catch (e2) {} applyRoleNav(); tab(isMobile() ? 'main' : 'home'); }
     else if (m === 'logout') ask('Logout karein?', { ok: 'Logout', danger: true }).then(function (ok) { if (ok) logout(); });
   });
 
@@ -637,7 +666,7 @@
   $('#in-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   $('#hdr-back').addEventListener('click', back);
   $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
-  $('#hdr-refresh').addEventListener('click', hardRefresh);
+  $('#hdr-refresh').addEventListener('click', function () { if (isMobile()) { if (nav.sub) return; tab(nav.tab); } else hardRefresh(); });
   $('#hdr-bell').addEventListener('click', function () { if (SG.transferInbox) SG.transferInbox(); });
   function setBell(n) { var b = $('#hdr-bell'); b.hidden = !state.user; $('#bell-dot').hidden = !n; }
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
@@ -687,8 +716,9 @@
     $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); });
     if (!API_URL) { showOnly('scr-login'); $('#login-msg').textContent = 'docs/config.js me API_URL set karo'; return; }
     if (state.token && state.user) {
-      if (state.masters) { ensureLine(); home(); }
-      api('me', {}, { quiet: true }).then(function (d) { if (d.token) { state.token = d.token; localStorage.setItem('sg_token', d.token); } setUser(d.user); return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub) tab(nav.tab); flushQueue(); })
+      var shown = !!state.masters;
+      if (shown) { ensureLine(); home(); }
+      api('me', {}, { quiet: true }).then(function (d) { if (d.token) { state.token = d.token; localStorage.setItem('sg_token', d.token); } setUser(d.user); return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub && !(shown && isMobile())) tab(nav.tab); else applyRoleNav(); flushQueue(); })
         .catch(function (e) { if (!state.masters || !/Network/.test(e.message || '')) logout(); });
     } else showOnly('scr-login');
   }

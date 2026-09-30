@@ -46,7 +46,7 @@ function historyAgg_() {
   if (hit) return hit;
 
   var out = { stitched: {}, endChecked: {}, endPass: {}, endPassSrn: {}, packed: {},
-              late: { stitched: {}, endChecked: {}, endPass: {}, packed: {} } };
+              late: { stitched: {}, endChecked: {}, endPass: {}, packed: {} }, sheetDays: {} };
   var ss = getSS_();
   var md = ss.getSheetByName(MASTER_SHEET_NAME);
   if (md && md.getLastRow() >= 3) {
@@ -54,9 +54,9 @@ function historyAgg_() {
     var vals = md.getRange(3, 4, md.getLastRow() - 2, 4).getValues(); // cols 4..7: Stitching, 117 Stitching, Packing, Endline
     vals.forEach(function(row) {
       var s = parseJson_(row[0]), d;   // [date, line, dept, srn, floor, shift, manpower, hours, output]
-      if (s) { d = dateKey_(s[0]); if (d < start) addTo_(out.stitched, k2_(s[2], s[3]), s[8]); else if (d !== BAD) addTo_(out.late.stitched, k2_(s[2], s[3]) + '|' + d, s[8]); }
+      if (s) { d = dateKey_(s[0]); if (d < start) addTo_(out.stitched, k2_(s[2], s[3]), s[8]); else if (d !== BAD) { addTo_(out.late.stitched, k2_(s[2], s[3]) + '|' + d, s[8]); out.sheetDays[str_(s[2]) + '|' + d + '|' + (/OT/i.test(str_(s[5])) ? 'OT' : 'Final')] = 1; } }
       var s7 = parseJson_(row[1]);     // [date, floor, line, dept, srn, shift, manpower, hours, output]
-      if (s7) { d = dateKey_(s7[0]); if (d < start) addTo_(out.stitched, k2_(s7[3], s7[4]), s7[8]); else if (d !== BAD) addTo_(out.late.stitched, k2_(s7[3], s7[4]) + '|' + d, s7[8]); }
+      if (s7) { d = dateKey_(s7[0]); if (d < start) addTo_(out.stitched, k2_(s7[3], s7[4]), s7[8]); else if (d !== BAD) { addTo_(out.late.stitched, k2_(s7[3], s7[4]) + '|' + d, s7[8]); out.sheetDays[str_(s7[3]) + '|' + d + '|' + (/OT/i.test(str_(s7[5])) ? 'OT' : 'Final')] = 1; } }
       var p = parseJson_(row[2]);      // [srn, date, '', qty, ...]
       if (p) { d = dateKey_(p[1]); if (d < start) addTo_(out.packed, str_(p[0]), p[3]); else if (d !== BAD) addTo_(out.late.packed, str_(p[0]) + '|' + d, p[3]); }
       var e = parseJson_(row[3]);      // [entry, factory, prodDate, srn, item, dept, qfloor, checker, hours, checked, pass, reject]
@@ -67,7 +67,7 @@ function historyAgg_() {
       }
     });
   }
-  cachePutBig_('hist_agg2', out, 21600);
+  cachePutBig_('hist_agg2', out, 1800);   // 30 min: rows typed straight into the sheets reach the app soon after the import
   return out;
 }
 

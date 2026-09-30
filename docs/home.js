@@ -117,21 +117,22 @@
   };
   function loadAttList() {
     if (AL.shift !== 'Final') { renderAttOT(); return; }
-    S.api('att.prev', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
-      AL.items = d.items; renderAttList();
-      if (!phone()) return;
-      // phone: current manpower / changes of the day, and the SRNs loaded on each stitching line (dropdown)
-      S.loadFactory(true).then(function (fd) { AL.fd = fd; renderAttList(); }).catch(function () {});
-      d.items.forEach(function (x) {
-        if (x.cat !== 'STITCH' || AL.srns[x.dept]) return;
-        S.api('orders.active', { factory: state.factory, dept: x.dept, type: 'STITCH' }, { quiet: true }).then(function (o) {
-          AL.srns[x.dept] = o.srns || [];
-          var prev = x.prev && x.prev.srn;
-          if (!AL.pick[x.dept]) AL.pick[x.dept] = prev && AL.srns[x.dept].some(function (s) { return s.srn === prev; }) ? prev : ((AL.srns[x.dept][0] || {}).srn || prev || '');
-          renderAttList();
-        }).catch(function () {});
-      });
-    }).catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    if (phone()) {
+      // phone: one light call has everything (SRNs per line, manpower now, changes, status, WhatsApp data)
+      S.api('m.att', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
+        AL.items = d.items; AL.wa = d.wa;
+        d.items.forEach(function (x) {
+          if (x.cat !== 'STITCH') return;
+          AL.srns[x.dept] = x.srns || [];
+          var prev = x.prev && x.prev.srn, has = function (s) { return AL.srns[x.dept].some(function (o) { return o.srn === s; }); };
+          if (!AL.pick[x.dept] || !has(AL.pick[x.dept])) AL.pick[x.dept] = prev && has(prev) ? prev : ((AL.srns[x.dept][0] || {}).srn || prev || '');
+        });
+        renderAttList();
+      }).catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-retry="1" style="margin-top:10px">Dobara try</button></div>'; });
+      return;
+    }
+    S.api('att.prev', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) { AL.items = d.items; renderAttList(); })
+      .catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
   function srnSelect(x) {
     var list = AL.srns[x.dept];
@@ -139,10 +140,9 @@
     if (!list.length) return '<div class="al-srn muted">Is line par loading nahi mili</div>';
     return '<select class="al-srn" data-pick="' + esc(x.dept) + '">' + list.map(function (s) { return '<option value="' + esc(s.srn) + '"' + (s.srn === AL.pick[x.dept] ? ' selected' : '') + '>' + esc(s.srn) + ' · ' + s.balance + ' baaki</option>'; }).join('') + '</select>';
   }
-  function evText(dept) {
-    var fd = AL.fd; if (!fd) return '';
+  function evText(x) {
     var lab = { HALF_DAY: 'half day', LEFT_AT: 'beech me gaya', LATE_JOIN: 'late aaya', ABSENT: 'absent', EXTRA: 'extra aaya', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer se aaya', LINE_CLOSED: 'line band' };
-    return (fd.eventList || []).filter(function (e) { return e.dept === dept; }).map(function (e) { return e.event === 'LINE_CLOSED' ? 'Line band ' + e.time : e.count + ' ' + e.role + ' ' + (lab[e.event] || e.event) + (e.time ? ' ' + e.time : ''); }).join(', ');
+    return (x.events || []).map(function (e) { return e.event === 'LINE_CLOSED' ? 'Line band ' + e.time : e.count + ' ' + e.role + ' ' + (lab[e.event] || e.event) + (e.time ? ' ' + e.time : ''); }).join(', ');
   }
   function renderAttList() {
     var done = AL.items.filter(function (x) { return x.today; }).length, n = AL.items.length;
@@ -150,13 +150,14 @@
     var html = '<p class="hint" style="margin:0 0 8px">Kal jaisa hai to <b>Same</b> dabao — SRN, supervisor, incharge, QC sab kal ke lag jayenge. Kuch badla ho to <b>Badlo</b>.</p>';
     if (pend > 1) html += '<button class="btn big ok" data-sameall="1" style="margin:0 0 10px">Sab ' + pend + ' lines kal jaisa hi</button>';
     if (phone()) {
-      html = '<p class="hint" style="margin:0 0 8px">SRN chuno, phir kal jaisa hai to <b>Same</b>, warna <b>Badlo</b>. Baad me koi absent / half day ho to <b>± Badlav</b>.</p>' + (pend > 1 ? '<button class="btn big ok" data-sameall="1" style="margin:0 0 10px">Sab ' + pend + ' lines kal jaisa hi</button>' : '');
+      html = (state.date !== S.todayStr() ? '<div class="mo-past"><div><b>' + esc(S.fmtDay(state.date)) + '</b> · purana din</div><button class="btn small" data-day="' + S.todayStr() + '">Aaj par wapas</button></div>' : '') +
+        '<p class="hint" style="margin:0 0 8px">SRN chuno, phir kal jaisa hai to <b>Same</b>, warna <b>Badlo</b>. Baad me koi absent / half day ho to <b>± Badlav</b>. OT hua to <b>+ OT</b>.</p>' + (pend > 1 ? '<button class="btn big ok" data-sameall="1" style="margin:0 0 10px">Sab ' + pend + ' lines kal jaisa hi</button>' : '');
       html += AL.items.map(function (x) {
-        var t = x.today, p = x.prev, busy = AL.busy[x.dept], fd = AL.fd, st = fd && fd.statuses ? fd.statuses[x.dept + '|ATT'] : '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent';
+        var t = x.today, p = x.prev, busy = AL.busy[x.dept], st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent';
         if (t) {
-          var now = fd && fd.mpNow ? fd.mpNow[x.dept] : undefined, ev = evText(x.dept);
-          return '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + (t.srn ? esc(t.srn) + ' · ' : '') + t.count + ' log' + (now !== undefined && now !== t.count ? ' · abhi <b>' + now + '</b>' : '') + '</div>' + (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') + '</div>' +
-            (lock ? '' : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button>') + '</div>';
+          var now = x.mpNow, ev = evText(x);
+          return '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + (t.srn ? esc(t.srn) + ' · ' : '') + t.count + ' log' + (now !== undefined && now !== t.count ? ' · abhi <b>' + now + '</b>' : '') + (x.ot ? ' · OT ' + x.ot + ' log' : '') + '</div>' + (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') + '</div>' +
+            (lock ? '' : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>') + '</div>';
         }
         var sub = p ? esc(S.fmtDay(p.date)) + ' ko ' + p.count + ' log' : 'Pehli baar — bharo';
         return '<div class="chk-line al-pend"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + sub + '</div>' + (x.cat === 'STITCH' ? srnSelect(x) : (p && p.srn ? '<div class="m">' + esc(p.srn) + '</div>' : '')) + '</div>' +
@@ -201,10 +202,16 @@
     if (b.dataset.same) { saveSame(b.dataset.same); return; }
     if (b.dataset.sameall) { S.ask('Baaki sab lines ki attendance kal jaisi save karein?', { ok: 'Haan, sab same' }).then(function (ok) { if (!ok) return; var list = AL.items.filter(function (x) { return !x.today && x.prev; }).map(function (x) { return x.dept; }); var seq = Promise.resolve(); list.forEach(function (dept) { seq = seq.then(function () { return saveSame(dept, true); }); }); seq.then(function () { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); }); }); return; }
     if (b.dataset.edit) { S.openAttendance(AL.shift, b.dataset.edit); return; }
-    if (b.dataset.wa) { S.sendToGroup(b.dataset.wa); return; }
+    if (b.dataset.wa) {
+      if (phone() && AL.wa) { var txt = S.waAttendanceText(AL.wa, 'Final'); if (txt) S.shareText('Attendance group me bhejo', txt); else S.toast('Abhi koi attendance nahi bhari', 'bad'); return; }
+      S.sendToGroup(b.dataset.wa); return;
+    }
+    if (b.dataset.retry) { loadAttList(); return; }
+    if (b.dataset.ot) { S.openAttendance('OT', b.dataset.ot); return; }
+    if (b.dataset.day) { S.setDate(b.dataset.day); return; }
     if (b.dataset.mp) {
       var all = AL.items.filter(function (x) { return x.today; }).map(function (x) { return { dept: x.dept }; });
-      S.mpSheet({ dept: b.dataset.mp }, all, function () { S.invalidateAll(); S.clearLocalCaches(); AL.fd = null; loadAttList(); });
+      S.mpSheet({ dept: b.dataset.mp }, all, function () { loadAttList(); }, true);
       return;
     }
   }

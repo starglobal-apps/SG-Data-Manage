@@ -493,3 +493,9 @@ div.al-srn { font-size: 12px; margin-top: 4px; }
 .mo-big { width: 100%; min-height: 60px; font-size: 32px !important; font-weight: 800; text-align: center; }
 .mo-chk .warn { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 8px 10px; font-weight: 600; font-size: 14px; margin: 8px 0 0; }
 .mo-chk .okk { color: var(--ok); font-weight: 700; font-size: 14px; margin: 8px 0 0; }
+.mo-past { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--warn-soft); color: var(--warn); border-radius: 12px; padding: 8px 12px; margin: 0 0 8px; font-size: 14px; } .mo-past .btn { margin: 0; }
+.mo-pend { background: var(--card); border: 1.5px solid var(--warn); border-radius: 14px; padding: 8px 10px; margin: 0 0 10px; }
+.mo-pend .t { font-weight: 800; color: var(--warn); font-size: 14px; margin: 0 0 4px; }
+.mo-pend button { display: flex; align-items: center; gap: 8px; width: 100%; background: var(--bg); border: 0; border-radius: 10px; padding: 10px 12px; margin: 4px 0 0; color: var(--text); text-align: left; }
+.mo-pend button span { font-weight: 800; } .mo-pend button small { flex: 1; color: var(--muted); } .mo-pend button b { color: var(--primary); }
+.mo-card em.ot { font-style: normal; font-size: 12px; background: var(--soft); color: var(--primary); border-radius: 6px; padding: 1px 6px; vertical-align: 2px; }
