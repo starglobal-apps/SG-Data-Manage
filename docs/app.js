@@ -80,6 +80,8 @@
     if (!state.user) return;
     if (name === 'review' && !isAdmin()) name = 'home';
     if (isRecorder() && (name === 'reports' || name === 'data' || name === 'pms')) name = 'home';
+    if (isMobile() && PHONE_TABS.indexOf(name) < 0) name = 'matt';
+    if (!isMobile() && (name === 'matt' || name === 'mout')) name = 'home';
     applyRoleNav();
     if (nav.sub || nav.tab !== name) pushHist({ tab: name });
     nav.tab = name; nav.sub = null;
@@ -90,6 +92,8 @@
     $('#hdr-refresh').hidden = false; $('#hdr-bell').hidden = false;
     if (name === 'home' || name === 'reports' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : name === 'reports' ? 'Reports · ' + (isToday() ? 'aaj' : 'is din ke') : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
+    else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
+    else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · poore din ka', false);
     else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
@@ -221,10 +225,22 @@
   function M(type) { return (state.masters && state.masters.masters && state.masters.masters[type]) || []; }
   function isManager() { return !!state.user && (state.user.role === 'Manager' || state.user.role === 'Admin'); }
   function isRecorder() { return !!state.user && !isManager(); }
-  // recorder: Aaj · Ghante · Main only; manager/admin: everything
+  // Phone = the simple app: Attendance · Output · Main. The web (computer) keeps every tab exactly as before.
+  // An admin/manager on a phone can switch to the full app from Main (sg_full).
+  var PHONE_TABS = ['matt', 'mout', 'main'];
+  function isPhoneScreen() { try { return window.matchMedia('(max-width: 820px)').matches; } catch (e) { return false; } }
+  function isMobile() { var full = false; try { full = localStorage.getItem('sg_full') === '1'; } catch (e) {} return isPhoneScreen() && !(full && isManager()); }
+  // recorder on the web: Aaj · Ghante · Target · Main; manager/admin: everything
   function applyRoleNav() {
-    var rec = isRecorder();
-    $$('#nav button').forEach(function (b) { var t = b.dataset.tab; if (t === 'reports' || t === 'data' || t === 'pms') b.hidden = rec; if (t === 'review') b.hidden = !isAdmin(); });
+    var rec = isRecorder(), mob = isMobile();
+    $$('#nav button').forEach(function (b) {
+      var t = b.dataset.tab;
+      if (mob) { b.hidden = PHONE_TABS.indexOf(t) < 0; return; }
+      b.hidden = false;
+      if (t === 'matt' || t === 'mout') b.hidden = true;
+      if (t === 'reports' || t === 'data' || t === 'pms') b.hidden = rec;
+      if (t === 'review') b.hidden = !isAdmin();
+    });
   }
   function isAdmin() { return !!state.user && state.user.role === 'Admin'; }
   function allowedFactories() {
@@ -584,6 +600,7 @@
           '<div class="actions-inline"><button class="btn small" data-retry="' + x.id + '">Retry</button><button class="btn danger small" data-drop="' + x.id + '">✕</button></div></div>';
       }).join('') + '</div>';
     }
+    if (isManager() && isPhoneScreen()) html += '<h2>Phone</h2><div class="menu"><div class="task" data-m="fullapp"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">' + (isMobile() ? 'Poora app dikhao' : 'Simple phone app par wapas') + '</div><div class="s">' + (isMobile() ? 'Reports, Review, PMS — computer wala app' : 'Sirf Attendance · Output · Main') + '</div></div>' + icon('chev') + '</div></div>';
     html += '<h2>App</h2><div class="menu"><div class="task" data-m="logout"><div class="ic" style="background:var(--bad-soft);color:var(--bad)">' + icon('logout') + '</div><div class="b"><div class="n">Logout</div><div class="s">SG Data v' + VERSION + '</div></div></div></div>';
     $('#main-body').innerHTML = html;
   };
@@ -602,6 +619,7 @@
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
     else if (m === 'refresh') api('orders.refresh').then(function () { toast('Loading refresh ho gayi', 'ok'); invalidate(); }).catch(function (er) { toast(er.message, 'bad'); });
     else if (m === 'masters') loadMasters().then(function () { ensureLine(); toast('Masters reload ho gaye', 'ok'); }).catch(function (er) { toast(er.message, 'bad'); });
+    else if (m === 'fullapp') { try { localStorage.setItem('sg_full', isMobile() ? '1' : '0'); } catch (e2) {} applyRoleNav(); tab('main'); }
     else if (m === 'logout') ask('Logout karein?', { ok: 'Logout', danger: true }).then(function (ok) { if (ok) logout(); });
   });
 
@@ -642,7 +660,7 @@
     $: $, $$: $$, esc: esc, api: api, toast: toast, busy: busy, pill: pill, icon: icon,
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
-    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder,
+    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,

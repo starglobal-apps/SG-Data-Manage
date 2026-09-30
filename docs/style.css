@@ -463,3 +463,17 @@ a.btn { color: #fff; }
 .tg-tbl td small { color: var(--primary); font-weight: 700; }
 .tg-pct { display: inline-block; min-width: 44px; padding: 2px 6px; border-radius: 999px; font-weight: 800; font-size: 13px; text-align: center; }
 .tg-pct.ok { background: var(--ok-soft); color: var(--ok); } .tg-pct.mid { background: var(--warn-soft); color: var(--warn); } .tg-pct.low { background: var(--bad-soft); color: var(--bad); }
+/* ---- phone app: Attendance · Output ---- */
+#matt-body, #mout-body { padding-bottom: 90px; }
+.mo-line { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 0 0 8px; }
+.mo-line.done { border-color: var(--ok); } .mo-line.lock { opacity: .7; } .mo-line.dim { opacity: .75; }
+.mo-h { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 6px; } .mo-h .nm { font-weight: 800; font-size: 18px; } .mo-h .mp { color: var(--muted); font-size: 13px; }
+.mo-row { display: grid; grid-template-columns: 1fr 110px; gap: 8px; align-items: center; margin: 0 0 6px; }
+.mo-row.bad .mo-qty { border-color: var(--bad); background: var(--bad-soft); }
+.mo-srn { min-height: 52px; border: 1.5px solid var(--line); background: var(--soft); color: var(--primary); border-radius: 12px; font-weight: 800; font-size: 16px; text-align: left; padding: 6px 12px; }
+.mo-srn small { display: block; font-weight: 500; font-size: 12px; color: var(--muted); } .mo-srn:disabled { opacity: 1; background: var(--bg); color: var(--text); }
+.mo-qty { min-height: 52px; font-size: 24px; font-weight: 800; text-align: center; border-radius: 12px; }
+.mo-note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); } .mo-err { grid-column: 1 / -1; font-size: 13px; color: var(--bad); font-weight: 600; }
+.mo-add { font-size: 13px; }
+.mo-total { display: flex; align-items: baseline; gap: 10px; background: var(--card); border-radius: 14px; padding: 12px 14px; border: 1px solid var(--line); margin: 4px 0 0; }
+.mo-total span { flex: 1; font-weight: 700; } .mo-total b { font-size: 24px; } .mo-total small { color: var(--muted); }

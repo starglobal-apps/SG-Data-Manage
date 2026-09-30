@@ -105,17 +105,19 @@
   }
 
   // ---------- attendance list: "kal jaisa hi?" ----------
-  var AL = { items: [], shift: 'Final', busy: {} };
+  var AL = { items: [], shift: 'Final', busy: {}, box: '#attlist-body' };
+  function box() { return $(AL.box); }
   S.screens.attlist = function (shift) {
     AL.shift = shift || 'Final';
+    AL.box = '#attlist-body';
     S.push('attlist', (AL.shift === 'Final' ? 'Attendance' : AL.shift + ' attendance') + ' · ' + S.fmtDay(state.date));
-    $('#attlist-body').innerHTML = '<div class="empty">Lines aa rahi hain…</div>';
+    box().innerHTML = '<div class="empty">Lines aa rahi hain…</div>';
     loadAttList();
   };
   function loadAttList() {
     if (AL.shift !== 'Final') { renderAttOT(); return; }
     S.api('att.prev', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) { AL.items = d.items; renderAttList(); })
-      .catch(function (e) { $('#attlist-body').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+      .catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
   function renderAttList() {
     var done = AL.items.filter(function (x) { return x.today; }).length, n = AL.items.length;
@@ -130,7 +132,7 @@
            : (p ? '<button class="btn small same" data-same="' + esc(x.dept) + '"' + (busy ? ' disabled' : '') + '>' + (busy ? '…' : 'Same ' + p.count) + '</button>' : '') + '<button class="btn small ghost" data-edit="' + esc(x.dept) + '">' + (p ? 'Badlo' : 'Bharo') + '</button>') + '</div>';
     }).join('');
     html += '<div class="sticky-bottom">' + (done === n && n ? '<button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Sab ho gayi · WhatsApp group me bhejo</button>' : '<button class="btn big" disabled>' + (n - done) + ' line baaki</button>') + '</div>';
-    $('#attlist-body').innerHTML = html;
+    box().innerHTML = html;
   }
   function renderAttOT() {
     var d = S.factoryData() || { depts: [], att: {} };
@@ -139,7 +141,7 @@
       return '<div class="chk-line' + (mp ? ' done' : '') + '"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + '</div><div class="m">' + (mp ? mp + ' log OT' : 'OT attendance nahi') + '</div></div><button class="btn small ghost" data-edit="' + esc(x.dept) + '">' + (mp ? 'Badlo' : 'Bharo') + '</button></div>';
     }).join('');
     html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="OT" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' OT attendance group me bhejo</button></div>';
-    $('#attlist-body').innerHTML = html;
+    box().innerHTML = html;
   }
   function saveSame(dept, quiet) {
     var x = AL.items.filter(function (i) { return i.dept === dept; })[0]; if (!x || !x.prev) return Promise.resolve();
@@ -149,13 +151,17 @@
       .then(function () { delete AL.busy[dept]; x.today = { count: p.count, srn: p.srn, by: state.user.name }; if (!quiet) { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); } else renderAttList(); })
       .catch(function (e) { delete AL.busy[dept]; renderAttList(); S.toast(S.shortLine(dept) + ': ' + e.message + ' — Badlo dabao', 'bad', 7000); });
   }
-  $('#attlist-body').addEventListener('click', function (e) {
+  // phone: the same list is the Attendance tab
+  S.tabs.matt = function () { AL.box = '#matt-body'; AL.shift = 'Final'; box().innerHTML = '<div class="empty">Lines aa rahi hain…</div>'; loadAttList(); };
+  function attListClick(e) {
     var b = e.target.closest('button'); if (!b) return;
     if (b.dataset.same) { saveSame(b.dataset.same); return; }
     if (b.dataset.sameall) { S.ask('Baaki sab lines ki attendance kal jaisi save karein?', { ok: 'Haan, sab same' }).then(function (ok) { if (!ok) return; var list = AL.items.filter(function (x) { return !x.today && x.prev; }).map(function (x) { return x.dept; }); var seq = Promise.resolve(); list.forEach(function (dept) { seq = seq.then(function () { return saveSame(dept, true); }); }); seq.then(function () { S.invalidateAll(); S.clearLocalCaches(); loadAttList(); }); }); return; }
     if (b.dataset.edit) { S.openAttendance(AL.shift, b.dataset.edit); return; }
     if (b.dataset.wa) { S.sendToGroup(b.dataset.wa); return; }
-  });
+  }
+  $('#attlist-body').addEventListener('click', attListClick);
+  $('#matt-body').addEventListener('click', attListClick);
   
   // "Koi gaya / aaya?" — pick the line, then the manpower change sheet (same one the hour screen uses)
   function mpQuick() {
