@@ -129,3 +129,65 @@ function mOut_(req, user) {
   });
   return { ok: true, today: today, groups: Object.keys(groups).sort().reverse().map(function(d) { return { date: d, lines: groups[d] }; }), done: done };
 }
+
+// ---------- phone PMS tab: every unshipped order with the numbers the recorder needs to fill data right ----------
+// Orders  = MASTER DATA col I ('All Orders' A..AA): [2] SRN · [3] Buyer · [6] Shipping Qty · [12] Style · [19] Shipped Status · [23] Shipped Qty
+// Unload  = loading spreadsheet 'Unloading_chalaan': E SRN · K qty in challan · P status (reject) · R qty approved
+function ordersAgg_() {
+  var hit = cacheGetBig_('orders_agg');
+  if (hit) return hit;
+  var out = {}, md = getSS_().getSheetByName(MASTER_SHEET_NAME);
+  if (md && md.getLastRow() >= 3) {
+    md.getRange(3, 9, md.getLastRow() - 2, 1).getValues().forEach(function(row) {
+      var a = parseJson_(row[0]); if (!a) return;
+      var srn = str_(a[2]).toUpperCase(); if (!/^SRN/.test(srn)) return;
+      var o = out[srn] = out[srn] || { buyer: '', style: '', shipping: 0, shipped: 0, status: '' };
+      o.style = str_(a[12]) || o.style;
+      o.shipping += num_(a[6]); o.shipped += num_(a[23]);
+      if (str_(a[19])) o.status = str_(a[19]);
+    });
+  }
+  cachePutBig_('orders_agg', out, 1800);
+  return out;
+}
+function unloadingAgg_() {
+  var hit = cacheGetBig_('unload_agg');
+  if (hit) return hit;
+  var out = {};
+  try {
+    var res = Sheets.Spreadsheets.Values.get(srcId_('LOADING'), "'Unloading_chalaan'!E2:R", { valueRenderOption: 'UNFORMATTED_VALUE' });
+    (res.values || []).forEach(function(r) {
+      var srn = str_(r[0]).toUpperCase(); if (!/^SRN/.test(srn)) return;
+      if (/reject|cancel/i.test(str_(r[11]))) return;                    // P: Status(if Reject)
+      var q = num_(r[13]) || num_(r[6]);                                   // R: approved qty, else K: qty in challan
+      if (q) out[srn] = (out[srn] || 0) + q;
+    });
+  } catch (e) { out.__error = String(e && e.message || e); }
+  cachePutBig_('unload_agg', out, 1800);
+  return out;
+}
+
+// { factory } -> unshipped SRNs that have production data: loading, stitching, endline pass, packed, unloading, shipped
+function mPms_(req, user) {
+  var L = ledger_(), orders = ordersAgg_(), unl = unloadingAgg_();
+  var stitchedSrn = {};
+  Object.keys(L.stitched).forEach(function(k) { addTo_(stitchedSrn, k.split('|')[1], L.stitched[k]); });
+  var seen = {};
+  [L.loadedSrn, stitchedSrn, L.endPassSrn, L.packed].forEach(function(m) { Object.keys(m || {}).forEach(function(k) { seen[str_(k).toUpperCase()] = 1; }); });
+  var fac = str_(req.factory).replace(/^FAC/i, ''), rows = [], hasOrders = Object.keys(orders).length > 0;
+  Object.keys(seen).forEach(function(srn) {
+    if (!/^SRN/.test(srn)) return;
+    var o = orders[srn];
+    if (hasOrders && !o) return;                                         // not in 'All Orders' (old, already closed)
+    o = o || {};
+    if (/^shipped$/i.test(str_(o.status))) return;                       // shipped orders are not shown
+    var info = (L.srnInfo || {})[srn] || {};
+    if (fac && info.factory && info.factory !== fac) return;               // only this factory's SRNs
+    rows.push({ srn: srn, style: o.style || info.item || '', buyer: info.buyer || '', order: num_(o.shipping) || num_(info.orderQty), status: o.status || '',
+                loading: num_(L.loadedSrn[srn]), stitched: num_(stitchedSrn[srn]), endPass: num_(L.endPassSrn[srn]), packed: num_(L.packed[srn]),
+                unloaded: num_(unl[srn]), shipped: num_(o.shipped) });
+  });
+  rows = rows.filter(function(r) { return r.loading || r.stitched || r.endPass || r.packed; });
+  rows.sort(function(a, b) { return b.srn.localeCompare(a.srn); });
+  return { ok: true, rows: rows, unloadError: unl.__error || '' };
+}

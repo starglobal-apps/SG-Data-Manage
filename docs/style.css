@@ -522,3 +522,12 @@ h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; 
 .upd-box.hd { background: var(--warn-soft); } .upd-box.hd .t { color: var(--warn); } .upd-box.ab { background: var(--bad-soft); } .upd-box.ab .t { color: var(--bad); }
 .upd-box input, .upd-box select { width: 100%; min-height: 46px; font-size: 20px; font-weight: 800; text-align: center; } .upd-box select { font-size: 16px; }
 .pa-acts .btn.upd { color: var(--warn); }
+/* phone PMS tab */
+.pm-q { width: 100%; font-size: 17px; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); margin: 0 0 6px; }
+.pm-sub { font-size: 13px; color: var(--muted); margin: 0 2px 10px; }
+.pm-card { background: var(--card); border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 0 0 8px; }
+.pm-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; } .pm-h b { font-size: 18px; } .pm-h span { font-size: 13px; color: var(--muted); }
+.pm-s { font-size: 13px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+.pm-c { display: flex; flex-direction: column; background: var(--bg); border-radius: 10px; padding: 6px 8px; } .pm-c small { font-size: 11px; color: var(--muted); } .pm-c b { font-size: 17px; }
+.pm-c.warn { outline: 1.5px solid var(--bad); } .pm-c.warn b { color: var(--bad); }

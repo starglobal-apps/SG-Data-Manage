@@ -81,7 +81,7 @@
     if (name === 'review' && !isAdmin()) name = 'home';
     if (isRecorder() && (name === 'reports' || name === 'data' || name === 'pms')) name = 'home';
     if (isMobile() && PHONE_TABS.indexOf(name) < 0) name = 'matt';
-    if (!isMobile() && (name === 'matt' || name === 'mout')) name = 'home';
+    if (!isMobile() && (name === 'matt' || name === 'mout' || name === 'mpms')) name = 'home';
     applyRoleNav();
     if (nav.sub || nav.tab !== name) pushHist({ tab: name });
     nav.tab = name; nav.sub = null;
@@ -94,6 +94,7 @@
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
     else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · jo baaki hai', false);
+    else if (name === 'mpms') setHeader('PMS data', 'FAC' + state.factory + ' · jo ship nahi hue', false);
     else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
@@ -227,7 +228,7 @@
   function isRecorder() { return !!state.user && !isManager(); }
   // Phone = the simple app: Attendance · Output · Main. The web (computer) keeps every tab exactly as before.
   // An admin/manager on a phone can switch to the full app from Main (sg_full).
-  var PHONE_TABS = ['matt', 'mout', 'main'];
+  var PHONE_TABS = ['matt', 'mout', 'mpms', 'main'];
   function isPhoneScreen() { try { return window.matchMedia('(max-width: 820px)').matches; } catch (e) { return false; } }
   function isMobile() { var full = false; try { full = localStorage.getItem('sg_full') === '1'; } catch (e) {} return isPhoneScreen() && !(full && isManager()); }
   // recorder on the web: Aaj · Ghante · Target · Main; manager/admin: everything
@@ -237,7 +238,7 @@
       var t = b.dataset.tab;
       if (mob) { b.hidden = PHONE_TABS.indexOf(t) < 0; return; }
       b.hidden = false;
-      if (t === 'matt' || t === 'mout') b.hidden = true;
+      if (t === 'matt' || t === 'mout' || t === 'mpms') b.hidden = true;
       if (t === 'reports' || t === 'data' || t === 'pms') b.hidden = rec;
       if (t === 'review') b.hidden = !isAdmin();
     });

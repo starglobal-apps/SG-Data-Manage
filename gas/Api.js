@@ -60,6 +60,7 @@ function routes_() {
     'att.prev':       attPrev_,
     'm.att':          mAtt_,
     'm.out':          mOut_,
+    'm.pms':          mPms_,
     'target.get':     targetGet_,
     'target.sam':     targetSamSave_,
     'defects.list':   defectsList_,
@@ -281,3 +282,4 @@ function getMasters_(req, user) {
     masters: m
   };
 }
+
