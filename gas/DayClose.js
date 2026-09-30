@@ -50,7 +50,9 @@ function dayBuild_(req, user) {
     var nm = attNames_(att, dept, shift);
     var attSrnRow = att.filter(function(r) { return str_(r.dept) === dept && str_(r.shift) === shift && str_(r.srn); })[0];
     rows.push({ date: date, factory: factory, line: lineOf_(dept), dept: dept, type: 'ATT', srn: '', shift: shift,
-                payload: { rows: eff, manpower: sum_(eff, 'count'), manhours: eff.reduce(function(t, r) { return t + r.count * r.hours; }, 0), supervisor: nm.supervisor, incharge: nm.incharge, srn: attSrnRow ? str_(attSrnRow.srn) : '' }, flags: flags });
+                payload: { rows: eff, manpower: sum_(eff, 'count'), manhours: eff.reduce(function(t, r) { return t + r.count * r.hours; }, 0), supervisor: nm.supervisor, incharge: nm.incharge, srn: attSrnRow ? str_(attSrnRow.srn) : '',
+                           replaceSheet: !!sheetAttAgg_()[date + '|' + dept + '|' + shift] }, flags: flags });
+    if (sheetAttAgg_()[date + '|' + dept + '|' + shift]) flags.push({ level: 'info', msg: 'Sheet me pehle se bhari attendance — approve hone par wo rows is se badal jayengi' });
   });
 
   // ---- STITCH: per dept + srn + shift
@@ -346,6 +348,14 @@ function reviewSend_(req, user) {
 
   var log = [], sentIds = [];
   withLock_(function() {
+    // attendance edited in the app that was first typed into the sheet: remove those old rows, then append the new ones
+    ready.forEach(function(r) {
+      if (str_(r.type) !== 'ATT') return;
+      var p = parseJsonObj_(r.payload); if (!p.replaceSheet) return;
+      var fin = finalRow_(r, p); if (!fin) return;
+      try { var n = deleteSheetAttRows_(CFG.FINAL_TARGETS[fin.target], str_(r.date), str_(r.dept)); log.push(fin.target + ': purani ' + n + ' rows hataayi (' + str_(r.dept) + ' ' + str_(r.date) + ')'); }
+      catch (e) { log.push(fin.target + ': purani rows nahi hati — ' + (e && e.message || e)); }
+    });
     Object.keys(byTarget).forEach(function(tk) {
       var T = CFG.FINAL_TARGETS[tk];
       var flat = [];
@@ -365,6 +375,29 @@ function reviewSend_(req, user) {
   var scheduled = sentIds.length ? scheduleAfterSend_() : false;
   audit_(user, 'review.send', sentIds.join(','), log.concat(['import trigger: ' + scheduled]));
   return { ok: true, sent: sentIds.length, log: log, skipped: skipped, importScheduled: scheduled };
+}
+
+// Deletes the rows of one line/date from an attendance target sheet (matched on its date and dept columns).
+function deleteSheetAttRows_(T, dateIso, dept) {
+  var dateCol = 0, deptCol = 0;
+  Object.keys(T.cols).forEach(function(c) { if (T.cols[c] === 'date') dateCol = +c; if (T.cols[c] === 'dept') deptCol = +c; });
+  if (!dateCol || !deptCol) return 0;
+  var id = srcId_(T.srcKey);
+  var meta = Sheets.Spreadsheets.get(id, { fields: 'sheets.properties' });
+  var sh = (meta.sheets || []).filter(function(s) { return s.properties.title === T.sheet; })[0];
+  if (!sh) return 0;
+  var c1 = Math.min(dateCol, deptCol), c2 = Math.max(dateCol, deptCol);
+  var got = Sheets.Spreadsheets.Values.get(id, a1_(T.sheet, 1, c1, c2 - c1 + 1), { valueRenderOption: 'FORMATTED_VALUE' });
+  var rows = [];
+  (got.values || []).forEach(function(v, i) {
+    if (dateKey_(v[dateCol - c1]) === dateIso && str_(v[deptCol - c1]) === dept) rows.push(i);   // 0-based sheet row index
+  });
+  if (!rows.length) return 0;
+  var reqs = rows.sort(function(a, b) { return b - a; }).map(function(i) {
+    return { deleteDimension: { range: { sheetId: sh.properties.sheetId, dimension: 'ROWS', startIndex: i, endIndex: i + 1 } } };
+  });
+  Sheets.Spreadsheets.batchUpdate({ requests: reqs }, id);
+  return rows.length;
 }
 
 // Writes rows into the target sheet, only the mapped columns, starting at the first empty row of keyCol.

@@ -181,8 +181,9 @@
         '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' log' + (!x.fromSheet && x.mpNow !== x.count ? ' · abhi <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot + ' log' : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
         (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
         (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') +
-        (x.fromSheet ? '<div class="m">Main sheet me bhari hui — yahan se badal nahi sakte</div>' : '') + '</div>' +
-        (lock || x.fromSheet ? '' : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>') + '</div>';
+        (x.fromSheet && !lock ? '<div class="m">Main sheet me bhari hui — Badlo dabake theek karo (SRN, supervisor bhi)</div>' : '') + '</div>' +
+        (lock ? '' : x.fromSheet ? '<button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>'
+          : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>') + '</div>';
     });
     if (PA.items.length) html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Attendance group me bhejo · ' + PA.items.length + ' line</button></div>';
     box().innerHTML = html;

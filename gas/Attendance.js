@@ -16,6 +16,16 @@ function attGet_(req, user) {
   var today = all.filter(function(r) { return str_(r.date) === date; });
   if (today.length) return { ok: true, rows: today.map(attRowOut_), srn: str_(today[0].srn), supervisor: str_(today[0].supervisor) || staff.supervisor, incharge: str_(today[0].incharge) || staff.incharge, qc_names: csv_(today[0].qc_names), prefill: false, prefillDate: '' };
 
+  // attendance typed straight into the main sheet for this date: open it for editing (approval then replaces those sheet rows)
+  var sa = sheetAttAgg_()[date + '|' + dept + '|' + shift];
+  if (sa && sa.rows) {
+    // the form has one row per role: add a role's counts together, keep its longest hours (half day etc. -> ± Badlav later)
+    var byRole = {};
+    Object.keys(sa.rows).forEach(function(k) { var p = k.split('|'), o = byRole[p[0]] = byRole[p[0]] || { role: p[0], hours: 0, count: 0, by: '', at: '' }; o.count += sa.rows[k]; if (num_(p[1]) > o.hours) o.hours = num_(p[1]); });
+    var srows = Object.keys(byRole).map(function(r) { return byRole[r]; });
+    var lastSrn = all.filter(function(r) { return str_(r.date) < date && str_(r.srn); }).sort(function(a, b) { return str_(b.date).localeCompare(str_(a.date)); })[0];
+    return { ok: true, rows: srows, srn: lastSrn ? str_(lastSrn.srn) : '', supervisor: staff.supervisor, incharge: staff.incharge, prefill: true, prefillDate: date, fromSheet: true };
+  }
   var earlier = all.filter(function(r) { return str_(r.date) < date; });
   if (!earlier.length) return { ok: true, rows: [], srn: '', supervisor: staff.supervisor, incharge: staff.incharge, prefill: false, prefillDate: '' };
   var latest = earlier.reduce(function(a, r) { return str_(r.date) > a ? str_(r.date) : a; }, '');

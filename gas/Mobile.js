@@ -21,7 +21,7 @@ function mSrns_(L, dept) {
 //   B OT (both) [date, location, line, 'OT', designation, OT hours, count, …]
 var PHONE_FROM = '2026-09-29';   // the phone app's output list starts here (user, 30 Sep 2026)
 function sheetAttAgg_() {
-  var hit = cacheGetBig_('sheet_att');
+  var hit = cacheGetBig_('sheet_att2');
   if (hit) return hit;
   var out = {}, md = getSS_().getSheetByName(MASTER_SHEET_NAME);
   var from = fmtDate_(new Date(new Date().getTime() - 21 * 86400000));
@@ -33,12 +33,13 @@ function sheetAttAgg_() {
         var d = dateKey_(a[0]); if (d === '9999-12-31' || d < from) return;
         var dept = str_(a[c[2]]), role = str_(a[c[3]]), hours = num_(a[c[4]]), n = num_(a[c[5]]);
         if (!dept || n <= 0) return;
-        var k = d + '|' + dept + '|' + c[1], o = out[k] = out[k] || { factory: str_(a[1]).replace(/\D/g, ''), count: 0, roles: {}, hours: 0 };
+        var k = d + '|' + dept + '|' + c[1], o = out[k] = out[k] || { factory: str_(a[1]).replace(/\D/g, ''), count: 0, roles: {}, hours: 0, rows: {} };
         o.count += n; o.roles[role] = (o.roles[role] || 0) + n; if (hours > o.hours) o.hours = hours;
+        o.rows[role + '|' + hours] = (o.rows[role + '|' + hours] || 0) + n;
       });
     });
   }
-  cachePutBig_('sheet_att', out, 1800);
+  cachePutBig_('sheet_att2', out, 1800);
   return out;
 }
 

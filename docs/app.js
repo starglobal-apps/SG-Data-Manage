@@ -436,7 +436,8 @@
         $('#att-sup').value = d.supervisor || ''; $('#att-inc').value = d.incharge || '';
         att.qc = d.qc_names || [];
         renderAttRows(d.rows); renderQc();
-        if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo'; }
+        if (d.fromSheet) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye attendance main sheet me bhari hai — badal ke Save karo. Admin approve karega to sheet ki purani rows isse badal jayengi.'; }
+        else if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo'; }
         else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). Badal ke phir Save kar sakte ho.'; }
       })
       .catch(function (e) { toast(e.message, 'bad'); renderAttRows([]); });
