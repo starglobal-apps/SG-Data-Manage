@@ -10,7 +10,7 @@ function mNowSlot_() {
 }
 function mEvents_(events, dept) {
   return events.filter(function(e) { return str_(e.dept) === dept; })
-    .map(function(e) { return { role: str_(e.role), event: str_(e.event), count: num_(e.count), time: str_(e.time) }; });
+    .map(function(e) { return { id: str_(e.id), role: str_(e.role), event: str_(e.event), count: num_(e.count), time: str_(e.time), hours: num_(e.eff_hours) }; });
 }
 function mSrns_(L, dept) {
   return srnOptions_(L, dept, 'STITCH').map(function(o) { return { srn: o.srn, balance: o.balance, limit: o.limit, used: o.used }; });
@@ -57,6 +57,7 @@ function mAtt_(req, user) {
   depts.forEach(function(d) {
     var fin = attDay.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === 'Final'; });
     var ot = attDay.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === 'OT'; });
+    var night = attDay.filter(function(r) { return str_(r.dept) === d.dept && str_(r.shift) === 'Night'; }).reduce(function(t, r) { return t + num_(r.count); }, 0);
     var shF = sheet[date + '|' + d.dept + '|Final'], shO = sheet[date + '|' + d.dept + '|OT'];
     var roles = {}, count = 0, fromSheet = false, srn = '', sup = '', inc = '', by = '';
     if (fin.length) {
@@ -67,8 +68,8 @@ function mAtt_(req, user) {
     pick.push({ dept: d.dept, cat: d.cat, filled: count > 0 });
     if (!count) return;
     var ev = mEvents_(events, d.dept), mpNow = fromSheet ? count : mpAtSlot_(attDay, events, d.dept, slot);
-    items.push({ dept: d.dept, cat: d.cat, count: count, srn: srn, supervisor: sup, incharge: inc, by: by, fromSheet: fromSheet,
-                 ot: otCount, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow });
+    items.push({ dept: d.dept, cat: d.cat, count: count, srn: srn, supervisor: sup, incharge: inc, by: by, fromSheet: fromSheet, roles: roles,
+                 ot: otCount, night: night, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow });
     wa.depts.push({ dept: d.dept, cat: d.cat });
     wa.att[d.dept + '|Final'] = count; wa.attRoles[d.dept + '|Final'] = roles; if (srn) wa.attSrn[d.dept] = srn;
     ev.forEach(function(e) { wa.eventList.push({ dept: d.dept, role: e.role, event: e.event, count: e.count, time: e.time }); });
@@ -82,7 +83,7 @@ function mAtt_(req, user) {
 // Phone Output tab: every line / shift (from PHONE_FROM up to today) that has attendance — in the app or typed in the
 // sheet — but no stitching output yet (not in the app, not in the main sheet, not already with the admin; a line the
 // admin sent back is listed again). Plus today's lines already filled, for the WhatsApp message.
-var M_SLOT = { Final: '17-18', OT: '21-22' };
+var M_SLOT = { Final: '17-18', OT: '21-22', Night: '05-06' };
 function mOut_(req, user) {
   var factory = str_(req.factory), today = todayStr_();
   var from = fmtDate_(new Date(new Date().getTime() - 14 * 86400000)); if (from < PHONE_FROM) from = PHONE_FROM;
@@ -98,7 +99,7 @@ function mOut_(req, user) {
   var srnsOf = function(dept) { return srnsBy[dept] = srnsBy[dept] || mSrns_(L, dept); };
   // every (date, dept, shift) with attendance
   var keys = {};
-  att.forEach(function(r) { if (str_(r.shift) === 'Final' || str_(r.shift) === 'OT') keys[str_(r.date) + '|' + str_(r.dept) + '|' + str_(r.shift)] = 'app'; });
+  att.forEach(function(r) { if (M_SLOT[str_(r.shift)]) keys[str_(r.date) + '|' + str_(r.dept) + '|' + str_(r.shift)] = 'app'; });
   Object.keys(sheet).forEach(function(k) { var p = k.split('|'); if (p[0] >= from && p[0] <= today && mine[p[1]] && !keys[k] && sheet[k].factory === factory) keys[k] = 'sheet'; });
   var groups = {}, done = [];
   Object.keys(keys).sort().forEach(function(k) {

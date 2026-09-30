@@ -177,6 +177,8 @@ function manpowerSave_(req, user) {
     if (isLocked_(dayStatus_(date, factory, depts[i], 'ATT'))) return fail_('LOCKED', depts[i] + ': attendance submit ho chuki — manager se reject karwao');
   }
   var eff = effHours_(ev, str_(req.time)), stamp = nowStr_(), ids = [];
+  // half day: the phone asks how many hours those people actually worked
+  if (ev === 'HALF_DAY' && num_(req.hours) > 0) eff = Math.min(12, num_(req.hours));
   withLock_(function() {
     if (isClose) {   // one close per line per day: replace an earlier one
       var old = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.event) === 'LINE_CLOSED' && depts.indexOf(str_(r.dept)) >= 0; });

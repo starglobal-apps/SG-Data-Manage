@@ -71,6 +71,11 @@ function attSave_(req, user) {
       return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === shift;
     });
     deleteRows_(CFG.TABS.ATT_DAILY, existing.map(function(r) { return r._row; }));
+    // attendance cancelled (saved empty): that line's changes of the day (absent / half day …) go too
+    if (!clean.length && shift === 'Final') {
+      var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept; });
+      deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
+    }
     appendRows_(CFG.TABS.ATT_DAILY, clean.map(function(c) {
       return { id: uuid_(), date: date, factory: factory, dept: dept, shift: shift, role: c.role,
                hours: c.hours, count: c.count, entered_by: userName_(user), entered_at: stamp, srn: srn, supervisor: supervisor, incharge: incharge, qc_names: qcNames };

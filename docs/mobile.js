@@ -10,7 +10,8 @@
   var O = { groups: [], done: [], today: '', saving: false, loaded: false };
   function num(v) { var n = Number(v); return isNaN(n) ? 0 : n; }
   function pad(n) { return String(n).padStart(2, '0'); }
-  function shLabel(sh) { return sh === 'OT' ? 'OT' : 'Day'; }
+  function shLabel(sh) { return sh === 'OT' ? 'OT' : sh === 'Night' ? 'Night' : 'Shift'; }
+  function shBadge(sh) { return '<em class="ot sh-' + esc(sh) + '">' + shLabel(sh) + ' output</em>'; }
   function total(l) { var t = 0; (l.entries || []).forEach(function (e) { t += num(e.total); }); return t; }
   function srnOpt(l, srn) { return (l.srns || []).filter(function (x) { return x.srn === srn; })[0] || null; }
   function statusText(st) { return st === 'Submitted' ? 'Admin review me' : st === 'Approved' ? 'Approve ho gaya' : st === 'Sent' ? 'Main sheet me chala gaya' : st === 'Rejected' ? 'Admin ne wapas kiya — dobara bharo' : st; }
@@ -24,7 +25,7 @@
 
   function card(l, gi, li) {
     return '<button type="button" class="mo-card" data-open="' + gi + '|' + li + '">' +
-      '<span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + (l.shift === 'OT' ? ' <em class="ot">OT</em>' : '') + (l.fromSheet ? ' <em class="ot">sheet att.</em>' : '') + '</span>' +
+      '<span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + (l.fromSheet ? ' <em class="ot">sheet att.</em>' : '') + '</span>' +
       '<span class="s">' + esc(l.attSrn || ((l.srns || [])[0] || {}).srn || 'SRN') + ' · ' + l.mp + ' log' + (l.mp !== l.mpBase ? ' (subah ' + l.mpBase + ')' : '') + ' · ' + l.hours + ' ghante</span>' +
       (l.status === 'Rejected' ? '<span class="st" style="color:var(--bad)">' + esc(statusText(l.status)) + '</span>' : '') + '</span>' +
       '<span class="v"><small>bharo ›</small></span></button>';
@@ -39,7 +40,7 @@
     if (O.done.length) {
       var t = 0; O.done.forEach(function (l) { t += total(l); });
       html += '<h2 class="mo-date">Aaj bhar diya <span>' + t + ' pcs</span></h2>' + O.done.map(function (l) {
-        return '<div class="mo-card done lock"><span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + (l.shift === 'OT' ? ' <em class="ot">OT</em>' : '') + '</span><span class="s">' + l.entries.map(function (e) { return esc(e.srn); }).join(', ') + ' · ' + l.mp + ' log</span>' + (l.status ? '<span class="st">' + esc(statusText(l.status)) + '</span>' : '') + '</span><span class="v">' + total(l) + '<small>pcs</small></span></div>';
+        return '<div class="mo-card done lock"><span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + '</span><span class="s">' + l.entries.map(function (e) { return esc(e.srn); }).join(', ') + ' · ' + l.mp + ' log</span>' + (l.status ? '<span class="st">' + esc(statusText(l.status)) + '</span>' : '') + '</span><span class="v">' + total(l) + '<small>pcs</small></span></div>';
       }).join('');
       html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="1" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Aaj ka output group me bhejo</button></div>';
     }
@@ -57,7 +58,7 @@
       '<label>SRN</label><select id="mo-srn"' + (fixed ? ' disabled' : '') + '>' + (cur.srn && !srnOpt(l, cur.srn) ? '<option>' + esc(cur.srn) + '</option>' : '') + (opts.length ? '' : '<option value="">Is line par loading nahi mili</option>') +
         opts.map(function (o) { return '<option value="' + esc(o.srn) + '"' + (o.srn === cur.srn ? ' selected' : '') + '>' + esc(o.srn) + ' · ' + o.balance + ' baaki</option>'; }).join('') + '</select>' +
       '<div id="mo-load" class="mo-load"></div>' +
-      '<label>Kitne pcs bane' + (l.shift === 'OT' ? ' (OT me)' : '') + '</label><input id="mo-qty" class="mo-big" type="number" inputmode="numeric" min="0" placeholder="0" value="' + (cur.total || '') + '">' +
+      '<label>Kitne pcs bane (' + shLabel(l.shift) + ' output)</label><input id="mo-qty" class="mo-big" type="number" inputmode="numeric" min="0" placeholder="0" value="' + (cur.total || '') + '">' +
       (cur.other ? '<div class="hint">Ghante-wise pehle se ' + cur.other + ' bhara hai (computer se) — kul isse kam nahi ho sakta</div>' : '') +
       '<div id="mo-chk" class="mo-chk"></div>' +
       '<button class="btn primary big" id="mo-save">Save · admin ko bhejo</button>';
@@ -111,7 +112,7 @@
     var out = ['Date:- ' + pad(+p[2]) + ' ' + mon + ' ' + p[0] + ' - FAC' + state.factory, 'Stitching Output', ''], grand = 0;
     O.done.forEach(function (l) {
       var t = total(l); if (!t) return; grand += t;
-      out.push(S.shortLine(l.dept) + (l.shift === 'OT' ? ' (OT)' : '') + ' - ' + l.entries.filter(function (e) { return e.total; }).map(function (e) { return e.srn; }).join(', '));
+      out.push(S.shortLine(l.dept) + (l.shift !== 'Final' ? ' (' + l.shift + ')' : '') + ' - ' + l.entries.filter(function (e) { return e.total; }).map(function (e) { return e.srn; }).join(', '));
       out.push('Manpower ' + l.mp + (l.mp !== l.mpBase ? ' (subah ' + l.mpBase + ')' : ''));
       if (l.entries.length > 1) l.entries.forEach(function (e) { if (e.total) out.push(e.srn + ' - ' + e.total + ' pcs'); });
       out.push('Output ' + t + ' pcs');

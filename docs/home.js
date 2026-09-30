@@ -178,16 +178,54 @@
       var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent', ev = evText(x);
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, x.count) : null;
       html += '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + (x.fromSheet ? ' <em class="ot">sheet se</em>' : '') + '</div>' +
-        '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' log' + (!x.fromSheet && x.mpNow !== x.count ? ' · abhi <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot + ' log' : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
+        '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' log' + (!x.fromSheet && x.mpNow !== x.count ? ' · abhi <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot : '') + (x.night ? ' · Night ' + x.night : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
         (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
         (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') +
-        (x.fromSheet && !lock ? '<div class="m">Main sheet me bhari hui — Badlo dabake theek karo (SRN, supervisor bhi)</div>' : '') + '</div>' +
-        (lock ? '' : x.fromSheet ? '<button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>'
-          : '<button class="btn small ghost" data-mp="' + esc(x.dept) + '">± Badlav</button><button class="btn small ghost" data-edit="' + esc(x.dept) + '">Badlo</button><button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot ? 'OT ' + x.ot : '+ OT') + '</button>') + '</div>';
+        (x.fromSheet && !lock ? '<div class="m">Main sheet me bhari hui — "Change attendance" se theek karo (SRN, supervisor bhi)</div>' : '') + '</div>' +
+        (lock ? '' : '<div class="pa-acts">' +
+          (x.fromSheet ? '' : '<button class="btn small ghost" data-upd="' + esc(x.dept) + '">Update attendance<small>absent / half day</small></button>') +
+          '<button class="btn small ghost" data-chg="' + esc(x.dept) + '">Change attendance<small>line, SRN, sab</small></button>' +
+          '<button class="btn small ghost" data-ot="' + esc(x.dept) + '">OT / Night<small>' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'Night ' + x.night : '') : 'bharo') + '</small></button></div>') + '</div>';
     });
     if (PA.items.length) html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Attendance group me bhejo · ' + PA.items.length + ' line</button></div>';
     box().innerHTML = html;
   }
+  // "Update attendance": mark absent / half day for a manpower type of the line (half day asks the hours worked)
+  S.phoneLineFilled = function (dept) { return PA.items.some(function (i) { return i.dept === dept && !i.fromSheet; }); };
+  var EV_NAME = { ABSENT: 'absent', HALF_DAY: 'half day', LEFT_AT: 'beech me gaya', LATE_JOIN: 'late aaya', EXTRA: 'extra', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer aaya', LINE_CLOSED: 'line band' };
+  function updSheet(x, kind) {
+    if (!x) return;
+    var roles = Object.keys(x.roles || {}).filter(function (r) { return x.roles[r] > 0; });
+    var html = '';
+    if (!kind) {
+      html += '<div class="upd-kind"><button type="button" class="btn big" data-kind="ABSENT">Mark absent<small>aaye the, phir chale gaye / nahi rahe</small></button><button type="button" class="btn big" data-kind="HALF_DAY">Mark half day<small>kuch ghante kaam karke gaye</small></button></div>';
+      if ((x.events || []).length) html += '<label>Aaj ke update</label><div class="list">' + x.events.map(function (e) {
+        return '<div class="item"><div><div class="name">' + e.count + ' ' + esc(e.role) + ' · ' + esc(EV_NAME[e.event] || e.event) + '</div><div class="sub">' + (e.event === 'HALF_DAY' ? e.hours + ' ghante kaam' : e.time ? esc(e.time) : '') + '</div></div>' + (e.id ? '<button class="btn danger small" data-del="' + esc(e.id) + '">✕</button>' : '') + '</div>';
+      }).join('') + '</div>';
+    } else {
+      html += '<div class="upd-head">' + (kind === 'ABSENT' ? 'Mark absent' : 'Mark half day') + ' <button type="button" class="lnk" data-back="1">badlo</button></div>' +
+        '<label>Manpower type</label><select id="u-role">' + roles.map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + ' (' + x.roles[r] + ')</option>'; }).join('') + '</select>' +
+        '<label>Kitne log</label><input id="u-count" class="mo-big" type="number" inputmode="numeric" min="1" value="1">' +
+        (kind === 'HALF_DAY' ? '<label>Inhone kitne ghante kaam kiya</label><select id="u-hours">' + [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5].map(function (h) { return '<option value="' + h + '"' + (h === 4 ? ' selected' : '') + '>' + h + ' ghante</option>'; }).join('') + '</select>' : '') +
+        '<button class="btn primary big" id="u-save">Save</button>';
+    }
+    S.sheet.open(S.shortLine(x.dept) + ' · update attendance', html);
+    var c = $('#sheet-content');
+    c.onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.kind) { updSheet(x, b.dataset.kind); return; }
+      if (b.dataset.back) { updSheet(x); return; }
+      if (b.dataset.del) { S.ask('Ye update hatayein?', { danger: true, ok: 'Hatao' }).then(function (ok) { if (ok) S.api('manpower.delete', { id: b.dataset.del }).then(function () { S.sheet.close(); S.toast('Hata diya', 'ok'); loadAttList(); }).catch(function (er) { S.toast(er.message, 'bad'); }); }); return; }
+      if (b.id !== 'u-save') return;
+      var role = $('#u-role').value, n = Number($('#u-count').value), max = (x.roles || {})[role] || 0;
+      if (!(n >= 1) || Math.floor(n) !== n) { S.toast('Kitne log — poora number', 'bad'); return; }
+      if (n > max) { S.toast(role + ' sirf ' + max + ' hain', 'bad'); return; }
+      var p = { date: state.date, factory: state.factory, dept: x.dept, role: role, event: kind, count: n, time: '', note: 'phone' };
+      if (kind === 'HALF_DAY') p.hours = Number($('#u-hours').value);
+      S.api('manpower.save', p).then(function () { S.sheet.close(); S.toast(n + ' ' + role + ' ' + (kind === 'ABSENT' ? 'absent' : 'half day (' + p.hours + ' ghante)') + ' ✓', 'ok'); loadAttList(); }).catch(function (er) { S.toast(er.message, 'bad'); });
+    };
+  }
+
   $('#matt-body').addEventListener('change', function (e) {
     if (e.target.id === 'pa-date') { var v = e.target.value; if (v && v <= S.todayStr()) S.setDate(v); else e.target.value = state.date; return; }
     if (e.target.id === 'pa-line' && e.target.value) { var dept = e.target.value; e.target.value = ''; S.openAttendance('Final', dept); }
@@ -213,7 +251,9 @@
       });
       return;
     }
-    if (b.dataset.ot) { S.openAttendance('OT', b.dataset.ot); return; }
+    if (b.dataset.ot) { var xo = PA.items.filter(function (i) { return i.dept === b.dataset.ot; })[0]; S.openAttendance(xo && !xo.ot && xo.night ? 'Night' : 'OT', b.dataset.ot); return; }
+    if (b.dataset.chg) { S.openAttendance('Final', b.dataset.chg, { change: true }); return; }
+    if (b.dataset.upd) { updSheet(PA.items.filter(function (i) { return i.dept === b.dataset.upd; })[0]); return; }
     if (b.dataset.day) { S.setDate(b.dataset.day); return; }
     if (b.dataset.mp) {
       var all = PA.items.filter(function (x) { return !x.fromSheet; }).map(function (x) { return { dept: x.dept }; });

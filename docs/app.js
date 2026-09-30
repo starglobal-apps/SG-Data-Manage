@@ -358,7 +358,7 @@
   var qcKey = '';
   function renderQc(force) {
     var need = qcNeed(), wrap = $('#att-qc-wrap');
-    wrap.hidden = !need || attType() === 'PACKING';
+    wrap.hidden = !need || attType() === 'PACKING' || isMobile();   // phone: no Endline QC names
     if (wrap.hidden) { qcKey = ''; return; }
     var all = (att.staff && att.staff.qcs) || [], sel = att.qc || [];
     var key = need + '|' + sel.join(',') + '|' + all.length;
@@ -412,7 +412,9 @@
   }
   $('#att-srn').addEventListener('change', function (e) { if (e.target.id === 'att-srn-sel') { att.srn = e.target.value; updateAttTotals(); } });
   $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('.chips button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
-  function openAttendance(shift, dept) {
+  function openAttendance(shift, dept, opts) {
+    opts = opts || {};
+    att.moveFrom = isMobile() && opts.change ? dept : '';
     var depts = deptsFor(state.factory);
     if (!depts.length) { toast('Is factory ke depts MASTERS me nahi hain', 'bad'); return; }
     if (shift) att.shift = shift;
@@ -423,8 +425,9 @@
     }
     $('#att-dept').innerHTML = deptOptions(depts, att.dept);
     $('#att-shift').innerHTML = state.masters.shifts.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('');
-    push('att', (att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
+    push('att', (att.moveFrom ? 'Change attendance' : att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
     $('#att-inc-wrap').hidden = attType() === 'PACKING';
+    $('#att-cancel').hidden = true;
     att.srn = ''; loadStaff(); loadAttendance();
   }
   function shiftDef() { return state.masters.shifts.filter(function (s) { return s.key === att.shift; })[0] || state.masters.shifts[0]; }
@@ -436,6 +439,7 @@
         $('#att-sup').value = d.supervisor || ''; $('#att-inc').value = d.incharge || '';
         att.qc = d.qc_names || [];
         renderAttRows(d.rows); renderQc();
+        $('#att-cancel').hidden = !(isMobile() && d.rows.length && !d.prefill);
         if (d.fromSheet) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye attendance main sheet me bhari hai — badal ke Save karo. Admin approve karega to sheet ki purani rows isse badal jayengi.'; }
         else if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo'; }
         else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). Badal ke phir Save kar sakte ho.'; }
@@ -491,11 +495,34 @@
     if (rows.length && att.shift === 'Final') {
       if (!sup) { toast('Supervisor ka naam likho', 'bad'); $('#att-sup').focus(); return; }
       if (attType() !== 'PACKING' && !inc) { toast('Incharge ka naam likho', 'bad'); $('#att-inc').focus(); return; }
-      if (attType() !== 'PACKING' && need && qc.length !== need) { toast('Endline QC ke ' + need + ' naam chuno (abhi ' + qc.length + ')', 'bad'); return; }
+      if (attType() !== 'PACKING' && need && qc.length !== need && !isMobile()) { toast('Endline QC ke ' + need + ' naam chuno (abhi ' + qc.length + ')', 'bad'); return; }
     }
+    var from = att.moveFrom && att.moveFrom !== att.dept ? att.moveFrom : '';
+    if (from && !att.moveOk && SG.phoneLineFilled && SG.phoneLineFilled(att.dept)) {
+      ask(shortLine(att.dept) + ' par pehle se attendance hai — wo is attendance se badal jayegi. Theek?', { ok: 'Haan, badlo', cancel: 'Ruko' }).then(function (ok) { if (ok) { att.moveOk = true; saveAttendance2(rows); } });
+      return;
+    }
+    att.moveOk = false;
     api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, qc_names: qc, rows: rows })
-      .then(function (d) { toast(d.queued ? 'Offline me save — baad me sync hoga' : 'Saved: ' + d.saved + ' roles', 'ok'); invalidateAll(); back(); if (!d.queued) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400); })
+      .then(function (d) {
+        // line changed in "Change attendance": the old line's attendance is removed
+        if (from && !d.queued) return api('att.save', { date: state.date, factory: state.factory, dept: from, shift: att.shift, rows: [] }).then(function () { return d; });
+        return d;
+      })
+      .then(function (d) {
+        toast(d.queued ? 'Offline me save — baad me sync hoga' : from ? 'Line badal di · ' + shortLine(from) + ' → ' + shortLine(att.dept) : 'Saved: ' + d.saved + ' roles', 'ok');
+        att.moveFrom = ''; invalidateAll(); back();
+        if (!d.queued && !isMobile()) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400);
+      })
       .catch(function (e) { toast(e.message, 'bad'); });
+  }
+  function cancelAttendance() {
+    ask(shortLine(att.dept) + ' ki ' + (att.shift === 'Final' ? '' : att.shift + ' ') + 'attendance cancel karein? Ye line is din ki list se hat jayegi.', { danger: true, ok: 'Haan, cancel', cancel: 'Nahi' }).then(function (ok) {
+      if (!ok) return;
+      api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, rows: [] })
+        .then(function () { toast('Attendance cancel ho gayi', 'ok'); att.moveFrom = ''; invalidateAll(); back(); })
+        .catch(function (e) { toast(e.message, 'bad'); });
+    });
   }
 
   // ---------- in-app dialogs: never the browser's confirm()/prompt() ----------
@@ -684,7 +711,12 @@
   $('#hdr-bell').addEventListener('click', function () { if (SG.transferInbox) SG.transferInbox(); });
   function setBell(n) { var b = $('#hdr-bell'); b.hidden = !state.user; $('#bell-dot').hidden = !n; }
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
-  $('#att-dept').addEventListener('change', function () { att.dept = this.value; att.srn = ''; $('#att-inc-wrap').hidden = attType() === 'PACKING'; loadAttendance(); });
+  $('#att-dept').addEventListener('change', function () {
+    att.dept = this.value; att.srn = ''; $('#att-inc-wrap').hidden = attType() === 'PACKING';
+    if (att.moveFrom) { loadAttSrns(); updateAttTotals(); toast('Save par attendance ' + shortLine(att.dept) + ' par chali jayegi', '', 4000); return; }   // phone "Change": keep what is typed, only the line changes
+    loadAttendance();
+  });
+  $('#att-cancel').addEventListener('click', cancelAttendance);
   $('#att-shift').addEventListener('change', function () { att.shift = this.value; loadAttendance(); });
   // one number for the whole shift: every role's hours follow it (a single role can still be changed below)
   $('#att-hours').addEventListener('change', function () {

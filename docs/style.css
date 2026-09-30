@@ -509,3 +509,12 @@ div.al-srn { font-size: 12px; margin-top: 4px; }
 .al-tg .lnk { font-size: 13px; padding: 0 0 0 4px; }
 .pa-top .row { align-items: flex-end; } .pa-top #pa-line { font-weight: 700; font-size: 16px; min-height: 44px; } .pa-top #pa-date { min-height: 44px; }
 h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; } h2.mo-date span { color: var(--warn); }
+.pa-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; margin-top: 8px; }
+.pa-acts .btn.small { margin: 0; min-height: 52px; padding: 6px 4px; font-size: 13px; line-height: 1.2; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.pa-acts .btn small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+.upd-kind { display: grid; gap: 10px; margin: 0 0 12px; } .upd-kind .btn { margin: 0; display: flex; flex-direction: column; } .upd-kind .btn small { font-size: 12px; font-weight: 500; opacity: .85; }
+.upd-kind .btn[data-kind="ABSENT"] { background: var(--bad); } .upd-kind .btn[data-kind="HALF_DAY"] { background: var(--warn); }
+.upd-head { display: flex; justify-content: space-between; align-items: center; font-weight: 800; font-size: 17px; margin: 0 0 4px; }
+#u-role, #u-hours { width: 100%; min-height: 46px; font-weight: 700; font-size: 16px; }
+.att-cancel { color: var(--bad) !important; margin-top: 10px; }
+.mo-card em.sh-Final { background: var(--ok-soft); color: var(--ok); } .mo-card em.sh-Night { background: #ede9fe; color: #6d28d9; }
