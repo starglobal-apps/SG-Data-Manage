@@ -194,7 +194,7 @@ function daySubmit_(req, user) {
     var ci = { status: head.indexOf('status') + 1, by: head.indexOf('submitted_by') + 1, at: head.indexOf('submitted_at') + 1 };
     readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
       if (str_(r.date) !== date || str_(r.factory) !== factory || (onlyDept && str_(r.dept) !== onlyDept)) return;
-      if (str_(r.status) !== 'Draft') return;
+      if (str_(r.status) !== 'Draft' || (req.onlyType && str_(r.type) !== str_(req.onlyType))) return;
       sh.getRange(r._row, ci.status).setValue('Submitted');
       sh.getRange(r._row, ci.by).setValue(userName_(user));
       sh.getRange(r._row, ci.at).setValue(stamp);

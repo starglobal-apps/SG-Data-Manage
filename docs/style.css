@@ -531,3 +531,4 @@ h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; 
 .pm-g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
 .pm-c { display: flex; flex-direction: column; background: var(--bg); border-radius: 10px; padding: 6px 8px; } .pm-c small { font-size: 11px; color: var(--muted); } .pm-c b { font-size: 17px; }
 .pm-c.warn { outline: 1.5px solid var(--bad); } .pm-c.warn b { color: var(--bad); }
+.pm-ct { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--bg); border: 1.5px dashed var(--warn); font-size: 13px; } .pm-ct b { font-size: 17px; }

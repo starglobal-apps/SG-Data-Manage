@@ -68,7 +68,7 @@ function mAtt_(req, user) {
     pick.push({ dept: d.dept, cat: d.cat, filled: count > 0 });
     if (!count) return;
     var ev = mEvents_(events, d.dept), mpNow = fromSheet ? count : mpAtSlot_(attDay, events, d.dept, slot);
-    items.push({ dept: d.dept, cat: d.cat, count: count, srn: srn, supervisor: sup, incharge: inc, by: by, fromSheet: fromSheet, roles: roles,
+    items.push({ dept: d.dept, cat: d.cat, count: count, srn: srn, supervisor: sup, incharge: inc, by: by, fromSheet: fromSheet, inSheet: !!shF, roles: roles,
                  ot: otCount, night: night, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow });
     wa.depts.push({ dept: d.dept, cat: d.cat });
     wa.att[d.dept + '|Final'] = count; wa.attRoles[d.dept + '|Final'] = roles; if (srn) wa.attSrn[d.dept] = srn;
@@ -172,11 +172,19 @@ function mPms_(req, user) {
   var L = ledger_(), orders = ordersAgg_(), unl = unloadingAgg_();
   var stitchedSrn = {};
   Object.keys(L.stitched).forEach(function(k) { addTo_(stitchedSrn, k.split('|')[1], L.stitched[k]); });
+  // loading given to a contractor (party is not a line / packing / … of ours): they send no stitching / endline figures
+  var contr = {}, contrBy = {}, catOf = {};
+  mastersRows_().forEach(function(r) { if (str_(r.type) === 'DEPT' && str_(r.extra)) catOf[str_(r.key).toUpperCase()] = str_(r.extra); });
+  Object.keys(L.loaded || {}).forEach(function(k) {
+    var i = k.lastIndexOf('|'), party = k.slice(0, i), srn = k.slice(i + 1).toUpperCase();
+    if ((catOf[party.toUpperCase()] || deptCategory_(party)) !== 'CONTRACTOR') return;
+    addTo_(contr, srn, L.loaded[k]); (contrBy[srn] = contrBy[srn] || {})[party] = 1;
+  });
   var seen = {};
   [L.loadedSrn, stitchedSrn, L.endPassSrn, L.packed].forEach(function(m) { Object.keys(m || {}).forEach(function(k) { seen[str_(k).toUpperCase()] = 1; }); });
   var fac = str_(req.factory).replace(/^FAC/i, ''), rows = [], hasOrders = Object.keys(orders).length > 0;
   Object.keys(seen).forEach(function(srn) {
-    if (!/^SRN/.test(srn)) return;
+    var m = srn.match(/^SRN0*(\d+)/); if (!m || +m[1] < 500) return;    // only SRN0500 onwards
     var o = orders[srn];
     if (hasOrders && !o) return;                                         // not in 'All Orders' (old, already closed)
     o = o || {};
@@ -184,10 +192,63 @@ function mPms_(req, user) {
     var info = (L.srnInfo || {})[srn] || {};
     if (fac && info.factory && info.factory !== fac) return;               // only this factory's SRNs
     rows.push({ srn: srn, style: o.style || info.item || '', buyer: info.buyer || '', order: num_(o.shipping) || num_(info.orderQty), status: o.status || '',
-                loading: num_(L.loadedSrn[srn]), stitched: num_(stitchedSrn[srn]), endPass: num_(L.endPassSrn[srn]), packed: num_(L.packed[srn]),
+                loading: num_(L.loadedSrn[srn]), contractor: num_(contr[srn]), contractors: Object.keys(contrBy[srn] || {}).join(', '), stitched: num_(stitchedSrn[srn]), endPass: num_(L.endPassSrn[srn]), packed: num_(L.packed[srn]),
                 unloaded: num_(unl[srn]), shipped: num_(o.shipped) });
   });
   rows = rows.filter(function(r) { return r.loading || r.stitched || r.endPass || r.packed; });
   rows.sort(function(a, b) { return b.srn.localeCompare(a.srn); });
   return { ok: true, rows: rows, unloadError: unl.__error || '' };
+}
+
+// ---------- phone "Update attendance": half day / absent for one manpower type of a line ----------
+// { date, factory, dept, role, halfDay, hours, absent }
+// Attendance typed in the main sheet is first copied into the app (same people and hours; shorter-hours sheet rows kept as
+// half day, 0-hour rows as absent), then the change is added. A line whose attendance is in the main sheet then goes to
+// the admin (ATT Submitted): approve + Send replaces that line/date's rows in the main sheet (replaceSheet).
+function mAttUpd_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), role = str_(req.role);
+  var hd = num_(req.halfDay), ab = num_(req.absent), hrs = num_(req.hours);
+  if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
+  if (!dept || !role) return fail_('KEY', 'Line aur manpower type chahiye');
+  if (!canWrite_(user, factory, dept)) return fail_('PERM', 'Is line ki permission nahi');
+  if (isLocked_(dayStatus_(date, factory, dept, 'ATT'))) return fail_('LOCKED', 'Ye attendance admin ke paas hai — approve / reject hone ke baad update karo');
+  if (hd < 0 || ab < 0 || Math.floor(hd) !== hd || Math.floor(ab) !== ab || !(hd + ab)) return fail_('VAL', 'Half day / absent me kitne log — poora number');
+  if (hd && !(hrs > 0 && hrs < 12)) return fail_('VAL', 'Half day ke working hour chuno');
+  var sa = sheetAttAgg_()[date + '|' + dept + '|Final'], stamp = nowStr_(), by = userName_(user);
+  var ev = function(r, event, count, hours, note) {
+    return { id: uuid_(), date: date, factory: factory, dept: dept, role: r, event: event, count: count, time: '',
+             eff_hours: hours, note: note, entered_by: by, entered_at: stamp };
+  };
+  var res = withLock_(function() {
+    var app = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === 'Final'; });
+    var roles = {}, add = [], evs = [];
+    if (app.length) app.forEach(function(r) { roles[str_(r.role)] = (roles[str_(r.role)] || 0) + num_(r.count); });
+    else {
+      if (!sa || !sa.rows) return fail_('NF', 'Is din is line ki attendance nahi mili');
+      var byRole = {};
+      Object.keys(sa.rows).forEach(function(k) { var p = k.split('|'), o = byRole[p[0]] = byRole[p[0]] || { count: 0, hours: 0, parts: [] }; o.count += sa.rows[k]; o.hours = Math.max(o.hours, num_(p[1])); o.parts.push({ h: num_(p[1]), n: sa.rows[k] }); });
+      var prev = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === 'Final' && str_(r.date) < date; })
+        .sort(function(a, b) { return str_(b.date).localeCompare(str_(a.date)); })[0];
+      var staff = lineStaffOf_(dept);
+      Object.keys(byRole).forEach(function(r) {
+        var o = byRole[r]; roles[r] = o.count;
+        add.push({ id: uuid_(), date: date, factory: factory, dept: dept, shift: 'Final', role: r, hours: o.hours || shiftHours_('Final'), count: o.count,
+                   entered_by: by, entered_at: stamp, srn: prev ? str_(prev.srn) : '', supervisor: (prev && str_(prev.supervisor)) || staff.supervisor,
+                   incharge: (prev && str_(prev.incharge)) || staff.incharge, qc_names: '' });
+        o.parts.forEach(function(p) { if (p.h < o.hours) evs.push(ev(r, p.h > 0 ? 'HALF_DAY' : 'ABSENT', p.n, p.h, 'sheet')); });
+      });
+    }
+    if (!roles[role]) return fail_('VAL', role + ' is line me nahi hai');
+    if (hd + ab > roles[role]) return fail_('VAL', role + ' sirf ' + roles[role] + ' hain (half day + absent ' + (hd + ab) + ')');
+    if (hd) evs.push(ev(role, 'HALF_DAY', hd, hrs, 'phone'));
+    if (ab) evs.push(ev(role, 'ABSENT', ab, effHours_('ABSENT', ''), 'phone'));
+    if (add.length) appendRows_(CFG.TABS.ATT_DAILY, add);
+    appendRows_(CFG.TABS.MANPOWER_EVENTS, evs);
+    return { ok: true, copied: add.length, events: evs.length };
+  });
+  if (!res.ok) return res;
+  audit_(user, 'm.attUpd', date + '|' + factory + '|' + dept, { role: role, halfDay: hd, hours: hrs, absent: ab, copied: res.copied });
+  var toAdmin = false;
+  if (sa) { var s = daySubmit_({ date: date, factory: factory, dept: dept, onlyType: 'ATT' }, user); toAdmin = !!(s.ok && s.submitted); }
+  return { ok: true, copied: res.copied, toAdmin: toAdmin };
 }

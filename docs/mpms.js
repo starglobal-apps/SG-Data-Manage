@@ -25,8 +25,10 @@
     html += rows.slice(0, 300).map(function (r) {
       return '<div class="pm-card"><div class="pm-h"><b>' + esc(r.srn) + '</b>' + (r.order ? '<span>order ' + n(r.order) + '</span>' : '') + '</div>' +
         (r.style || r.buyer ? '<div class="pm-s">' + esc([r.buyer, r.style].filter(Boolean).join(' · ')) + '</div>' : '') +
-        '<div class="pm-g">' + cell('Loading', r.loading) + cell('Stitching', r.stitched, r.stitched > r.loading) + cell('Endline pass', r.endPass, r.endPass > r.stitched) +
-        cell('Pack', r.packed, r.packed > r.endPass) + cell('Unloading', r.unloaded) + cell('Shipped', r.shipped) + '</div></div>';
+        '<div class="pm-g">' + cell('Loading', r.loading) + cell('Stitching', r.stitched, r.stitched > r.loading - (r.contractor || 0)) + cell('Endline pass', r.endPass, r.endPass > r.stitched) +
+        cell('Pack', r.packed, r.packed > r.endPass + (r.contractor || 0)) + cell('Unloading', r.unloaded) + cell('Shipped', r.shipped) + '</div>' +
+        (r.contractor ? '<div class="pm-ct"><span>Contractor par load' + (r.contractors ? ' · ' + esc(r.contractors) : '') + '</span><b>' + n(r.contractor) + '</b></div>' +
+          '<div class="pm-s" style="white-space:normal">Contractor ka stitching / endline nahi aata — sirf pack aur unloading</div>' : '') + '</div>';
     }).join('');
     $('#mpms-body').innerHTML = html;
     var inp = $('#pm-q');

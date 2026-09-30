@@ -180,8 +180,8 @@
       html += '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + (x.fromSheet ? ' <em class="ot">sheet se</em>' : '') + '</div>' +
         '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' log' + (!x.fromSheet && x.mpNow !== x.count ? ' · abhi <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot : '') + (x.night ? ' · Night ' + x.night : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
         (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
-        (lock ? '<div class="m">' + (st === 'Submitted' ? 'Admin review me' : esc(st)) + '</div>' : '') +
-        (x.fromSheet && !lock ? '<div class="m">Main sheet me bhari hui — "Change attendance" se theek karo (SRN, supervisor bhi)</div>' : '') + '</div>' +
+        (lock ? '<div class="m">' + (st === 'Submitted' ? (x.inSheet ? 'Admin approval baaki — approve hone par main sheet badlegi' : 'Admin review me') : st === 'Sent' && x.inSheet ? 'Main sheet me badal diya ✓' : esc(st)) + '</div>' : '') +
+        (x.fromSheet && !lock ? '<div class="m">Main sheet me bhari hui — Update / Change karoge to admin approve karega, phir main sheet badlegi</div>' : '') + '</div>' +
         (lock ? '' : '<div class="pa-acts">' +
           '<button class="btn small ghost" data-chg="' + esc(x.dept) + '">Change attendance<small>line, SRN, sab</small></button>' +
           '<button class="btn small ghost" data-ot="' + esc(x.dept) + '">OT / Night<small>' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'Night ' + x.night : '') : 'bharo') + '</small></button>' +
@@ -195,7 +195,6 @@
   var EV_NAME = { ABSENT: 'absent', HALF_DAY: 'half day', LEFT_AT: 'beech me gaya', LATE_JOIN: 'late aaya', EXTRA: 'extra', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer aaya', LINE_CLOSED: 'line band' };
   function updSheet(x) {
     if (!x) return;
-    if (x.fromSheet) { S.toast('Ye attendance main sheet se hai — pehle "Change attendance" me Save karo, phir Update', '', 6000); return; }
     var roles = Object.keys(x.roles || {}).filter(function (r) { return x.roles[r] > 0; });
     var hrs = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5];
     var html = '<label>Manpower type</label><select id="u-role">' + roles.map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + ' (' + x.roles[r] + ' log)</option>'; }).join('') + '</select>' +
@@ -203,7 +202,8 @@
         '<div class="field"><label>Kitne log</label><input id="u-hd" type="number" inputmode="numeric" min="0" placeholder="0"></div>' +
         '<div class="field"><label>Working hour</label><select id="u-hours">' + hrs.map(function (h) { return '<option value="' + h + '"' + (h === 4 ? ' selected' : '') + '>' + h + ' ghante</option>'; }).join('') + '</select></div></div></div>' +
       '<div class="upd-box ab"><div class="t">Absent</div><div class="field"><label>Kitne log</label><input id="u-ab" type="number" inputmode="numeric" min="0" placeholder="0"></div></div>' +
-      '<button class="btn primary big" id="u-save">Save</button>';
+      (x.inSheet ? '<p class="hint" style="margin:0 0 8px">Ye attendance main sheet me hai — Save karte hi <b>admin ke paas approval</b> jayegi. Admin approve karega tab main sheet me badlegi.</p>' : '') +
+      '<button class="btn primary big" id="u-save">' + (x.inSheet ? 'Save · admin ko bhejo' : 'Save') + '</button>';
     if ((x.events || []).length) html += '<label style="margin-top:14px">Aaj ke update</label><div class="list">' + x.events.map(function (e) {
       return '<div class="item"><div><div class="name">' + e.count + ' ' + esc(e.role) + ' · ' + esc(EV_NAME[e.event] || e.event) + '</div><div class="sub">' + (e.event === 'HALF_DAY' ? e.hours + ' ghante kaam' : e.time ? esc(e.time) : '') + '</div></div>' + (e.id ? '<button class="btn danger small" data-del="' + esc(e.id) + '">✕</button>' : '') + '</div>';
     }).join('') + '</div>';
@@ -217,13 +217,12 @@
       if (hd < 0 || ab < 0 || Math.floor(hd) !== hd || Math.floor(ab) !== ab) { S.toast('Kitne log — poora number', 'bad'); return; }
       if (!hd && !ab) { S.toast('Half day ya absent me kitne log — likho', 'bad'); return; }
       if (hd + ab > max) { S.toast(role + ' sirf ' + max + ' hain (half day + absent ' + (hd + ab) + ')', 'bad'); return; }
-      var base = { date: state.date, factory: state.factory, dept: x.dept, role: role, time: '', note: 'phone' }, calls = [], msg = [];
-      if (hd) { calls.push(Object.assign({}, base, { event: 'HALF_DAY', count: hd, hours: Number($('#u-hours').value) })); msg.push(hd + ' half day (' + $('#u-hours').value + ' ghante)'); }
-      if (ab) { calls.push(Object.assign({}, base, { event: 'ABSENT', count: ab })); msg.push(ab + ' absent'); }
-      S.busy(true);
-      calls.reduce(function (p, q) { return p.then(function () { return S.api('manpower.save', q); }); }, Promise.resolve())
-        .then(function () { S.busy(false); S.sheet.close(); S.toast(role + ': ' + msg.join(', ') + ' ✓', 'ok'); loadAttList(); })
-        .catch(function (er) { S.busy(false); S.toast(er.message, 'bad'); loadAttList(); });
+      var msg = [];
+      if (hd) msg.push(hd + ' half day (' + $('#u-hours').value + ' ghante)');
+      if (ab) msg.push(ab + ' absent');
+      S.api('m.attUpd', { date: state.date, factory: state.factory, dept: x.dept, role: role, halfDay: hd, hours: Number($('#u-hours').value), absent: ab }, { busy: true })
+        .then(function (r) { S.sheet.close(); S.toast(role + ': ' + msg.join(', ') + ' ✓' + (r.toAdmin ? ' · admin ke paas approval ke liye gaya' : ''), 'ok', 6000); loadAttList(); })
+        .catch(function (er) { S.toast(er.message, 'bad', 7000); loadAttList(); });
     };
   }
 

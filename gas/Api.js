@@ -61,6 +61,7 @@ function routes_() {
     'm.att':          mAtt_,
     'm.out':          mOut_,
     'm.pms':          mPms_,
+    'm.attUpd':       mAttUpd_,
     'target.get':     targetGet_,
     'target.sam':     targetSamSave_,
     'defects.list':   defectsList_,
