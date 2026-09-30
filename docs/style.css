@@ -518,3 +518,7 @@ h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; 
 #u-role, #u-hours { width: 100%; min-height: 46px; font-weight: 700; font-size: 16px; }
 .att-cancel { color: var(--bad) !important; margin-top: 10px; }
 .mo-card em.sh-Final { background: var(--ok-soft); color: var(--ok); } .mo-card em.sh-Night { background: #ede9fe; color: #6d28d9; }
+.upd-box { border-radius: 12px; padding: 8px 10px 10px; margin: 10px 0 0; } .upd-box .t { font-weight: 800; font-size: 15px; margin: 0 0 2px; }
+.upd-box.hd { background: var(--warn-soft); } .upd-box.hd .t { color: var(--warn); } .upd-box.ab { background: var(--bad-soft); } .upd-box.ab .t { color: var(--bad); }
+.upd-box input, .upd-box select { width: 100%; min-height: 46px; font-size: 20px; font-weight: 800; text-align: center; } .upd-box select { font-size: 16px; }
+.pa-acts .btn.upd { color: var(--warn); }
