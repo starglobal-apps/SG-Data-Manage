@@ -93,8 +93,8 @@
     if (name === 'home' || name === 'reports' || name === 'pms') setHeader('FAC' + state.factory + ' · ' + fmtDay(state.date), (name === 'pms' ? 'PMS · meri lines' : name === 'reports' ? 'Reports · ' + (isToday() ? 'aaj' : 'is din ke') : (isToday() ? 'Aaj' : 'Purana din') + ' · poori factory'), false);
     else if (name === 'data') setHeader(shortLine(state.line) || 'Line chuno', ctxSub(), false);
     else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
-    else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · jo baaki hai', false);
-    else if (name === 'mpms') setHeader('PMS data', 'FAC' + state.factory + ' · jo ship nahi hue', false);
+    else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · pending', false);
+    else if (name === 'mpms') setHeader('PMS data', 'FAC' + state.factory + ' · not shipped', false);
     else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
@@ -117,7 +117,7 @@
   // ---------- api + offline queue ----------
 
   function rawPost(body) {
-    return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow' })
+    return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(isMobile() ? Object.assign({ lang: 'en' }, body) : body), redirect: 'follow' })
       .then(function (r) { return r.json(); });
   }
   var inflight = 0;
@@ -145,7 +145,7 @@
       .catch(function (err) {
         if (err instanceof TypeError) {
           if (WRITE_ACTIONS.indexOf(action) >= 0 && !opts.noQueue) { enqueue(action, payload); return { ok: true, queued: true }; }
-          throw new Error('Network nahi mila — internet check karo');
+          throw new Error(tx('Network nahi mila — internet check karo', 'No network — check internet'));
         }
         throw err;
       })
@@ -183,7 +183,7 @@
     return rawPost(Object.assign({}, item.payload, { action: item.action, token: state.token }))
       .then(function (data) {
         var cur = queue();
-        if (data.ok) { saveQueue(cur.filter(function (x) { return x.id !== item.id; })); toast('Offline entry sync ho gayi', 'ok'); invalidate(); }
+        if (data.ok) { saveQueue(cur.filter(function (x) { return x.id !== item.id; })); toast(tx('Offline entry sync ho gayi', 'Offline entry synced'), 'ok'); invalidate(); }
         else if (data.error === 'AUTH') logout();
         else saveQueue(cur.map(function (x) { if (x.id === item.id) x.error = data.message || data.error; return x; }));
       })
@@ -198,7 +198,7 @@
   function login() {
     var pin = $('#in-pin').value.trim();
     $('#login-msg').textContent = '';
-    if (!pin) { $('#login-msg').textContent = 'PIN daalo'; return; }
+    if (!pin) { $('#login-msg').textContent = tx('PIN daalo', 'Enter PIN'); return; }
     api('login', { pin: pin })
       .then(function (d) {
         state.token = d.token; state.user = d.user;
@@ -230,9 +230,18 @@
   // An admin/manager on a phone can switch to the full app from Main (sg_full).
   var PHONE_TABS = ['matt', 'mout', 'mpms', 'main'];
   function isPhoneScreen() { try { return window.matchMedia('(max-width: 820px)').matches; } catch (e) { return false; } }
+  // phone app text is English; the web keeps its text
+  function tx(hi, en) { return isMobile() ? en : hi; }
   function isMobile() { var full = false; try { full = localStorage.getItem('sg_full') === '1'; } catch (e) {} return isPhoneScreen() && !(full && isManager()); }
   // recorder on the web: Aaj · Ghante · Target · Main; manager/admin: everything
+  // static page text: English on the phone (data-en / data-en-ph), the original text on the web
+  function applyLang() {
+    var en = isMobile();
+    $$('[data-en]').forEach(function (el) { if (el.dataset.hi === undefined) el.dataset.hi = el.textContent; el.textContent = en ? el.dataset.en : el.dataset.hi; });
+    $$('[data-en-ph]').forEach(function (el) { if (el.dataset.hiPh === undefined) el.dataset.hiPh = el.placeholder; el.placeholder = en ? el.dataset.enPh : el.dataset.hiPh; });
+  }
   function applyRoleNav() {
+    applyLang();
     var rec = isRecorder(), mob = isMobile();
     $$('#nav button').forEach(function (b) {
       var t = b.dataset.tab;
@@ -387,17 +396,17 @@
   function attType() { var c = deptCategory(att.dept); return c === 'PACKING' ? 'PACKING' : 'STITCH'; }
   function renderAttSrns() {
     var box = $('#att-srn'), list = att.srns || [];
-    if (att.srns === null) { box.className = ''; box.innerHTML = '<span class="muted" style="font-size:12px">SRN aa rahe hain…</span>'; return; }
+    if (att.srns === null) { box.className = ''; box.innerHTML = '<span class="muted" style="font-size:12px">' + tx('SRN aa rahe hain…', 'Loading SRNs…') + '</span>'; return; }
     if (attType() === 'PACKING') {
       box.className = '';
-      SG.srnPicker(box, { list: list, value: att.srn, placeholder: 'SRN number likho (jaise 596)', onPick: function (v) { att.srn = v; } });
+      SG.srnPicker(box, { list: list, value: att.srn, placeholder: tx('SRN number likho (jaise 596)', 'Type SRN number (e.g. 596)'), onPick: function (v) { att.srn = v; } });
       return;
     }
     if (isMobile()) {
       box.className = '';
-      if (!list.length) { box.innerHTML = '<span class="muted" style="font-size:12px">Is line par loading nahi mili</span>'; return; }
+      if (!list.length) { box.innerHTML = '<span class="muted" style="font-size:12px">No loading found on this line</span>'; return; }
       if (!att.srn) att.srn = list[0].srn;
-      box.innerHTML = '<select id="att-srn-sel" class="al-srn">' + (list.some(function (x) { return x.srn === att.srn; }) ? '' : '<option value="' + esc(att.srn) + '">' + esc(att.srn) + '</option>') + list.map(function (x) { return '<option value="' + esc(x.srn) + '"' + (x.srn === att.srn ? ' selected' : '') + '>' + esc(x.srn) + (x.balance !== '' ? ' · ' + x.balance + ' baaki' : '') + '</option>'; }).join('') + '</select>';
+      box.innerHTML = '<select id="att-srn-sel" class="al-srn">' + (list.some(function (x) { return x.srn === att.srn; }) ? '' : '<option value="' + esc(att.srn) + '">' + esc(att.srn) + '</option>') + list.map(function (x) { return '<option value="' + esc(x.srn) + '"' + (x.srn === att.srn ? ' selected' : '') + '>' + esc(x.srn) + (x.balance !== '' ? ' · ' + x.balance + ' left' : '') + '</option>'; }).join('') + '</select>';
       return;
     }
     box.className = 'chips';
@@ -417,7 +426,7 @@
     opts = opts || {};
     att.moveFrom = isMobile() && opts.change ? dept : '';
     var depts = deptsFor(state.factory);
-    if (!depts.length) { toast('Is factory ke depts MASTERS me nahi hain', 'bad'); return; }
+    if (!depts.length) { toast(tx('Is factory ke depts MASTERS me nahi hain', 'No depts of this factory in MASTERS'), 'bad'); return; }
     if (shift) att.shift = shift;
     att.dept = dept || state.line || depts[0].key;
     if (!depts.some(function (d) { return d.key === att.dept; })) {
@@ -441,9 +450,9 @@
         att.qc = d.qc_names || [];
         renderAttRows(d.rows); renderQc();
         $('#att-cancel').hidden = !(isMobile() && d.rows.length && !d.prefill);
-        if (d.fromSheet) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye attendance main sheet me bhari hai — badal ke Save karo. Admin approve karega to sheet ki purani rows isse badal jayengi.'; }
-        else if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = 'Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo'; }
-        else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). Badal ke phir Save kar sakte ho.'; }
+        if (d.fromSheet) { banner.className = 'banner'; banner.hidden = false; banner.textContent = tx('Ye attendance main sheet me bhari hai — badal ke Save karo. Admin approve karega to sheet ki purani rows isse badal jayengi.', 'This attendance is in the main sheet — change it and Save. After admin approval the old sheet rows are replaced.'); }
+        else if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = tx('Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo', 'Prefilled from ' + d.prefillDate + ' — check and Save'); }
+        else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). ' + tx('Badal ke phir Save kar sakte ho.', 'You can change it and Save again.'); }
       })
       .catch(function (e) { toast(e.message, 'bad'); renderAttRows([]); });
   }
@@ -469,9 +478,9 @@
   // hourly target = total manpower × 60 ÷ SAM of the SRN (display only, nothing is saved)
   function hourlyTarget(srn, mp) {
     var sam = srn ? Number((SG.samMap || {})[String(srn).toUpperCase()]) || 0 : 0;
-    if (!sam) return { v: 0, html: 'Hourly target: <span class="muted">' + esc(srn || 'SRN') + ' ka SAM set nahi</span>' + (srn ? ' <button type="button" class="lnk" data-setsam="' + esc(srn) + '">SAM daalo</button>' : '') };
+    if (!sam) return { v: 0, html: 'Hourly target: <span class="muted">' + tx(esc(srn || 'SRN') + ' ka SAM set nahi', 'no SAM set for ' + esc(srn || 'SRN')) + '</span>' + (srn ? ' <button type="button" class="lnk" data-setsam="' + esc(srn) + '">' + tx('SAM daalo', 'Enter SAM') + '</button>' : '') };
     var v = mp > 0 ? Math.round(mp * 60 / sam) : 0;
-    return { v: v, html: 'Hourly target <b>' + v + ' pcs</b> <small>(' + mp + ' log × 60 ÷ ' + sam + ' SAM)</small>' };
+    return { v: v, html: 'Hourly target <b>' + v + ' pcs</b> <small>(' + mp + tx(' log', ' people') + ' × 60 ÷ ' + sam + ' SAM)</small>' };
   }
   function updateAttTarget(c) {
     var el = $('#att-target'); if (!el) return;
@@ -487,20 +496,20 @@
   }
   function saveAttendance() {
     var rows = collectAttRows().filter(function (r) { return r.count > 0; });
-    if (!rows.length) { ask('Koi count nahi bhara. Khali save karein?').then(function (ok) { if (ok) saveAttendance2(rows); }); return; }
+    if (!rows.length) { ask(tx('Koi count nahi bhara. Khali save karein?', 'No count filled. Save empty?')).then(function (ok) { if (ok) saveAttendance2(rows); }); return; }
     saveAttendance2(rows);
   }
   function saveAttendance2(rows) {
-    if (!att.srn && (att.srns || []).length) { toast('Pehle SRN chuno', 'bad'); return; }
+    if (!att.srn && (att.srns || []).length) { toast(tx('Pehle SRN chuno', 'Select SRN first'), 'bad'); return; }
     var sup = $('#att-sup').value.trim(), inc = $('#att-inc').value.trim(), need = qcNeed(), qc = att.qc || [];
     if (rows.length && att.shift === 'Final') {
-      if (!sup) { toast('Supervisor ka naam likho', 'bad'); $('#att-sup').focus(); return; }
-      if (attType() !== 'PACKING' && !inc) { toast('Incharge ka naam likho', 'bad'); $('#att-inc').focus(); return; }
+      if (!sup) { toast(tx('Supervisor ka naam likho', 'Enter supervisor name'), 'bad'); $('#att-sup').focus(); return; }
+      if (attType() !== 'PACKING' && !inc) { toast(tx('Incharge ka naam likho', 'Enter incharge name'), 'bad'); $('#att-inc').focus(); return; }
       if (attType() !== 'PACKING' && need && qc.length !== need && !isMobile()) { toast('Endline QC ke ' + need + ' naam chuno (abhi ' + qc.length + ')', 'bad'); return; }
     }
     var from = att.moveFrom && att.moveFrom !== att.dept ? att.moveFrom : '';
     if (from && !att.moveOk && SG.phoneLineFilled && SG.phoneLineFilled(att.dept)) {
-      ask(shortLine(att.dept) + ' par pehle se attendance hai — wo is attendance se badal jayegi. Theek?', { ok: 'Haan, badlo', cancel: 'Ruko' }).then(function (ok) { if (ok) { att.moveOk = true; saveAttendance2(rows); } });
+      ask(shortLine(att.dept) + ' already has attendance — it will be replaced by this one. OK?', { ok: 'Yes, replace', cancel: 'Wait' }).then(function (ok) { if (ok) { att.moveOk = true; saveAttendance2(rows); } });
       return;
     }
     att.moveOk = false;
@@ -511,17 +520,17 @@
         return d;
       })
       .then(function (d) {
-        toast(d.queued ? 'Offline me save — baad me sync hoga' : from ? 'Line badal di · ' + shortLine(from) + ' → ' + shortLine(att.dept) : 'Saved: ' + d.saved + ' roles', 'ok');
+        toast(d.queued ? tx('Offline me save — baad me sync hoga', 'Saved offline — will sync later') : from ? 'Line changed · ' + shortLine(from) + ' → ' + shortLine(att.dept) : 'Saved: ' + d.saved + ' roles', 'ok');
         att.moveFrom = ''; invalidateAll(); back();
         if (!d.queued && !isMobile()) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400);
       })
       .catch(function (e) { toast(e.message, 'bad'); });
   }
   function cancelAttendance() {
-    ask(shortLine(att.dept) + ' ki ' + (att.shift === 'Final' ? '' : att.shift + ' ') + 'attendance cancel karein? Ye line is din ki list se hat jayegi.', { danger: true, ok: 'Haan, cancel', cancel: 'Nahi' }).then(function (ok) {
+    ask('Cancel ' + (att.shift === 'Final' ? '' : att.shift + ' ') + 'attendance of ' + shortLine(att.dept) + '? This line will be removed from this date\'s list.', { danger: true, ok: 'Yes, cancel', cancel: 'No' }).then(function (ok) {
       if (!ok) return;
       api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, rows: [] })
-        .then(function () { toast('Attendance cancel ho gayi', 'ok'); att.moveFrom = ''; invalidateAll(); back(); })
+        .then(function () { toast('Attendance cancelled', 'ok'); att.moveFrom = ''; invalidateAll(); back(); })
         .catch(function (e) { toast(e.message, 'bad'); });
     });
   }
@@ -530,7 +539,7 @@
   function ask(msg, opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
-      SG.sheet.open(opts.title || 'Confirm', '<div class="dlg-msg">' + esc(msg) + '</div><div class="actions"><button class="btn ghost" data-dlg="0">' + esc(opts.cancel || 'Nahi') + '</button><button class="btn ' + (opts.danger ? 'danger' : 'primary') + '" data-dlg="1">' + esc(opts.ok || 'Haan') + '</button></div>');
+      SG.sheet.open(opts.title || 'Confirm', '<div class="dlg-msg">' + esc(msg) + '</div><div class="actions"><button class="btn ghost" data-dlg="0">' + esc(opts.cancel || tx('Nahi', 'No')) + '</button><button class="btn ' + (opts.danger ? 'danger' : 'primary') + '" data-dlg="1">' + esc(opts.ok || tx('Haan', 'Yes')) + '</button></div>');
       var done = false;
       $('#sheet-content').onclick = function (e) { var b = e.target.closest('[data-dlg]'); if (!b) return; done = true; SG.sheet.close(); resolve(b.dataset.dlg === '1'); };
       SG.sheet.onClose = function () { if (!done) { done = true; resolve(false); } };
@@ -539,7 +548,7 @@
   function askText(msg, opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
-      SG.sheet.open(opts.title || 'Likho', '<div class="dlg-msg">' + esc(msg) + '</div><input id="dlg-in" type="text" placeholder="' + esc(opts.placeholder || '') + '"><div class="actions" style="margin-top:10px"><button class="btn ghost" data-dlg="0">Cancel</button><button class="btn primary" data-dlg="1">' + esc(opts.ok || 'OK') + '</button></div>');
+      SG.sheet.open(opts.title || tx('Likho', 'Enter'), '<div class="dlg-msg">' + esc(msg) + '</div><input id="dlg-in" type="text" placeholder="' + esc(opts.placeholder || '') + '"><div class="actions" style="margin-top:10px"><button class="btn ghost" data-dlg="0">Cancel</button><button class="btn primary" data-dlg="1">' + esc(opts.ok || 'OK') + '</button></div>');
       setTimeout(function () { var i = $('#dlg-in'); if (i) i.focus(); }, 80);
       var done = false;
       $('#sheet-content').onclick = function (e) { var b = e.target.closest('[data-dlg]'); if (!b) return; var v = $('#dlg-in').value.trim(); done = true; SG.sheet.close(); resolve(b.dataset.dlg === '1' ? v : null); };
@@ -551,6 +560,7 @@
   // ---------- WhatsApp: attendance summary for the group ----------
   var ROLE_SHORT = { Operator: 'Op', Helper: 'Hlp', Supervisor: 'Sup', Incharge: 'Inch', Feeder: 'Fdr', 'Data Collector': 'DC', 'Thread cutter': 'TC', 'End Line Checker': 'ELC', 'Hand needle': 'HN', Paster: 'Pst', Checker: 'Chk', 'Press Man': 'Press', 'Line Qc.': 'QC', 'Final Checker': 'FC', 'Cutting master': 'CM', 'Die cutter': 'Die', 'Layer cutter': 'Layer', Assistant: 'Asst' };
   var EV_LABEL = { HALF_DAY: 'half day', LEFT_AT: 'chhutti gaya', LATE_JOIN: 'late aaya', ABSENT: 'absent', EXTRA: 'extra aaya', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer se aaya', LINE_CLOSED: 'line band' };
+  var EV_LABEL_EN = { HALF_DAY: 'half day', LEFT_AT: 'left early', LATE_JOIN: 'came late', ABSENT: 'absent', EXTRA: 'extra', TRANSFER_OUT: 'transferred out', TRANSFER_IN: 'transferred in', LINE_CLOSED: 'line closed' };
   function longDate(iso) {
     var p = iso.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]);
     return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] + ', ' + pad(d.getDate()) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + ' ' + d.getFullYear();
@@ -587,9 +597,9 @@
       var byDept = {};
       evs.forEach(function (e) { (byDept[e.dept] = byDept[e.dept] || []).push(e); });
       Object.keys(byDept).forEach(function (dept) {
-        var parts = byDept[dept].map(function (e) { return e.event === 'LINE_CLOSED' ? 'Line band' + (e.time ? ' ' + ampm(e.time) : '') : e.count + ' ' + e.role + ' ' + (EV_LABEL[e.event] || e.event) + (e.time ? ' (' + ampm(e.time) + ')' : ''); });
+        var parts = byDept[dept].map(function (e) { return e.event === 'LINE_CLOSED' ? tx('Line band', 'Line closed') + (e.time ? ' ' + ampm(e.time) : '') : e.count + ' ' + e.role + ' ' + ((isMobile() ? EV_LABEL_EN : EV_LABEL)[e.event] || e.event) + (e.time ? ' (' + ampm(e.time) + ')' : ''); });
         var nowMp = d.mpNow && d.mpNow[dept], isClosed = byDept[dept].some(function (e) { return e.event === 'LINE_CLOSED'; });
-        out.push(shortLine(dept) + ' - ' + parts.join(', ') + (nowMp !== undefined && !isClosed ? ' - ab ' + nowMp : ''));
+        out.push(shortLine(dept) + ' - ' + parts.join(', ') + (nowMp !== undefined && !isClosed ? tx(' - ab ', ' - now ') + nowMp : ''));
       });
       out.push('');
     }
@@ -658,18 +668,18 @@
   function queueHtml(q) {
     return '<h2>Offline pending (' + q.length + ')</h2><div class="list">' + q.map(function (x) {
       var p = x.payload || {};
-      return '<div class="item"><div><div class="name">' + esc(x.action.replace('.save', '').replace('.slot', ' slot')) + ' · ' + esc(p.dept || '') + (p.srn ? ' · ' + esc(p.srn) : '') + '</div><div class="sub" style="color:' + (x.error ? 'var(--bad)' : 'var(--muted)') + '">' + esc(x.error || 'Sync ka wait') + '</div></div>' +
+      return '<div class="item"><div><div class="name">' + esc(x.action.replace('.save', '').replace('.slot', ' slot')) + ' · ' + esc(p.dept || '') + (p.srn ? ' · ' + esc(p.srn) : '') + '</div><div class="sub" style="color:' + (x.error ? 'var(--bad)' : 'var(--muted)') + '">' + esc(x.error || tx('Sync ka wait', 'Waiting to sync')) + '</div></div>' +
         '<div class="actions-inline"><button class="btn small" data-retry="' + x.id + '">Retry</button><button class="btn danger small" data-drop="' + x.id + '">✕</button></div></div>';
     }).join('') + '</div>';
   }
   // phone: profile, staff names (for attendance), one refresh, offline queue, logout
   function phoneMain(u, q) {
     var lines = deptsFor(state.factory).length;
-    var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : '') + ' · ' + lines + ' line / floor</div></div></div>';
+    var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : '') + ' · ' + lines + ' lines / floors</div></div></div>';
     html += '<div class="menu">';
-    html += '<div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Staff names</div><div class="s">Supervisor · Incharge · Endline QC — attendance me aate hain</div></div>' + icon('chev') + '</div>';
-    html += '<div class="task" data-m="prefresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Naya data lao</div><div class="s">Nayi loading / SRN, nayi line ya access badla ho to</div></div>' + icon('chev') + '</div>';
-    if (isManager()) html += '<div class="task" data-m="fullapp"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Poora app dikhao</div><div class="s">Review, Reports, PMS — computer wala app</div></div>' + icon('chev') + '</div>';
+    html += '<div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Staff names</div><div class="s">Supervisor · Incharge — used in attendance</div></div>' + icon('chev') + '</div>';
+    html += '<div class="task" data-m="prefresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Get new data</div><div class="s">New loading / SRN, new line or access changed</div></div>' + icon('chev') + '</div>';
+    if (isManager()) html += '<div class="task" data-m="fullapp"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Show full app</div><div class="s">Review, Reports, PMS — the computer app</div></div>' + icon('chev') + '</div>';
     html += '</div>';
     if (q.length) html += queueHtml(q);
     html += '<div class="menu" style="margin-top:12px"><div class="task" data-m="logout"><div class="ic" style="background:var(--bad-soft);color:var(--bad)">' + icon('logout') + '</div><div class="b"><div class="n">Logout</div><div class="s">SG Data v' + VERSION + '</div></div></div></div>';
@@ -679,12 +689,12 @@
   function phoneRefresh() {
     busy(true);
     Promise.all([api('orders.refresh', {}, { quiet: true }).catch(function () {}), api('me', {}, { quiet: true }).then(function (d) { setUser(d.user); }), loadMasters()])
-      .then(function () { busy(false); ensureLine(); toast('Naya data aa gaya', 'ok'); tab(nav.tab); })
+      .then(function () { busy(false); ensureLine(); toast('New data loaded', 'ok'); tab(nav.tab); })
       .catch(function (e) { busy(false); toast(e.message, 'bad'); });
   }
   $('#main-body').addEventListener('click', function (e) {
     var b = e.target.closest('button'); var t = e.target.closest('[data-m]');
-    if (b && b.dataset.drop) { ask('Ye offline entry hata dein?', { danger: true, ok: 'Hatao' }).then(function (ok) { if (ok) { saveQueue(queue().filter(function (x) { return x.id !== b.dataset.drop; })); tabs.main(); } }); return; }
+    if (b && b.dataset.drop) { ask(tx('Ye offline entry hata dein?', 'Remove this offline entry?'), { danger: true, ok: tx('Hatao', 'Remove') }).then(function (ok) { if (ok) { saveQueue(queue().filter(function (x) { return x.id !== b.dataset.drop; })); tabs.main(); } }); return; }
     if (b && b.dataset.retry) { saveQueue(queue().map(function (x) { if (x.id === b.dataset.retry) x.error = ''; return x; })); flushQueue().then(tabs.main); return; }
     if (!t) return;
     var m = t.dataset.m;
@@ -744,7 +754,7 @@
     $: $, $$: $$, esc: esc, api: api, toast: toast, busy: busy, pill: pill, icon: icon,
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
-    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, hourlyTarget: hourlyTarget,
+    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, tx: tx, hourlyTarget: hourlyTarget,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,

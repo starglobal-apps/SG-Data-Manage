@@ -33,7 +33,7 @@
     function draw() {
       mount.innerHTML = value
         ? '<div class="srnp"><input type="hidden" class="f-srn" value="' + esc(value) + '"><button type="button" class="srnp-chip">' + esc(value) + ' <span>✕</span></button></div>'
-        : '<div class="srnp open"><input type="hidden" class="f-srn" value=""><input type="text" class="srnp-in" inputmode="numeric" placeholder="' + esc(o.placeholder || 'SRN number likho…') + '" autocomplete="off"><div class="srnp-list" hidden></div></div>';
+        : '<div class="srnp open"><input type="hidden" class="f-srn" value=""><input type="text" class="srnp-in" inputmode="numeric" placeholder="' + esc(o.placeholder || S.tx('SRN number likho…', 'Type SRN number…')) + '" autocomplete="off"><div class="srnp-list" hidden></div></div>';
       if (!value && o.autofocus) { var i = $('.srnp-in', mount); if (i) setTimeout(function () { i.focus(); }, 60); }
     }
     mount.onclick = function (e) {
@@ -45,7 +45,7 @@
       var q = e.target.value.replace(/\D/g, ''), box = $('.srnp-list', mount);
       if (!q) { box.hidden = true; box.innerHTML = ''; return; }
       var hits = list.filter(function (x) { return x.srn.replace(/\D/g, '').indexOf(q) >= 0; }).slice(0, 25);
-      box.innerHTML = hits.length ? hits.map(function (x) { return '<div class="srnp-item" data-srn="' + esc(x.srn) + '">' + fmt(x) + '</div>'; }).join('') : '<div class="srnp-none">Koi SRN nahi mila</div>';
+      box.innerHTML = hits.length ? hits.map(function (x) { return '<div class="srnp-item" data-srn="' + esc(x.srn) + '">' + fmt(x) + '</div>'; }).join('') : '<div class="srnp-none">' + S.tx('Koi SRN nahi mila', 'No SRN found') + '</div>';
       box.hidden = false;
     };
     mount.onkeydown = function (e) { if (e.key === 'Enter' && e.target.classList.contains('srnp-in')) { e.preventDefault(); var f = $('.srnp-item', mount); if (f) f.click(); } };

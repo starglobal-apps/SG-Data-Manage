@@ -16,16 +16,17 @@ function doPost(e) {
 
   try {
     var action = str_(req.action);
-    if (action === 'login') return json_(login_(req));
+    var en = str_(req.lang) === 'en', out_ = function(o) { return json_(en ? enReply_(o) : o); };
+    if (action === 'login') return out_(login_(req));
 
     var user = auth_(req.token);
-    if (!user) return json_(fail_('AUTH', 'Session khatam — dobara login karo'));
+    if (!user) return out_(fail_('AUTH', 'Session khatam — dobara login karo'));
 
     var handler = routes_()[action];
     if (!handler) return json_(fail_('NO_ACTION', 'Unknown action: ' + action));
-    return json_(handler(req, user));
+    return out_(handler(req, user));
   } catch (err) {
-    return json_(fail_('SERVER', String(err && err.message || err)));
+    return json_(str_(req.lang) === 'en' ? enReply_(fail_('SERVER', String(err && err.message || err))) : fail_('SERVER', String(err && err.message || err)));
   }
 }
 
