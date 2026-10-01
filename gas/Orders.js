@@ -180,7 +180,7 @@ function ordersActive_(req, user) {
 }
 
 function ordersRefresh_(req, user) {
-  cacheDelBig_('loading_agg'); cacheDelBig_('hist_agg'); cacheDelBig_('hist_agg2'); cacheDelBig_('app_agg');
+  cacheDelBig_('loading_agg'); cacheDelBig_('hist_agg'); cacheDelBig_('hist_agg2'); cacheDelBig_('app_agg'); cacheDelBig_('bulletin_sam');
   var L = loadingAgg_();
   return { ok: true, srns: Object.keys(L.loadedSrn).length };
 }

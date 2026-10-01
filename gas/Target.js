@@ -1,11 +1,48 @@
 // Target.js — hourly target for a line from today's attendance and the SRN's SAM (standard allowed minutes per piece).
 //   target / hour @100% = productive manpower × 60 / SAM ;  @eff = × eff% ;  day = hourly × working hours
-// SAM is stored once per SRN in MASTERS (type SAM, key = SRN, value = minutes) and reused by everyone.
+// SAM comes from the Making Bulletin (COST spreadsheet, 'Making Bulletin Data'); an SRN without a bulletin can still get
+// one typed in the app (MASTERS type SAM, key = SRN, value = minutes).
 
 var TARGET_NON_PRODUCTIVE = ['Supervisor', 'Incharge', 'Data Collector'];
 
+// 'Making Bulletin Data': A Timestamp · C SRN · F Operation Name · G Manpower Type · K operation time in sec (R&D / making)
+// · N operation time in sec (production, used when filled). SAM (min per piece) = all operations' seconds / 60.
+// A bulletin entered again (full re-entry or a corrected operation) must not count twice: per SRN and operation
+// (name + manpower type) only the latest entry is kept. Cached 10 min; "Get new data" / Refresh clears it.
+function bulletinSam_() {
+  var hit = cacheGetBig_('bulletin_sam');
+  if (hit) return hit;
+  var out = {};
+  try {
+    var v = Sheets.Spreadsheets.Values.get(srcId_('COST'), "'Making Bulletin Data'!A2:N", { valueRenderOption: 'UNFORMATTED_VALUE' }).values || [];
+    var ts = function(x) { var n = Number(x); if (!isNaN(n) && n > 0) return n; var d = new Date(x); return isNaN(d.getTime()) ? 0 : d.getTime() / 86400000 + 25569; };
+    var by = {};
+    v.forEach(function(r) {
+      var srn = str_(r[2]).toUpperCase(), sec = num_(r[13]) || num_(r[10]);
+      if (!/^SRN/.test(srn) || !(sec > 0)) return;
+      var op = (str_(r[5]) + '|' + str_(r[6])).toLowerCase().replace(/\s+/g, ' '), t = ts(r[0]);
+      var o = (by[srn] = by[srn] || {})[op] = by[srn][op] || { t: -1, sec: 0 };
+      if (t > o.t) { o.t = t; o.sec = sec; } else if (t === o.t) o.sec += sec;   // same operation twice in one entry: both count
+    });
+    Object.keys(by).forEach(function(srn) {
+      var s = 0; Object.keys(by[srn]).forEach(function(op) { s += by[srn][op].sec; });
+      if (s > 0) out[srn] = Math.round(s / 60 * 100) / 100;
+    });
+  } catch (e) { Logger.log('bulletinSam_: ' + e); }
+  cachePutBig_('bulletin_sam', out, 600);
+  return out;
+}
+// every SRN's SAM: typed in the app, overridden by the Making Bulletin
+function samMap_() {
+  var sam = {};
+  mastersRows_().forEach(function(r) { if (str_(r.type) === 'SAM' && isTrue_(r.active) && num_(r.value) > 0) sam[str_(r.key).toUpperCase()] = num_(r.value); });
+  var b = bulletinSam_(); Object.keys(b).forEach(function(k) { sam[k] = b[k]; });
+  return sam;
+}
 function samOf_(srn) {
-  var hit = mastersRows_().filter(function(r) { return str_(r.type) === 'SAM' && str_(r.key).toUpperCase() === str_(srn).toUpperCase() && isTrue_(r.active); })[0];
+  var k = str_(srn).toUpperCase(), b = bulletinSam_()[k];
+  if (b) return { sam: b, by: 'Making Bulletin' };
+  var hit = mastersRows_().filter(function(r) { return str_(r.type) === 'SAM' && str_(r.key).toUpperCase() === k && isTrue_(r.active); })[0];
   return hit ? { sam: num_(hit.value), by: str_(hit.extra) } : null;
 }
 

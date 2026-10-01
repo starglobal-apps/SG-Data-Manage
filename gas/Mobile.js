@@ -75,8 +75,7 @@ function mAtt_(req, user) {
     ev.forEach(function(e) { wa.eventList.push({ dept: d.dept, role: e.role, event: e.event, count: e.count, time: e.time }); });
     wa.mpNow[d.dept] = mpNow;
   });
-  var sam = {};
-  mastersRows_().forEach(function(r) { if (str_(r.type) === 'SAM' && isTrue_(r.active) && num_(r.value) > 0) sam[str_(r.key).toUpperCase()] = num_(r.value); });
+  var sam = samMap_();
   return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: sam };
 }
 
