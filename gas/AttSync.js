@@ -12,9 +12,10 @@ function attSync_(date, factory, dept, shift, user, isUpdate) {
   try {
     var attAll = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
     var att = attAll.filter(function(r) { return str_(r.dept) === dept && str_(r.shift) === shift; });
-    if (!att.length && isUpdate) return { ok: true, skipped: true };   // no app attendance: an update alone never empties the sheet
     var events = shift === 'Final' ? readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; }) : [];
-    var eff = att.length ? effectiveAttendanceDetail_(date, factory, dept, shift, attAll, events) : [];
+    var hasEv = events.some(function(e) { return str_(e.dept) === dept; });
+    if (!att.length && !hasEv && isUpdate) return { ok: true, skipped: true };   // nothing in the app: an update alone never empties the sheet
+    var eff = att.length || hasEv ? effectiveAttendanceDetail_(date, factory, dept, shift, attAll, events) : [];
     var nm = attNames_(attAll, dept, shift), srnRow = att.filter(function(r) { return str_(r.srn); })[0];
     var fin = finalRow_({ date: date, factory: factory, dept: dept, type: 'ATT', shift: shift },
                         { rows: eff, supervisor: nm.supervisor, incharge: nm.incharge, srn: srnRow ? str_(srnRow.srn) : '' });

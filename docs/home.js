@@ -122,8 +122,8 @@
       .catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
   function evText(x) {
-    var lab = { HALF_DAY: 'half day', LEFT_AT: 'beech me gaya', LATE_JOIN: 'late aaya', ABSENT: 'absent', EXTRA: 'extra aaya', TRANSFER_OUT: 'transfer gaya', TRANSFER_IN: 'transfer se aaya', LINE_CLOSED: 'line band' };
-    return (x.events || []).map(function (e) { return e.event === 'LINE_CLOSED' ? 'Line band ' + e.time : e.count + ' ' + e.role + ' ' + (lab[e.event] || e.event) + (e.time ? ' ' + e.time : ''); }).join(', ');
+    var lab = { HALF_DAY: 'half day', LEFT_AT: 'left early', LATE_JOIN: 'came late', ABSENT: 'absent', EXTRA: 'extra', TRANSFER_OUT: 'transferred out', TRANSFER_IN: 'transferred in', LINE_CLOSED: 'line closed' };
+    return (x.events || []).filter(function (e) { return e.event !== 'TRANSFER_OUT' && e.event !== 'TRANSFER_IN'; }).map(function (e) { return e.event === 'LINE_CLOSED' ? 'Line closed ' + e.time : e.count + ' ' + e.role + ' ' + (lab[e.event] || e.event) + (e.time ? ' ' + e.time : ''); }).join(', ');
   }
   function renderAttList() {
     var done = AL.items.filter(function (x) { return x.today; }).length, n = AL.items.length;
@@ -159,10 +159,11 @@
       .catch(function (e) { delete AL.busy[dept]; renderAttList(); S.toast(S.shortLine(dept) + ': ' + e.message + ' — Badlo dabao', 'bad', 7000); });
   }
   // ---------- phone Attendance tab: date + line code on top; below only the lines filled for that date ----------
-  var PA = { items: [], lines: [], wa: null };
+  var PA = { items: [], lines: [], wa: null, incoming: [], allLines: [] };
   function loadPhoneAtt() {
     S.api('m.att', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
-      PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {};
+      PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
+      trBadge(PA.incoming.length);
       renderPhoneAtt();
     }).catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-retry="1" style="margin-top:10px">Try again</button></div>'; });
   }
@@ -173,23 +174,87 @@
       '<div class="field"><label>Line code</label><select id="pa-line"><option value="">— select line —</option>' +
         PA.lines.map(function (l) { return '<option value="' + esc(l.dept) + '">' + esc(S.shortLine(l.dept)) + (l.filled ? '  ✓' : '') + '</option>'; }).join('') + '</select></div></div>' +
       '<div class="hint">' + (past ? '<b style="color:var(--warn)">' + esc(S.fmtDay(state.date)) + ' attendance</b> · <button class="lnk" data-day="' + today + '">back to today</button>' : 'Select line → fill attendance → Save. Filled lines show below.') + '</div></div>';
+    PA.incoming.forEach(function (t) {
+      html += '<div class="card tr-in"><div class="tr-h">Transfer request</div><div class="tr-b"><b>' + esc(S.shortLine(t.from)) + ' → ' + esc(S.shortLine(t.to)) + '</b> · ' + t.total + (t.total > 1 ? ' people' : ' person') + '</div>' +
+        '<div class="m">' + t.items.map(function (i) { return i.count + ' ' + esc(i.role); }).join(', ') + '</div>' +
+        '<div class="m">From <b>' + hourLabel(t.hour) + '</b>' + (t.date !== S.todayStr() ? ' · ' + esc(S.fmtDay(t.date)) : '') + ' · by ' + esc(t.by) + '</div>' +
+        '<div class="tr-acts"><button class="btn small danger" data-trno="' + esc(t.id) + '">Reject</button><button class="btn small ok" data-trok="' + esc(t.id) + '">Accept</button></div></div>';
+    });
     if (!PA.items.length) html += '<div class="empty">' + (past ? 'No attendance on this date' : 'No attendance filled today yet') + '</div>';
     PA.items.forEach(function (x) {
       var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent', ev = evText(x);
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, x.count) : null;
       html += '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + (x.fromSheet ? ' <em class="ot">from sheet</em>' : '') + '</div>' +
         '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' people' + (!x.fromSheet && x.mpNow !== x.count ? ' · now <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot : '') + (x.night ? ' · Night ' + x.night : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
-        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (st === 'Synced' ? '<div class="m" style="color:var(--ok)">In main sheet ✓</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
+        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + trText(x) + (st === 'Synced' ? '<div class="m" style="color:var(--ok)">In main sheet ✓</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
         (lock ? '<div class="m">' + (st === 'Submitted' ? 'In admin review' : st === 'Sent' ? 'In main sheet ✓' : esc(st)) + '</div>' : '') +
         (x.fromSheet && !lock ? '<div class="m">Filled in main sheet — Update / Change writes to the main sheet</div>' : '') + '</div>' +
         (lock ? '' : '<div class="pa-acts">' +
           '<button class="btn small ghost" data-chg="' + esc(x.dept) + '">Change attendance<small>line, SRN, all</small></button>' +
           '<button class="btn small ghost" data-ot="' + esc(x.dept) + '">OT / Night<small>' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'Night ' + x.night : '') : 'fill') + '</small></button>' +
-          '<button class="btn small ghost upd" data-upd="' + esc(x.dept) + '">Update attendance<small>half day / absent</small></button></div>') + '</div>';
+          '<button class="btn small ghost upd" data-upd="' + esc(x.dept) + '">Update attendance<small>half day / absent</small></button>' +
+          '<button class="btn small ghost trb" data-tr="' + esc(x.dept) + '">Transfer manpower<small>to another line</small></button></div>') + '</div>';
     });
     if (PA.items.length) html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send attendance to group · ' + PA.items.length + (PA.items.length > 1 ? ' lines' : ' line') + '</button></div>';
     box().innerHTML = html;
   }
+  // ---------- "Transfer manpower": people of a line go to another line from a whole hour; that line's recorder accepts ----------
+  function hourLabel(h) { return (h % 12 || 12) + (h >= 12 ? ' PM' : ' AM'); }
+  function trBadge(n) { var b = $('#nav button[data-tab="matt"]'); if (!b) return; var dot = b.querySelector('.nav-dot'); if (!n) { if (dot) dot.remove(); return; } if (!dot) { dot = document.createElement('i'); dot.className = 'nav-dot'; b.appendChild(dot); } dot.textContent = n; }
+  function trText(x) {
+    return (x.transfers || []).map(function (t) {
+      var out = t.from === x.dept, who = t.items.map(function (i) { return i.count + ' ' + i.role; }).join(', ');
+      var st = t.status === 'Pending' ? 'waiting for ' + S.shortLine(t.to) + ' to accept' : t.status === 'Rejected' ? 'rejected by ' + S.shortLine(t.to) : 'accepted';
+      return '<div class="m tr-st ' + (t.status === 'Rejected' ? 'bad' : t.status === 'Pending' ? 'wait' : 'ok') + '">' + (out ? '→ ' + esc(S.shortLine(t.to)) : '← ' + esc(S.shortLine(t.from))) + ' · ' + esc(who) + ' · from ' + hourLabel(t.hour) + (out ? ' · ' + esc(st) : '') + '</div>';
+    }).join('');
+  }
+  // hours on the old / new line for a transfer at hour h (9–6 shift, lunch 1–2)
+  function trSplit(h) { var b = Math.max(0, Math.min(8, h - 9 - (h > 13 ? 1 : 0))); return { before: b, after: 8 - b }; }
+  function trSheet(x) {
+    if (!x) return;
+    var roles = Object.keys(x.roles || {}).filter(function (r) { return x.roles[r] > 0; });
+    var lines = PA.allLines.filter(function (l) { return l.dept !== x.dept; });
+    var now = new Date().getHours(), def = state.date === S.todayStr() ? Math.max(9, Math.min(17, now)) : 9;
+    var hours = [9, 10, 11, 12, 13, 14, 15, 16, 17];
+    var html = '<label>Transfer to line</label><select id="tr-to"><option value="">— select line —</option>' + lines.map(function (l) { return '<option value="' + esc(l.dept) + '">' + esc(S.shortLine(l.dept)) + '</option>'; }).join('') + '</select>' +
+      '<label>Transfer time</label><select id="tr-hour">' + hours.map(function (h) { return '<option value="' + h + '"' + (h === def ? ' selected' : '') + '>' + hourLabel(h) + '</option>'; }).join('') + '</select>' +
+      '<div class="hint" id="tr-split" style="margin:4px 0 10px"></div>' +
+      '<label>How many people</label><div class="list tr-roles">' + roles.map(function (r) {
+        return '<div class="item"><div><div class="name">' + esc(r) + '</div><div class="sub">' + x.roles[r] + ' on line</div></div><input type="number" inputmode="numeric" min="0" max="' + x.roles[r] + '" placeholder="0" data-trrole="' + esc(r) + '" class="tr-n"></div>';
+      }).join('') + '</div>' +
+      '<p class="hint" style="margin:8px 0">The recorder of the other line gets a request and must accept it.</p>' +
+      '<button class="btn primary big" id="tr-save">Send transfer</button>';
+    S.sheet.open(S.shortLine(x.dept) + ' · transfer manpower', html);
+    var c = $('#sheet-content');
+    function split() { var s = trSplit(Number($('#tr-hour').value)); $('#tr-split').innerHTML = 'They work <b>' + s.before + ' hrs</b> on ' + esc(S.shortLine(x.dept)) + ' and <b>' + s.after + ' hrs</b> on the new line'; }
+    split(); c.onchange = function (e) { if (e.target.id === 'tr-hour') split(); };
+    c.onclick = function (e) {
+      if (!e.target.closest('#tr-save')) return;
+      var to = $('#tr-to').value, hour = Number($('#tr-hour').value), items = [], bad = '';
+      S.$$('.tr-n', c).forEach(function (i) { var v = String(i.value).trim(), n = Number(v || 0); if (v && (!/^\d+$/.test(v))) bad = 'How many — enter a whole number'; else if (n > (x.roles[i.dataset.trrole] || 0)) bad = 'Only ' + x.roles[i.dataset.trrole] + ' ' + i.dataset.trrole + ' on this line'; else if (n > 0) items.push({ role: i.dataset.trrole, count: n }); });
+      if (!to) { S.toast('Select the line to transfer to', 'bad'); return; }
+      if (bad) { S.toast(bad, 'bad'); return; }
+      if (!items.length) { S.toast('Enter how many people to transfer', 'bad'); return; }
+      var total = items.reduce(function (t, i) { return t + i.count; }, 0);
+      S.ask('Transfer ' + total + (total > 1 ? ' people' : ' person') + ' from ' + S.shortLine(x.dept) + ' to ' + S.shortLine(to) + ' from ' + hourLabel(hour) + '?', { ok: 'Send transfer', cancel: 'Cancel' }).then(function (ok) {
+        if (!ok) return;
+        S.api('m.trCreate', { date: state.date, factory: state.factory, from_dept: x.dept, to_dept: to, hour: hour, items: items }, { busy: true })
+          .then(function (r) { S.sheet.close(); if (r.sheetError) S.toast(r.sheetError, 'bad', 9000); else S.toast('Transfer sent — waiting for ' + S.shortLine(to) + ' to accept', 'ok', 6000); loadAttList(); })
+          .catch(function (er) { S.toast(er.message, 'bad', 7000); });
+      });
+    };
+  }
+  function trDecide(id, action) {
+    var t = PA.incoming.filter(function (i) { return i.id === id; })[0]; if (!t) return;
+    var msg = action === 'accept' ? 'Accept ' + t.total + (t.total > 1 ? ' people' : ' person') + ' from ' + S.shortLine(t.from) + ' on ' + S.shortLine(t.to) + ' from ' + hourLabel(t.hour) + '?' : 'Reject this transfer? The people stay on ' + S.shortLine(t.from) + '.';
+    S.ask(msg, { ok: action === 'accept' ? 'Accept' : 'Reject', cancel: 'Cancel', danger: action !== 'accept' }).then(function (ok) {
+      if (!ok) return;
+      S.api('m.trDecide', { id: id, decision: action }, { busy: true })
+        .then(function (r) { if (r.sheetError) S.toast(r.sheetError, 'bad', 9000); else S.toast(action === 'accept' ? 'Accepted · added to ' + S.shortLine(t.to) + ' from ' + hourLabel(t.hour) : 'Transfer rejected', 'ok', 6000); loadAttList(); })
+        .catch(function (er) { S.toast(er.message, 'bad', 7000); loadAttList(); });
+    });
+  }
+
   // "Update attendance": mark absent / half day for a manpower type of the line (half day asks the hours worked)
   S.phoneLineFilled = function (dept) { return PA.items.some(function (i) { return i.dept === dept && !i.fromSheet; }); };
   var EV_NAME = { ABSENT: 'absent', HALF_DAY: 'half day', LEFT_AT: 'left early', LATE_JOIN: 'came late', EXTRA: 'extra', TRANSFER_OUT: 'transferred out', TRANSFER_IN: 'transferred in', LINE_CLOSED: 'line closed' };
@@ -254,6 +319,9 @@
     if (b.dataset.ot) { var xo = PA.items.filter(function (i) { return i.dept === b.dataset.ot; })[0]; S.openAttendance(xo && !xo.ot && xo.night ? 'Night' : 'OT', b.dataset.ot); return; }
     if (b.dataset.chg) { S.openAttendance('Final', b.dataset.chg, { change: true }); return; }
     if (b.dataset.upd) { updSheet(PA.items.filter(function (i) { return i.dept === b.dataset.upd; })[0]); return; }
+    if (b.dataset.tr) { trSheet(PA.items.filter(function (i) { return i.dept === b.dataset.tr; })[0]); return; }
+    if (b.dataset.trok) { trDecide(b.dataset.trok, 'accept'); return; }
+    if (b.dataset.trno) { trDecide(b.dataset.trno, 'reject'); return; }
     if (b.dataset.day) { S.setDate(b.dataset.day); return; }
     if (b.dataset.mp) {
       var all = PA.items.filter(function (x) { return !x.fromSheet; }).map(function (x) { return { dept: x.dept }; });

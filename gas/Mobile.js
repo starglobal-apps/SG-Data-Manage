@@ -76,7 +76,12 @@ function mAtt_(req, user) {
     wa.mpNow[d.dept] = mpNow;
   });
   var sam = samMap_();
-  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: sam };
+  // transfers: requests waiting for my lines, each line's transfers of the date, every line of the factory to transfer to
+  var tr = mTransfers_(date, factory, user, depts);
+  items.forEach(function(x) { x.transfers = tr.byLine[x.dept] || []; });
+  var allLines = mastersRows_().filter(function(r) { return str_(r.type) === 'DEPT' && str_(r.factory) === factory && isTrue_(r.active) && CFG.ACTIVE_CATS.indexOf(str_(r.extra)) >= 0; })
+    .map(function(r) { return { dept: str_(r.key), cat: str_(r.extra) }; });
+  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: sam, incoming: tr.incoming, allLines: allLines };
 }
 
 // Phone Output tab: every line / shift (from PHONE_FROM up to today) that has attendance — in the app or typed in the
@@ -199,6 +204,33 @@ function mPms_(req, user) {
   return { ok: true, rows: rows, unloadError: unl.__error || '' };
 }
 
+// A line's Final attendance of a date as the app has it: { roles: {role: count}, add: [ATT_DAILY rows], evs: [events], none }.
+// When only the main sheet has it, the rows to copy into the app are returned in add / evs (same people and hours;
+// shorter-hours sheet rows as half day, 0-hour rows as absent) — the caller appends them inside its lock.
+function appAttOrCopy_(date, factory, dept, by, stamp) {
+  var app = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === 'Final'; });
+  var roles = {}, add = [], evs = [];
+  if (app.length) { app.forEach(function(r) { roles[str_(r.role)] = (roles[str_(r.role)] || 0) + num_(r.count); }); return { roles: roles, add: add, evs: evs }; }
+  var sa = sheetAttAgg_()[date + '|' + dept + '|Final'];
+  if (!sa || !sa.rows) return { roles: roles, add: add, evs: evs, none: true };
+  var byRole = {};
+  Object.keys(sa.rows).forEach(function(k) { var p = k.split('|'), o = byRole[p[0]] = byRole[p[0]] || { count: 0, hours: 0, parts: [] }; o.count += sa.rows[k]; o.hours = Math.max(o.hours, num_(p[1])); o.parts.push({ h: num_(p[1]), n: sa.rows[k] }); });
+  var prev = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === 'Final' && str_(r.date) < date; })
+    .sort(function(a, b) { return str_(b.date).localeCompare(str_(a.date)); })[0];
+  var staff = lineStaffOf_(dept);
+  Object.keys(byRole).forEach(function(r) {
+    var o = byRole[r]; roles[r] = o.count;
+    add.push({ id: uuid_(), date: date, factory: factory, dept: dept, shift: 'Final', role: r, hours: o.hours || shiftHours_('Final'), count: o.count,
+               entered_by: by, entered_at: stamp, srn: prev ? str_(prev.srn) : '', supervisor: (prev && str_(prev.supervisor)) || staff.supervisor,
+               incharge: (prev && str_(prev.incharge)) || staff.incharge, qc_names: '', keep_status: '1' });
+    o.parts.forEach(function(p) {
+      if (p.h < o.hours) evs.push({ id: uuid_(), date: date, factory: factory, dept: dept, role: r, event: p.h > 0 ? 'HALF_DAY' : 'ABSENT', count: p.n, time: '',
+                                    eff_hours: p.h, note: 'sheet', entered_by: by, entered_at: stamp });
+    });
+  });
+  return { roles: roles, add: add, evs: evs };
+}
+
 // ---------- phone "Update attendance": half day / absent for one manpower type of a line ----------
 // { date, factory, dept, role, halfDay, hours, absent }
 // Attendance typed in the main sheet is first copied into the app (same people and hours; shorter-hours sheet rows kept as
@@ -218,24 +250,9 @@ function mAttUpd_(req, user) {
              eff_hours: hours, note: note, entered_by: by, entered_at: stamp };
   };
   var res = withLock_(function() {
-    var app = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === 'Final'; });
-    var roles = {}, add = [], evs = [];
-    if (app.length) app.forEach(function(r) { roles[str_(r.role)] = (roles[str_(r.role)] || 0) + num_(r.count); });
-    else {
-      if (!sa || !sa.rows) return fail_('NF', 'Is din is line ki attendance nahi mili');
-      var byRole = {};
-      Object.keys(sa.rows).forEach(function(k) { var p = k.split('|'), o = byRole[p[0]] = byRole[p[0]] || { count: 0, hours: 0, parts: [] }; o.count += sa.rows[k]; o.hours = Math.max(o.hours, num_(p[1])); o.parts.push({ h: num_(p[1]), n: sa.rows[k] }); });
-      var prev = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === 'Final' && str_(r.date) < date; })
-        .sort(function(a, b) { return str_(b.date).localeCompare(str_(a.date)); })[0];
-      var staff = lineStaffOf_(dept);
-      Object.keys(byRole).forEach(function(r) {
-        var o = byRole[r]; roles[r] = o.count;
-        add.push({ id: uuid_(), date: date, factory: factory, dept: dept, shift: 'Final', role: r, hours: o.hours || shiftHours_('Final'), count: o.count,
-                   entered_by: by, entered_at: stamp, srn: prev ? str_(prev.srn) : '', supervisor: (prev && str_(prev.supervisor)) || staff.supervisor,
-                   incharge: (prev && str_(prev.incharge)) || staff.incharge, qc_names: '', keep_status: '1' });   // an update: HR status stays
-        o.parts.forEach(function(p) { if (p.h < o.hours) evs.push(ev(r, p.h > 0 ? 'HALF_DAY' : 'ABSENT', p.n, p.h, 'sheet')); });
-      });
-    }
+    var base = appAttOrCopy_(date, factory, dept, by, stamp);
+    if (base.none) return fail_('NF', 'Is din is line ki attendance nahi mili');
+    var roles = base.roles, add = base.add, evs = base.evs;
     if (!roles[role]) return fail_('VAL', role + ' is line me nahi hai');
     if (hd + ab > roles[role]) return fail_('VAL', role + ' sirf ' + roles[role] + ' hain (half day + absent ' + (hd + ab) + ')');
     if (hd) evs.push(ev(role, 'HALF_DAY', hd, hrs, 'phone'));
@@ -249,4 +266,105 @@ function mAttUpd_(req, user) {
   // straight into the main attendance sheet, HR status kept
   var s = attSync_(date, factory, dept, 'Final', user, true);
   return { ok: true, copied: res.copied, inSheet: !!s.ok, sheetError: s.ok ? '' : s.message };
+}
+
+// ---------- phone "Transfer manpower": people of one line go to another line from a whole hour ----------
+// The day shift is 9 AM–6 PM with lunch 1–2 PM (8 working hours). Hours are whole hours only (9, 10, 11 …):
+// transfer at 11  ->  2 hours on the old line, 6 hours on the new line (shown as separate rows like a half day).
+var TR_LUNCH = 13;
+function trHoursBefore_(hour) { var h = hour - 9 - (hour > TR_LUNCH ? 1 : 0); return Math.max(0, Math.min(shiftHours_('Final'), h)); }
+function trTime_(hour) { return ('0' + hour).slice(-2) + ':00'; }
+function trHourOf_(time) { var m = str_(time).match(/^(\d{1,2})/); return m ? +m[1] : 9; }
+
+// { date, factory, from_dept, to_dept, hour, items: [{role, count}] } -> request for the recorder of to_dept (Pending)
+function mTrCreate_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), from = str_(req.from_dept), to = str_(req.to_dept), hour = num_(req.hour);
+  var items = (Array.isArray(req.items) ? req.items : []).map(function(x) { return { role: str_(x.role), count: num_(x.count) }; }).filter(function(x) { return x.role && x.count > 0; });
+  if (!isDateStr_(date)) return fail_('DATE', 'Wrong date');
+  if (!from || !to) return fail_('VAL', 'Select the line to transfer to');
+  if (from === to) return fail_('VAL', 'Select a different line');
+  if (!(hour >= 9 && hour <= 17) || Math.floor(hour) !== hour) return fail_('VAL', 'Select the transfer time (hour)');
+  if (!items.length) return fail_('VAL', 'Enter how many people of at least one manpower type');
+  if (items.some(function(x) { return Math.floor(x.count) !== x.count; })) return fail_('VAL', 'How many — enter a whole number');
+  if (!canWrite_(user, factory, from)) return fail_('PERM', 'No permission for this line');
+  var known = mastersRows_().some(function(r) { return str_(r.type) === 'DEPT' && str_(r.key) === to && str_(r.factory) === factory && isTrue_(r.active); });
+  if (!known) return fail_('VAL', 'Line not found: ' + to);
+  var stamp = nowStr_(), by = userName_(user), id = uuid_(), time = trTime_(hour), before = trHoursBefore_(hour);
+  var res = withLock_(function() {
+    var base = appAttOrCopy_(date, factory, from, by, stamp);
+    if (base.none) return fail_('NF', 'No attendance on this line for this date');
+    // people of each type still on the line (absent / left / already transferred out are not available)
+    var left = {}; Object.keys(base.roles).forEach(function(r) { left[r] = base.roles[r]; });
+    readDaily_(CFG.TABS.MANPOWER_EVENTS).concat(base.evs).forEach(function(e) {
+      if (str_(e.date) !== date || str_(e.factory) !== factory || str_(e.dept) !== from) return;
+      if (['ABSENT', 'LEFT_AT', 'TRANSFER_OUT'].indexOf(str_(e.event)) >= 0 && left[str_(e.role)] !== undefined) left[str_(e.role)] -= num_(e.count);
+    });
+    for (var i = 0; i < items.length; i++) {
+      var have = Math.max(0, left[items[i].role] || 0);
+      if (items[i].count > have) return fail_('VAL', 'Only ' + have + ' ' + items[i].role + ' available on this line');
+    }
+    if (base.add.length) appendRows_(CFG.TABS.ATT_DAILY, base.add);
+    var total = items.reduce(function(t, x) { return t + x.count; }, 0);
+    appendRows_(CFG.TABS.TRANSFERS, [{ id: id, date: date, factory: factory, from_dept: from, to_dept: to, role: items.length === 1 ? items[0].role : '', count: total, time: time, srn: '',
+      status: 'Pending', note: 'phone', by: by, at: stamp, decided_by: '', decided_at: '', to_user: '', items: JSON.stringify(items), allocations: '' }]);
+    appendRows_(CFG.TABS.MANPOWER_EVENTS, base.evs.concat(items.map(function(x) {
+      return { id: uuid_(), date: date, factory: factory, dept: from, role: x.role, event: 'TRANSFER_OUT', count: x.count, time: time,
+               eff_hours: before, note: 'transfer:' + id + ' → ' + to, entered_by: by, entered_at: stamp };
+    })));
+    return { ok: true, total: total };
+  });
+  if (!res.ok) return res;
+  audit_(user, 'transfer.create', id, { from: from, to: to, hour: hour, items: items });
+  var s = attSync_(date, factory, from, 'Final', user, true);
+  return { ok: true, id: id, total: res.total, sheetError: s.ok ? '' : s.message };
+}
+
+// { id, decision: 'accept' | 'reject' } by the recorder of the receiving line. Accept: the people join that line from the
+// transfer hour (the rest of the shift). Reject: they stay on the old line all day.
+function mTrDecide_(req, user) {
+  var id = str_(req.id), action = str_(req.decision);
+  if (action !== 'accept' && action !== 'reject') return fail_('VAL', 'Accept or reject');
+  var t = readDaily_(CFG.TABS.TRANSFERS).filter(function(r) { return str_(r.id) === id; })[0];
+  if (!t || !str_(t.to_dept)) return fail_('NF', 'Transfer not found');
+  if (str_(t.status) !== 'Pending') return fail_('VAL', 'This transfer is already ' + str_(t.status));
+  var date = str_(t.date), factory = str_(t.factory), from = str_(t.from_dept), to = str_(t.to_dept);
+  if (!canWrite_(user, factory, to) && !isManager_(user)) return fail_('PERM', 'This transfer is not for your line');
+  var items = parseJsonArr_(t.items), stamp = nowStr_(), by = userName_(user), hour = trHourOf_(t.time);
+  var after = shiftHours_('Final') - trHoursBefore_(hour);
+  withLock_(function() {
+    if (action === 'accept') {
+      var base = appAttOrCopy_(date, factory, to, by, stamp);   // receiving line's attendance typed in the sheet comes into the app first
+      if (base.add.length) appendRows_(CFG.TABS.ATT_DAILY, base.add);
+      appendRows_(CFG.TABS.MANPOWER_EVENTS, base.evs.concat(items.map(function(x) {
+        return { id: uuid_(), date: date, factory: factory, dept: to, role: str_(x.role), event: 'TRANSFER_IN', count: num_(x.count), time: str_(t.time),
+                 eff_hours: after, note: 'transfer:' + id + ' ← ' + from, entered_by: by, entered_at: stamp };
+      })));
+    } else {
+      var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
+      deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
+    }
+    var sh = tab_(CFG.TABS.TRANSFERS, true), head = CFG.HEADERS.TRANSFERS;
+    sh.getRange(t._row, head.indexOf('status') + 1).setValue(action === 'accept' ? 'Accepted' : 'Rejected');
+    sh.getRange(t._row, head.indexOf('decided_by') + 1).setValue(by);
+    sh.getRange(t._row, head.indexOf('decided_at') + 1).setValue(stamp);
+  });
+  invalidateDaily_(CFG.TABS.TRANSFERS);
+  audit_(user, 'transfer.' + action, id, { to: to });
+  var s = attSync_(date, factory, action === 'accept' ? to : from, 'Final', user, true);
+  return { ok: true, sheetError: s.ok ? '' : s.message };
+}
+
+// transfers for the phone Attendance tab: requests waiting for my lines (any recent day) and my lines' transfers of the date
+function mTransfers_(date, factory, user, depts) {
+  var mine = {}; depts.forEach(function(d) { mine[d.dept] = 1; });
+  var since = fmtDate_(new Date(new Date().getTime() - 7 * 86400000)), incoming = [], out = {};
+  readDaily_(CFG.TABS.TRANSFERS).forEach(function(r) {
+    if (str_(r.factory) !== factory || !str_(r.to_dept)) return;
+    var x = { id: str_(r.id), date: str_(r.date), from: str_(r.from_dept), to: str_(r.to_dept), time: str_(r.time), hour: trHourOf_(r.time),
+              items: parseJsonArr_(r.items), total: num_(r.count), status: str_(r.status), by: str_(r.by) };
+    if (x.status === 'Pending' && mine[x.to] && x.date >= since) incoming.push(x);
+    if (x.date === date && mine[x.from]) (out[x.from] = out[x.from] || []).push(x);
+    if (x.date === date && mine[x.to] && x.status === 'Accepted') (out[x.to] = out[x.to] || []).push(x);
+  });
+  return { incoming: incoming, byLine: out };
 }

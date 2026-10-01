@@ -230,7 +230,7 @@ function effectiveAttendanceDetail_(date, factory, dept, shift, attRows, events)
     o.count += n; if (why && n > 0) o.why[why] = (o.why[why] || 0) + n;
   };
   rows.forEach(function(r) { put(str_(r.role), num_(r.hours), num_(r.count), ''); });
-  var absent = {};
+  var absent = {}, gone = {};
   if (shift === 'Final') {
     var evs = events.filter(function(e) { return str_(e.date) === date && str_(e.factory) === factory && str_(e.dept) === dept; });
     evs.forEach(function(e) {
@@ -238,7 +238,7 @@ function effectiveAttendanceDetail_(date, factory, dept, shift, attRows, events)
       var def = CFG.MP_EVENTS.filter(function(d) { return d.key === ev; })[0] || {};
       if (def.close) return;   // handled below
       var why = ev === 'HALF_DAY' ? 'Half day' : ev === 'LEFT_AT' ? 'Beech me gaya ' + t : ev === 'LATE_JOIN' ? 'Late aaya ' + t : ev === 'EXTRA' ? 'Extra aaya'
-              : ev === 'TRANSFER_IN' ? 'Transfer se aaya ' + t : ev === 'TRANSFER_OUT' ? 'Transfer gaya ' + t : (def.label || ev);
+              : ev === 'TRANSFER_IN' ? 'Transfer in ' + t + trOther_(e) : ev === 'TRANSFER_OUT' ? 'Transfer out ' + t + trOther_(e) : (def.label || ev);
       if (def.add) { put(role, eff, n, why); return; }
       // take n people out of the fullest bucket(s) of that role and re-add them at eff hours
       var keys = Object.keys(out).filter(function(k) { return out[k].role === role && out[k].count > 0; })
@@ -247,6 +247,7 @@ function effectiveAttendanceDetail_(date, factory, dept, shift, attRows, events)
       keys.forEach(function(k) { if (left <= 0) return; var take = Math.min(left, out[k].count); out[k].count -= take; left -= take; });
       var moved = n - left;
       if (eff > 0) put(role, eff, moved, why);
+      else if (moved > 0 && ev === 'TRANSFER_OUT') gone[role + '|' + why] = (gone[role + '|' + why] || 0) + moved;
       else if (moved > 0) absent[role] = (absent[role] || 0) + moved;
     });
     // line closed early: nobody works past that time
@@ -268,10 +269,17 @@ function effectiveAttendanceDetail_(date, factory, dept, shift, attRows, events)
     var main = list.filter(function(r) { return r.role === role; }).sort(function(a, b) { return b.hours - a.hours || b.count - a.count; })[0];
     if (main) main.why['Absent'] = (main.why['Absent'] || 0) + absent[role];
   });
+  Object.keys(gone).forEach(function(k) {   // transferred out for the whole day: note on that role's main row
+    var p = k.split('|'), main = list.filter(function(r) { return r.role === p[0]; }).sort(function(a, b) { return b.hours - a.hours || b.count - a.count; })[0];
+    if (main) main.why[p.slice(1).join('|')] = (main.why[p.slice(1).join('|')] || 0) + gone[k];
+  });
   return list.map(function(r) {
-    return { role: r.role, hours: r.hours, count: r.count, remark: Object.keys(r.why).map(function(w) { return w + ' ' + r.why[w]; }).join(', ') };
+    return { role: r.role, hours: r.hours, count: r.count, remark: Object.keys(r.why).map(function(w) { return /^Transfer (in|out) /.test(w) ? w.replace(/^Transfer (in|out)/, r.why[w] + ' transferred $1') : w + ' ' + r.why[w]; }).join(', ') };
   });
 }
+
+// " → Line X" / " ← Line Y" from a transfer event's note ('transfer:<id> → <line>')
+function trOther_(e) { var m = str_(e.note).match(/([→←])\s*(.+)$/); return m ? (m[1] === '→' ? ' to ' : ' from ') + m[2] : ''; }
 
 // ---------- checklist support ----------
 

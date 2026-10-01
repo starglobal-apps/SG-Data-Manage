@@ -509,7 +509,7 @@ div.al-srn { font-size: 12px; margin-top: 4px; }
 .al-tg .lnk { font-size: 13px; padding: 0 0 0 4px; }
 .pa-top .row { align-items: flex-end; } .pa-top #pa-line { font-weight: 700; font-size: 16px; min-height: 44px; } .pa-top #pa-date { min-height: 44px; }
 h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; } h2.mo-date span { color: var(--warn); }
-.pa-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; margin-top: 8px; }
+.pa-acts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; width: 100%; margin-top: 8px; }
 .pa-acts .btn.small { margin: 0; min-height: 52px; padding: 6px 4px; font-size: 13px; line-height: 1.2; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .pa-acts .btn small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
 .upd-kind { display: grid; gap: 10px; margin: 0 0 12px; } .upd-kind .btn { margin: 0; display: flex; flex-direction: column; } .upd-kind .btn small { font-size: 12px; font-weight: 500; opacity: .85; }
@@ -532,3 +532,12 @@ h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; 
 .pm-c { display: flex; flex-direction: column; background: var(--bg); border-radius: 10px; padding: 6px 8px; } .pm-c small { font-size: 11px; color: var(--muted); } .pm-c b { font-size: 17px; }
 .pm-c.warn { outline: 1.5px solid var(--bad); } .pm-c.warn b { color: var(--bad); }
 .pm-ct { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--bg); border: 1.5px dashed var(--warn); font-size: 13px; } .pm-ct b { font-size: 17px; }
+/* phone transfer manpower */
+.pa-acts .btn.trb { color: var(--primary); }
+.tr-in { border: 1.5px solid var(--warn); margin: 0 0 10px; }
+.tr-in .tr-h { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--warn); }
+.tr-in .tr-b { font-size: 17px; margin: 2px 0; } .tr-in .m { font-size: 13px; color: var(--muted); }
+.tr-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; } .tr-acts .btn { margin: 0; min-height: 44px; }
+.tr-st { font-weight: 600; } .tr-st.wait { color: var(--warn); } .tr-st.ok { color: var(--ok); } .tr-st.bad { color: var(--bad); }
+.tr-roles .item input { width: 84px; text-align: center; font-size: 18px; }
+.nav-dot { position: absolute; top: 4px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-style: normal; font-weight: 800; line-height: 18px; text-align: center; }
