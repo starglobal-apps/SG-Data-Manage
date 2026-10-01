@@ -160,13 +160,21 @@
   }
   // ---------- phone Attendance tab: date + line code on top; below only the lines filled for that date ----------
   var PA = { items: [], lines: [], wa: null, incoming: [], allLines: [] };
-  function loadPhoneAtt() {
-    S.api('m.att', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
-      PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
-      trBadge(PA.incoming.length); S.warm();
-      renderPhoneAtt();
-    }).catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-retry="1" style="margin-top:10px">Try again</button></div>'; });
+  // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
+  function applyAtt(d) {
+    PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
+    trBadge(PA.incoming.length);
+    renderPhoneAtt();
   }
+  function loadPhoneAtt() {
+    var d = S.pd.need();
+    if (d && d.att && d.att.ok !== false) applyAtt(d.att);
+    else if (d && d.att) attFail(new Error(d.att.message || 'Error'));
+    else box().innerHTML = '<div class="empty">Loading…</div>';
+  }
+  function attFail(e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-retry="1" style="margin-top:10px">Try again</button></div>'; }
+  S.pdRender.matt = function () { if (AL.box !== '#matt-body' || AL.shift !== 'Final') return; var d = S.pd.get(); if (d && d.att && d.att.ok !== false) applyAtt(d.att); };
+  S.pdFail.matt = attFail;
   function renderPhoneAtt() {
     var today = S.todayStr(), past = state.date !== today;
     var html = '<div class="card pa-top"><div class="row">' +
@@ -200,6 +208,7 @@
   }
   // ---------- "Transfer manpower": people of a line go to another line from a whole hour; that line's recorder accepts ----------
   function hourLabel(h) { return (h % 12 || 12) + (h >= 12 ? ' PM' : ' AM'); }
+  S.trBadge = trBadge;
   function trBadge(n) { var b = $('#nav button[data-tab="matt"]'); if (!b) return; var dot = b.querySelector('.nav-dot'); if (!n) { if (dot) dot.remove(); return; } if (!dot) { dot = document.createElement('i'); dot.className = 'nav-dot'; b.appendChild(dot); } dot.textContent = n; }
   function trText(x) {
     return (x.transfers || []).map(function (t) {
@@ -297,7 +306,7 @@
   });
 
   // phone: the same list is the Attendance tab
-  S.tabs.matt = function () { AL.box = '#matt-body'; AL.shift = 'Final'; box().innerHTML = '<div class="empty">Loading lines…</div>'; loadAttList(); };
+  S.tabs.matt = function () { AL.box = '#matt-body'; AL.shift = 'Final'; loadAttList(); };
   function attListClick(e) {
     var b = e.target.closest('button'); if (!b) return;
     if (b.dataset.same) { saveSame(b.dataset.same); return; }
@@ -307,7 +316,7 @@
       if (phone() && PA.wa) { var txt = S.waAttendanceText(PA.wa, 'Final'); if (txt) S.shareText('Send attendance to group', txt); else S.toast('No attendance filled yet', 'bad'); return; }
       S.sendToGroup(b.dataset.wa); return;
     }
-    if (b.dataset.retry) { loadAttList(); return; }
+    if (b.dataset.retry) { box().innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false).catch(attFail); return; }
     if (b.dataset.setsam) {
       var srn = b.dataset.setsam;
       S.askText(S.tx(srn + ' ka SAM (making, minute per piece)', 'SAM of ' + srn + ' (making, minutes per piece)'), { ok: 'Save' }).then(function (v) {

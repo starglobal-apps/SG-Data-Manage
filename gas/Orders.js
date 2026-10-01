@@ -104,7 +104,10 @@ function mergeAgg_(a, b) {
   return out;
 }
 
+// m.all builds Output and PMS in one call: the ledger is computed once for both (read-only use)
+var LEDGER_MEMO_ON_ = false, LEDGER_MEMO_ = null;
 function ledger_(excludeKey) {
+  if (LEDGER_MEMO_ON_ && !excludeKey && LEDGER_MEMO_) return LEDGER_MEMO_;
   var H = historyAgg_(), A = appAgg_(excludeKey), keys = A.keys || {};
   var NUM = ['stitched', 'endChecked', 'endPass', 'endPassSrn', 'packed'];
   var hb = {}, ab = {}; NUM.forEach(function(f) { hb[f] = H[f] || {}; ab[f] = A[f] || {}; });
@@ -116,6 +119,7 @@ function ledger_(excludeKey) {
   Object.keys(late.packed).forEach(function(k) { if (keys['P|' + k]) return; var p = k.split('|'); addTo_(L.packed, p[0], late.packed[k]); });
   var ld = loadingAgg_();
   L.loaded = ld.loaded; L.loadedSrn = ld.loadedSrn; L.srnInfo = ld.srnInfo; L.deptSrns = ld.deptSrns; L.lastLoad = ld.lastLoad || {};
+  if (LEDGER_MEMO_ON_ && !excludeKey) LEDGER_MEMO_ = L;
   return L;
 }
 

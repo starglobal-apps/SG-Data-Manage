@@ -5,13 +5,21 @@
   var S = window.SG, $ = S.$, esc = S.esc, api = S.api, state = S.state;
   var P = { rows: null, q: '', fac: '' };
 
+  // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
+  function apply(r) {
+    var a = document.activeElement, typing = a && a.id === 'pm-q', pos = typing ? a.selectionStart : 0;
+    P.rows = r.rows || []; P.err = r.unloadError || ''; render();
+    if (typing) { var i = $('#pm-q'); i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) {} }
+  }
+  function fail(e) { $('#mpms-body').innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-reload="1" style="margin-top:10px">Try again</button></div>'; }
   S.tabs.mpms = function () {
-    if (P.fac !== state.factory) { P.rows = null; P.fac = state.factory; }
-    if (P.rows) render(); else $('#mpms-body').innerHTML = '<div class="empty">Loading PMS data…</div>';
-    api('m.pms', { factory: state.factory }, { quiet: true })
-      .then(function (r) { P.rows = r.rows || []; P.err = r.unloadError || ''; render(); S.warm(); })
-      .catch(function (e) { if (!P.rows) $('#mpms-body').innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-reload="1" style="margin-top:10px">Try again</button></div>'; });
+    var d = S.pd.need();
+    if (d && d.pms && d.pms.ok !== false) apply(d.pms);
+    else if (d && d.pms) fail(new Error(d.pms.message || 'Error'));
+    else $('#mpms-body').innerHTML = '<div class="empty">Loading PMS data…</div>';
   };
+  S.pdRender.mpms = function () { var d = S.pd.get(); if (d && d.pms && d.pms.ok !== false) apply(d.pms); };
+  S.pdFail.mpms = fail;
 
   function n(v) { return (Math.round(+v || 0)).toLocaleString('en-IN'); }
   function cell(label, v, warn) { return '<span class="pm-c' + (warn ? ' warn' : '') + '"><small>' + label + '</small><b>' + n(v) + '</b></span>'; }
@@ -35,5 +43,5 @@
     inp.addEventListener('input', function () { P.q = inp.value; var pos = inp.selectionStart; render(); var i2 = $('#pm-q'); i2.focus(); try { i2.setSelectionRange(pos, pos); } catch (e) {} });
   }
 
-  $('#tab-mpms').addEventListener('click', function (e) { if (e.target.closest('[data-reload]')) S.tabs.mpms(); });
+  $('#tab-mpms').addEventListener('click', function (e) { if (e.target.closest('[data-reload]')) { $('#mpms-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false).catch(fail); } });
 })();

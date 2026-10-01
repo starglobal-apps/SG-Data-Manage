@@ -134,6 +134,20 @@ function mOut_(req, user) {
   return { ok: true, today: today, groups: Object.keys(groups).sort().reverse().map(function(d) { return { date: d, lines: groups[d] }; }), done: done };
 }
 
+// ---------- phone: everything the three screens need in ONE call (Attendance of the date · Output · PMS) ----------
+// The phone keeps the reply, switches tabs without loading, and calls this again every 5 min / after a save.
+function mAll_(req, user) {
+  var factory = str_(req.factory), date = str_(req.date) || todayStr_(), t = Date.now();
+  var safe = function(fn) { try { return fn(); } catch (e) { return { ok: false, message: String(e && e.message || e) }; } };
+  LEDGER_MEMO_ON_ = true;
+  try {
+    return { ok: true, date: date, factory: factory, at: nowStr_(),
+             att: safe(function() { return mAtt_({ date: date, factory: factory }, user); }),
+             out: safe(function() { return mOut_({ factory: factory }, user); }),
+             pms: safe(function() { return mPms_({ factory: factory }, user); }), ms: 0 };
+  } finally { LEDGER_MEMO_ON_ = false; LEDGER_MEMO_ = null; }
+}
+
 // ---------- phone: quiet background refresh of the sheet data (called after a screen is shown) ----------
 // { all } -> all: rebuild everything now ("Fresh data" button); otherwise only what is past its refresh time.
 function mWarm_(req, user) {

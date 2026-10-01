@@ -140,6 +140,7 @@
           var err = new Error(data.message || data.error || 'Server error'); err.code = data.error; err.data = data; throw err;
         }
         if (queue().length) setTimeout(flushQueue, 50);
+        if (SG.pd && (WRITE_ACTIONS.indexOf(action) >= 0 || /\.(save|decide|send|submit|create|clear|delete)$/.test(action) || /^m\.(attUpd|trCreate|trDecide)$/.test(action))) SG.pd.dirty = true;
         return data;
       })
       .catch(function (err) {
@@ -734,7 +735,7 @@
   $('#in-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   $('#hdr-back').addEventListener('click', back);
   $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
-  $('#hdr-refresh').addEventListener('click', function () { if (isMobile()) { if (nav.sub) return; tab(nav.tab); } else hardRefresh(); });
+  $('#hdr-refresh').addEventListener('click', function () { if (isMobile()) { if (nav.sub) return; SG.pd.load(false).then(function () { toast('Updated', 'ok'); }).catch(function (e) { toast(e.message, 'bad'); }); } else hardRefresh(); });
   $('#hdr-bell').addEventListener('click', function () { if (SG.transferInbox) SG.transferInbox(); });
   function setBell(n) { var b = $('#hdr-bell'); b.hidden = !state.user; $('#bell-dot').hidden = !n; }
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
@@ -770,7 +771,7 @@
     $: $, $$: $$, esc: esc, api: api, toast: toast, busy: busy, pill: pill, icon: icon,
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
-    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, tx: tx, warm: warm, hourlyTarget: hourlyTarget,
+    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, tx: tx, warm: warm, curTab: function () { return nav.sub ? '' : nav.tab; }, hourlyTarget: hourlyTarget,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,

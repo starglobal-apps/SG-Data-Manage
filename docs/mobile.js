@@ -16,12 +16,17 @@
   function srnOpt(l, srn) { return (l.srns || []).filter(function (x) { return x.srn === srn; })[0] || null; }
   function statusText(st) { return st === 'Submitted' ? 'In admin review' : st === 'Approved' ? 'Approved' : st === 'Sent' ? 'Sent to main sheet' : st === 'Rejected' ? 'Sent back by admin — fill again' : st; }
 
+  // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
+  function apply(r) { O.loaded = true; O.groups = r.groups || []; O.done = r.done || []; O.today = r.today || S.todayStr(); render(); }
+  function fail(e) { $('#mout-body').innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-reload="1" style="margin-top:10px">Try again</button></div>'; }
   S.tabs.mout = function () {
-    if (!O.loaded) $('#mout-body').innerHTML = '<div class="empty">Loading pending output…</div>';
-    api('m.out', { factory: state.factory }, { quiet: true })
-      .then(function (r) { O.loaded = true; O.groups = r.groups || []; O.done = r.done || []; O.today = r.today || S.todayStr(); render(); S.warm(); })
-      .catch(function (e) { $('#mout-body').innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-reload="1" style="margin-top:10px">Try again</button></div>'; });
+    var d = S.pd.need();
+    if (d && d.out && d.out.ok !== false) apply(d.out);
+    else if (d && d.out) fail(new Error(d.out.message || 'Error'));
+    else $('#mout-body').innerHTML = '<div class="empty">Loading pending output…</div>';
   };
+  S.pdRender.mout = function () { var d = S.pd.get(); if (d && d.out && d.out.ok !== false) apply(d.out); };
+  S.pdFail.mout = fail;
 
   function card(l, gi, li) {
     return '<button type="button" class="mo-card" data-open="' + gi + '|' + li + '">' +
@@ -136,6 +141,6 @@
     var b = ev.target.closest('button'); if (!b) return;
     if (b.dataset.open) { var p = b.dataset.open.split('|'); openLine(+p[0], +p[1]); return; }
     if (b.dataset.wa) { S.shareText('Send output to group', waOutputText()); return; }
-    if (b.dataset.reload) { S.tabs.mout(); return; }
+    if (b.dataset.reload) { $('#mout-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false).catch(fail); return; }
   });
 })();
