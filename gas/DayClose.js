@@ -32,7 +32,7 @@ function dayBuild_(req, user) {
   var events = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
   var hourly = readTab_(CFG.TABS.HOURLY_LOG).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
   var lineFloor = masterMap_('LINE_FLOOR'), lineStaff = masterMap_('LINE_STAFF');
-  var L = ledger_(), stitchedSrnDB = {};
+  var L = req.lite ? ledgerLite_() : ledger_(), stitchedSrnDB = {};   // lite: phone (APP SUMMARY)
   Object.keys(L.stitched).forEach(function(k) { addTo_(stitchedSrnDB, k.split('|')[1], L.stitched[k]); });
   var pmsBlocks = function(dept, srn, cat, type) { return pmsAlerts_(L, stitchedSrnDB, dept, srn, cat).filter(function(a) { return a.type === type; }).map(function(a) { return { level: 'block', msg: a.msg }; }); };
   var rows = [];

@@ -21,6 +21,7 @@ function mSrns_(L, dept) {
 //   B OT (both) [date, location, line, 'OT', designation, OT hours, count, …]
 var PHONE_FROM = '2026-09-29';   // the phone app's output list starts here (user, 30 Sep 2026)
 function sheetAttAgg_() {
+  return {};   // 2026-10-01: attendance sheets are no longer read — only attendance entered in the app is used (user)
   var hit = cacheGetBig_('sheet_att2');
   if (hit) return hit;
   var out = {}, md = getSS_().getSheetByName(MASTER_SHEET_NAME);
@@ -97,8 +98,9 @@ function mOut_(req, user) {
   var att = readDaily_(CFG.TABS.ATT_DAILY).filter(inRange);
   var events = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(inRange);
   var hourly = readDaily_(CFG.TABS.HOURLY_LOG).filter(function(r) { return inRange(r) && str_(r.type) === 'STITCH'; });
-  var sheet = sheetAttAgg_(), sheetDays = historyAgg_().sheetDays || {};
-  var L = ledger_(), lineFloor = masterMap_('LINE_FLOOR'), stBy = {}, srnsBy = {};
+  var sheet = sheetAttAgg_(), L = ledgerLite_(), sheetDays = {};
+  (L.recent || []).forEach(function(x) { sheetDays[x[1] + '|' + x[0] + '|' + x[2]] = 1; });   // output typed in the sheet
+  var lineFloor = masterMap_('LINE_FLOOR'), stBy = {}, srnsBy = {};
   var statusOf = function(d, dept) { var m = stBy[d] = stBy[d] || statusMap_(d, factory); return m[dept + '|STITCH'] || ''; };
   var srnsOf = function(dept) { return srnsBy[dept] = srnsBy[dept] || mSrns_(L, dept); };
   // every (date, dept, shift) with attendance
@@ -145,7 +147,7 @@ function mAll_(req, user) {
              att: safe(function() { return mAtt_({ date: date, factory: factory }, user); }),
              out: safe(function() { return mOut_({ factory: factory }, user); }),
              pms: safe(function() { return mPms_({ factory: factory }, user); }), ms: 0 };
-  } finally { LEDGER_MEMO_ON_ = false; LEDGER_MEMO_ = null; }
+  } finally { LEDGER_MEMO_ON_ = false; LEDGER_MEMO_ = null; LITE_MEMO_ = null; }
 }
 
 // ---------- phone: quiet background refresh of the sheet data (called after a screen is shown) ----------
@@ -159,7 +161,7 @@ function mWarm_(req, user) {
     // all: everything counts as old (others keep getting the old copy until the new one is built) + the small caches go
     if (req.all) { Object.keys(SWR_KEYS_).forEach(function(k) { c.put(k + '#t', '0', 21600); }); ['app_agg', 'hist_agg', 'hist_qc', 'defects_master', 'users_rows'].forEach(cacheDelBig_); Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); }); }
     SWR_REFRESH_ = true;
-    [mastersRows_, sheetAttAgg_, loadingAgg_, historyAgg_, ordersAgg_, unloadingAgg_, bulletinSam_].forEach(function(fn) { fn(); });
+    [mastersRows_, summaryAgg_, bulletinSam_].forEach(function(fn) { fn(); });   // the phone reads only these
   } finally { SWR_REFRESH_ = false; c.remove('warm_running'); }
   return { ok: true, ms: Date.now() - t };
 }
@@ -201,37 +203,29 @@ function unloadingAgg_() {
   return out;
 }
 
-// { factory } -> unshipped SRNs that have production data: loading, stitching, endline pass, packed, unloading, shipped
+// { factory } -> unshipped SRNs (SRN0500 onwards) with loading, stitching, endline pass, packed, unloading, shipped — all from
+// APP SUMMARY (+ the app's output not in the sheet yet); contractor loading shown apart (they report no stitching / endline)
 function mPms_(req, user) {
-  var L = ledger_(), orders = ordersAgg_(), unl = unloadingAgg_();
-  var stitchedSrn = {};
-  Object.keys(L.stitched).forEach(function(k) { addTo_(stitchedSrn, k.split('|')[1], L.stitched[k]); });
-  // loading given to a contractor (party is not a line / packing / … of ours): they send no stitching / endline figures
-  var contr = {}, contrBy = {}, catOf = {};
+  var L = ledgerLite_(), catOf = {}, contr = {}, contrBy = {};
   mastersRows_().forEach(function(r) { if (str_(r.type) === 'DEPT' && str_(r.extra)) catOf[str_(r.key).toUpperCase()] = str_(r.extra); });
-  Object.keys(L.loaded || {}).forEach(function(k) {
+  Object.keys(L.loaded).forEach(function(k) {
     var i = k.lastIndexOf('|'), party = k.slice(0, i), srn = k.slice(i + 1).toUpperCase();
     if ((catOf[party.toUpperCase()] || deptCategory_(party)) !== 'CONTRACTOR') return;
     addTo_(contr, srn, L.loaded[k]); (contrBy[srn] = contrBy[srn] || {})[party] = 1;
   });
-  var seen = {};
-  [L.loadedSrn, stitchedSrn, L.endPassSrn, L.packed].forEach(function(m) { Object.keys(m || {}).forEach(function(k) { seen[str_(k).toUpperCase()] = 1; }); });
-  var fac = str_(req.factory).replace(/^FAC/i, ''), rows = [], hasOrders = Object.keys(orders).length > 0;
-  Object.keys(seen).forEach(function(srn) {
+  var fac = str_(req.factory).replace(/^FAC/i, ''), rows = [];
+  Object.keys(L.pms).forEach(function(srn) {
     var m = srn.match(/^SRN0*(\d+)/); if (!m || +m[1] < 500) return;    // only SRN0500 onwards
-    var o = orders[srn];
-    if (hasOrders && !o) return;                                         // not in 'All Orders' (old, already closed)
-    o = o || {};
-    if (/^shipped$/i.test(str_(o.status))) return;                       // shipped orders are not shown
-    var info = (L.srnInfo || {})[srn] || {};
+    var p = L.pms[srn], info = L.srnInfo[srn] || {};
+    if (/^shipped$/i.test(str_(p.status))) return;                       // shipped orders are not shown
     if (fac && info.factory && info.factory !== fac) return;               // only this factory's SRNs
-    rows.push({ srn: srn, style: o.style || info.item || '', buyer: info.buyer || '', order: num_(o.shipping) || num_(info.orderQty), status: o.status || '',
-                loading: num_(L.loadedSrn[srn]), contractor: num_(contr[srn]), contractors: Object.keys(contrBy[srn] || {}).join(', '), stitched: num_(stitchedSrn[srn]), endPass: num_(L.endPassSrn[srn]), packed: num_(L.packed[srn]),
-                unloaded: num_(unl[srn]), shipped: num_(o.shipped) });
+    var r = { srn: srn, style: info.item || '', buyer: info.buyer || '', order: p.order, status: p.status,
+              loading: num_(L.loadedSrn[srn]), contractor: num_(contr[srn]), contractors: Object.keys(contrBy[srn] || {}).join(', '),
+              stitched: num_(p.stitched), endPass: num_(L.endPassSrn[srn]), packed: num_(L.packed[srn]), unloaded: num_(p.unloaded), shipped: num_(p.shipped) };
+    if (r.loading || r.stitched || r.endPass || r.packed) rows.push(r);
   });
-  rows = rows.filter(function(r) { return r.loading || r.stitched || r.endPass || r.packed; });
   rows.sort(function(a, b) { return b.srn.localeCompare(a.srn); });
-  return { ok: true, rows: rows, unloadError: unl.__error || '' };
+  return { ok: true, rows: rows, unloadError: '' };
 }
 
 // A line's Final attendance of a date as the app has it: { roles: {role: count}, add: [ATT_DAILY rows], evs: [events], none }.

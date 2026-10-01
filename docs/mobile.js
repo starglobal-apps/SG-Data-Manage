@@ -96,12 +96,12 @@
 
   function saveLine(l, x) {
     if (O.saving) return; O.saving = true; S.busy(true);
-    api('hour.save', { date: l.date, factory: state.factory, slot: l.slot, items: [{ type: 'STITCH', dept: l.dept, srn: x.srn, qty: x.qty - x.other, floor: l.floor, allowOver: x.allowOver }] })
+    api('hour.save', { lite: true, date: l.date, factory: state.factory, slot: l.slot, items: [{ type: 'STITCH', dept: l.dept, srn: x.srn, qty: x.qty - x.other, floor: l.floor, allowOver: x.allowOver }] })
       .then(function (d) {
         var f = d.results.filter(function (r) { return !r.ok; })[0];
         if (f) throw new Error(f.message);
         // straight to the admin's review (that line's day: attendance + output)
-        return api('day.submit', { date: l.date, factory: state.factory, dept: l.dept });
+        return api('day.submit', { lite: true, date: l.date, factory: state.factory, dept: l.dept });
       })
       .then(function (s) {
         O.saving = false; S.busy(false); S.sheet.close();

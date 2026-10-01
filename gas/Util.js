@@ -120,7 +120,7 @@ function csv_(v) { return str_(v).split(',').map(function(s) { return s.trim(); 
 // The heavy sheet aggregates are served stale-while-revalidate: past their ttl they are still returned at once (kept up
 // to 6 h), and the phone's quiet m.warm call (SWR_REFRESH_ = true) rebuilds the ones that are past it. So nobody waits
 // for a rebuild from the sheets (that took 7+ s); data is at most ~ttl old while the app is in use.
-var SWR_KEYS_ = { hist_agg2: 1, loading_agg: 1, sheet_att2: 1, orders_agg: 1, unload_agg: 1, bulletin_sam: 1, masters_rows: 1, loading_rows: 1 };
+var SWR_KEYS_ = { app_summary: 1, hist_agg2: 1, loading_agg: 1, sheet_att2: 1, orders_agg: 1, unload_agg: 1, bulletin_sam: 1, masters_rows: 1, loading_rows: 1 };
 var SWR_REFRESH_ = false;
 function cachePutBig_(key, obj, ttl) {
   try {

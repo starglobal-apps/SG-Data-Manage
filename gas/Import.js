@@ -11,7 +11,8 @@ var MASTER_PUSH = [
   { col: 6, sheet: 'Packing Data',                  width: 22, dataRow: 2 },
   { col: 7, sheet: 'END LINE DATA',                 width: 12, dataRow: 2 },
   { col: 8, sheet: 'Loading Data',                  width: 12, dataRow: 2 },
-  { col: 9, sheet: 'All order',                     width: 27, dataRow: 2 }
+  { col: 9, sheet: 'All order',                     width: 27, dataRow: 2 },
+  { col: 10, sheet: 'Unloading Data',               width: 18, dataRow: 2 }
 ];
 
 var IMPORT_JOBS = [
@@ -24,6 +25,7 @@ var IMPORT_JOBS = [
   { srcKey: 'ENDLINE', srcSheet: 'Quality Endline data', srcRow: 3, srcCol: 1, cols: 12, tgt: 'END LINE DATA', tgtCol: 1 },
   { srcKey: 'LOADING', srcSheet: 'loading_chalaan', srcRow: 10, srcCol: 1, cols: 12, tgt: 'Loading Data', tgtCol: 1 },
   { srcKey: 'ALLORDER', srcSheet: 'All Orders', srcRow: 700, srcCol: 1, cols: 27, tgt: 'All order', tgtCol: 1 },
+  { srcKey: 'LOADING', srcSheet: 'Unloading_chalaan', srcRow: 2, srcCol: 1, cols: 18, tgt: 'Unloading Data', tgtCol: 1 },
   { srcKey: 'COST', srcSheet: 'COST', srcRow: 2, srcCol: 1, cols: 6, pick: [1, 4, 5, 6], sheetOnly: { sheet: 'VALIDATION', row: 3, col: 15 } }
 ];
 

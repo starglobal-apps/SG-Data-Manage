@@ -201,9 +201,10 @@ function slotUpsert_(p, user, ctx) {
   return { ok: true, amount: newAmt, balance: chk.balance, limit: chk.limit, at: stamp, warn: chk.level === 'warn' ? chk.msg : '' };
 }
 
-function batchCtx_(date, factory) {
+// lite (phone): loading / output totals from APP SUMMARY instead of reading the MASTER DATA history
+function batchCtx_(date, factory, lite) {
   var att = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
-  return { L: ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory), att: att, date: date };
+  return { L: lite ? ledgerLite_() : ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory), att: att, date: date };
 }
 // Output needs that shift's attendance for the line; endline also needs the checker to be one of the attendance QC names
 function attGate_(ctx, dept, shift, type, checker) {
@@ -229,7 +230,7 @@ function hourSave_(req, user) {
   if (!items.length) return fail_('EMPTY', 'Kuch bhara nahi');
   var results = [], saved = 0, failed = 0;
   withLock_(function() {
-    var ctx = batchCtx_(date, factory);
+    var ctx = batchCtx_(date, factory, !!req.lite);
     items.forEach(function(it) {
       var p = Object.assign({}, it, { date: date, factory: factory, slot: slot });
       var r;
