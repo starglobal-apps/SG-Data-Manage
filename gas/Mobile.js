@@ -210,7 +210,6 @@ function mAttUpd_(req, user) {
   if (!isDateStr_(date)) return fail_('DATE', 'Date galat');
   if (!dept || !role) return fail_('KEY', 'Line aur manpower type chahiye');
   if (!canWrite_(user, factory, dept)) return fail_('PERM', 'Is line ki permission nahi');
-  if (isLocked_(dayStatus_(date, factory, dept, 'ATT'))) return fail_('LOCKED', 'Ye attendance admin ke paas hai — approve / reject hone ke baad update karo');
   if (hd < 0 || ab < 0 || Math.floor(hd) !== hd || Math.floor(ab) !== ab || !(hd + ab)) return fail_('VAL', 'Half day / absent me kitne log — poora number');
   if (hd && !(hrs > 0 && hrs < 12)) return fail_('VAL', 'Half day ke working hour chuno');
   var sa = sheetAttAgg_()[date + '|' + dept + '|Final'], stamp = nowStr_(), by = userName_(user);
@@ -247,7 +246,7 @@ function mAttUpd_(req, user) {
   });
   if (!res.ok) return res;
   audit_(user, 'm.attUpd', date + '|' + factory + '|' + dept, { role: role, halfDay: hd, hours: hrs, absent: ab, copied: res.copied });
-  var toAdmin = false;
-  if (sa) { var s = daySubmit_({ date: date, factory: factory, dept: dept, onlyType: 'ATT' }, user); toAdmin = !!(s.ok && s.submitted); }
-  return { ok: true, copied: res.copied, toAdmin: toAdmin };
+  // straight into the main attendance sheet, HR status kept
+  var s = attSync_(date, factory, dept, 'Final', user, true);
+  return { ok: true, copied: res.copied, inSheet: !!s.ok, sheetError: s.ok ? '' : s.message };
 }

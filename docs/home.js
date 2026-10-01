@@ -179,9 +179,9 @@
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, x.count) : null;
       html += '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + (x.fromSheet ? ' <em class="ot">from sheet</em>' : '') + '</div>' +
         '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' people' + (!x.fromSheet && x.mpNow !== x.count ? ' · now <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot : '') + (x.night ? ' · Night ' + x.night : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
-        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
-        (lock ? '<div class="m">' + (st === 'Submitted' ? (x.inSheet ? 'Waiting for admin approval — main sheet changes after approval' : 'In admin review') : st === 'Sent' && x.inSheet ? 'Updated in main sheet ✓' : esc(st)) + '</div>' : '') +
-        (x.fromSheet && !lock ? '<div class="m">Filled in main sheet — Update / Change goes to admin for approval, then the main sheet changes</div>' : '') + '</div>' +
+        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + (st === 'Synced' ? '<div class="m" style="color:var(--ok)">In main sheet ✓</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
+        (lock ? '<div class="m">' + (st === 'Submitted' ? 'In admin review' : st === 'Sent' ? 'In main sheet ✓' : esc(st)) + '</div>' : '') +
+        (x.fromSheet && !lock ? '<div class="m">Filled in main sheet — Update / Change writes to the main sheet</div>' : '') + '</div>' +
         (lock ? '' : '<div class="pa-acts">' +
           '<button class="btn small ghost" data-chg="' + esc(x.dept) + '">Change attendance<small>line, SRN, all</small></button>' +
           '<button class="btn small ghost" data-ot="' + esc(x.dept) + '">OT / Night<small>' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'Night ' + x.night : '') : 'fill') + '</small></button>' +
@@ -202,8 +202,8 @@
         '<div class="field"><label>How many</label><input id="u-hd" type="number" inputmode="numeric" min="0" placeholder="0"></div>' +
         '<div class="field"><label>Working hour</label><select id="u-hours">' + hrs.map(function (h) { return '<option value="' + h + '"' + (h === 4 ? ' selected' : '') + '>' + h + ' hrs</option>'; }).join('') + '</select></div></div></div>' +
       '<div class="upd-box ab"><div class="t">Absent</div><div class="field"><label>How many</label><input id="u-ab" type="number" inputmode="numeric" min="0" placeholder="0"></div></div>' +
-      (x.inSheet ? '<p class="hint" style="margin:0 0 8px">This attendance is in the main sheet — on Save it goes to the <b>admin for approval</b>. The main sheet changes after the admin approves.</p>' : '') +
-      '<button class="btn primary big" id="u-save">' + (x.inSheet ? 'Save · send to admin' : 'Save') + '</button>';
+      (x.inSheet ? '<p class="hint" style="margin:0 0 8px">This attendance is in the main sheet — on Save the <b>main sheet is updated</b>. HR status stays as it is.</p>' : '') +
+      '<button class="btn primary big" id="u-save">' + 'Save' + '</button>';
     if ((x.events || []).length) html += '<label style="margin-top:14px">Updates on this date</label><div class="list">' + x.events.map(function (e) {
       return '<div class="item"><div><div class="name">' + e.count + ' ' + esc(e.role) + ' · ' + esc(EV_NAME[e.event] || e.event) + '</div><div class="sub">' + (e.event === 'HALF_DAY' ? e.hours + ' hrs worked' : e.time ? esc(e.time) : '') + '</div></div>' + (e.id ? '<button class="btn danger small" data-del="' + esc(e.id) + '">✕</button>' : '') + '</div>';
     }).join('') + '</div>';
@@ -221,7 +221,7 @@
       if (hd) msg.push(hd + ' half day (' + $('#u-hours').value + ' hrs)');
       if (ab) msg.push(ab + ' absent');
       S.api('m.attUpd', { date: state.date, factory: state.factory, dept: x.dept, role: role, halfDay: hd, hours: Number($('#u-hours').value), absent: ab }, { busy: true })
-        .then(function (r) { S.sheet.close(); S.toast(role + ': ' + msg.join(', ') + ' ✓' + (r.toAdmin ? ' · sent to admin for approval' : ''), 'ok', 6000); loadAttList(); })
+        .then(function (r) { S.sheet.close(); if (r.sheetError) S.toast(r.sheetError, 'bad', 9000); else S.toast(role + ': ' + msg.join(', ') + ' ✓ · main sheet updated', 'ok', 6000); loadAttList(); })
         .catch(function (er) { S.toast(er.message, 'bad', 7000); loadAttList(); });
     };
   }

@@ -43,7 +43,7 @@ function dayBuild_(req, user) {
   Object.keys(attKeys).forEach(function(k) {
     var p = k.split('|'), dept = p[0], shift = p[1];
     if (onlyDept && dept !== onlyDept) return;
-    if (onlyType && onlyType !== 'ATT') return;
+    if (onlyType !== 'ATT') return;   // attendance goes straight to the main sheet on save (AttSync.js); only the admin's manual send builds it here
     var eff = effectiveAttendanceDetail_(date, factory, dept, shift, att, events);
     var flags = [];
     if (!eff.length) flags.push({ level: 'warn', msg: 'Attendance khali' });
@@ -162,7 +162,7 @@ function dayBuild_(req, user) {
   var kept = [], written = 0;
   withLock_(function() {
     var existing = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
-      return str_(r.date) === date && str_(r.factory) === factory && (!onlyDept || str_(r.dept) === onlyDept) && (!onlyType || str_(r.type) === onlyType);
+      return str_(r.date) === date && str_(r.factory) === factory && (!onlyDept || str_(r.dept) === onlyDept) && (!onlyType || str_(r.type) === onlyType) && str_(r.status) !== 'Synced';
     });
     var del = [];
     existing.forEach(function(r) {
@@ -237,7 +237,7 @@ function reviewList_(req, user) {
     if (!date && str_(r.date) < since) return false;
     if (factory && str_(r.factory) !== factory) return false;
     if (status && str_(r.status) !== status) return false;
-    return str_(r.status) !== 'Draft';
+    return str_(r.status) !== 'Draft' && str_(r.status) !== 'Synced';
   }).map(function(r) {
     var payload = parseJsonObj_(r.payload), flags = parseJsonArr_(r.flags);
     var fin = finalRow_(r, payload);
@@ -331,7 +331,7 @@ function finalRow_(r, p) {
     var rows = (p.rows || []).map(function(x) {
       return { date: fmtSheetDate_(r.date, 'dd'), factory: Number(factory), dept: r.dept, role: x.role, hours: x.hours, count: x.count,
                manhours: x.hours * x.count, incharge: p.incharge || staffA.incharge || '', supervisor: p.supervisor || staffA.supervisor || '',
-               srn: p.srn || '', remark: x.remark || '' };
+               srn: p.srn || '', remark: x.remark || '', otType: shift === 'Night' ? 'Night' : 'OT' };
     });
     return { target: t2, rows: rows };
   }
@@ -360,10 +360,10 @@ function reviewSend_(req, user) {
     // attendance edited in the app that was first typed into the sheet: remove those old rows, then append the new ones
     ready.forEach(function(r) {
       if (str_(r.type) !== 'ATT') return;
-      var p = parseJsonObj_(r.payload); if (!p.replaceSheet) return;
+      var p = parseJsonObj_(r.payload);   // always replace: the line's rows of that date may already be in the sheet
       var fin = finalRow_(r, p); if (!fin) return;
       try {
-        var old = {}, n = deleteSheetAttRows_(CFG.FINAL_TARGETS[fin.target], str_(r.date), str_(r.dept), old);
+        var old = {}, n = deleteSheetAttRows_(CFG.FINAL_TARGETS[fin.target], str_(r.date), str_(r.dept), old, str_(r.shift));
         log.push(fin.target + ': purani ' + n + ' rows hataayi (' + str_(r.dept) + ' ' + str_(r.date) + ')');
         // only an update: the HR status of the old rows goes onto the new rows (same role, else the line's status)
         if (p.keepStatus) (byTarget[fin.target] || []).forEach(function(x) {
@@ -396,20 +396,22 @@ function reviewSend_(req, user) {
 
 // Deletes the rows of one line/date from an attendance target sheet (matched on its date and dept columns).
 // old (optional) receives the HR status of the removed rows: { byRole: {role: status}, any: first non-blank status }.
-function deleteSheetAttRows_(T, dateIso, dept, old) {
-  var dateCol = 0, deptCol = 0, roleCol = 0, stCol = 0;
-  Object.keys(T.cols).forEach(function(c) { if (T.cols[c] === 'date') dateCol = +c; if (T.cols[c] === 'dept') deptCol = +c; if (T.cols[c] === 'role') roleCol = +c; if (T.cols[c] === 'status') stCol = +c; });
+// shift (optional): on the OT sheet only that shift's rows go (col F 'Night' = Night, anything else = OT).
+function deleteSheetAttRows_(T, dateIso, dept, old, shift) {
+  var dateCol = 0, deptCol = 0, roleCol = 0, stCol = 0, otCol = 0;
+  Object.keys(T.cols).forEach(function(c) { if (T.cols[c] === 'date') dateCol = +c; if (T.cols[c] === 'dept') deptCol = +c; if (T.cols[c] === 'role') roleCol = +c; if (T.cols[c] === 'status') stCol = +c; if (T.cols[c] === 'otType') otCol = +c; });
   if (old) { old.byRole = {}; old.any = ''; }
   if (!dateCol || !deptCol) return 0;
   var id = srcId_(T.srcKey);
   var meta = Sheets.Spreadsheets.get(id, { fields: 'sheets.properties' });
   var sh = (meta.sheets || []).filter(function(s) { return s.properties.title === T.sheet; })[0];
   if (!sh) return 0;
-  var c1 = Math.min(dateCol, deptCol), c2 = Math.max(dateCol, deptCol, roleCol, stCol);
+  var c1 = Math.min(dateCol, deptCol), c2 = Math.max(dateCol, deptCol, roleCol, stCol, otCol);
   var got = Sheets.Spreadsheets.Values.get(id, a1_(T.sheet, 1, c1, c2 - c1 + 1), { valueRenderOption: 'FORMATTED_VALUE' });
   var rows = [];
   (got.values || []).forEach(function(v, i) {
     if (dateKey_(v[dateCol - c1]) !== dateIso || str_(v[deptCol - c1]) !== dept) return;
+    if (otCol && shift && (/night/i.test(str_(v[otCol - c1])) !== (shift === 'Night'))) return;
     rows.push(i);   // 0-based sheet row index
     var st = stCol ? str_(v[stCol - c1]) : '';
     if (old && st) { if (roleCol && !old.byRole[str_(v[roleCol - c1])]) old.byRole[str_(v[roleCol - c1])] = st; if (!old.any) old.any = st; }

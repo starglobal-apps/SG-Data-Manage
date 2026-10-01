@@ -336,7 +336,6 @@ function transferCreate_(req, user) {
   if (!items.length) return fail_('VAL', 'Kam se kam ek role ki qty daalo');
   if (!/^\d{1,2}:\d{2}$/.test(time)) return fail_('VAL', 'Time HH:MM');
   if (!canWrite_(user, factory, from)) return fail_('PERM', 'Is line ki permission nahi');
-  if (isLocked_(dayStatus_(date, factory, from, 'ATT'))) return fail_('LOCKED', 'Attendance submit ho chuki');
   var target = usersRows_().filter(function(u) { return str_(u.user_id) === toUser && isTrue_(u.active); })[0];
   if (!target) return fail_('VAL', 'Recorder nahi mila');
   if (toUser === user.user_id) return fail_('VAL', 'Apne aap ko transfer nahi');

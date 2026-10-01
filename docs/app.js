@@ -450,7 +450,7 @@
         att.qc = d.qc_names || [];
         renderAttRows(d.rows); renderQc();
         $('#att-cancel').hidden = !(isMobile() && d.rows.length && !d.prefill);
-        if (d.fromSheet) { banner.className = 'banner'; banner.hidden = false; banner.textContent = tx('Ye attendance main sheet me bhari hai — badal ke Save karo. Admin approve karega to sheet ki purani rows isse badal jayengi.', 'This attendance is in the main sheet — change it and Save. After admin approval the old sheet rows are replaced.'); }
+        if (d.fromSheet) { banner.className = 'banner'; banner.hidden = false; banner.textContent = tx('Ye attendance main sheet me bhari hai — badal ke Save karo, main sheet ki rows turant badal jayengi.', 'This attendance is in the main sheet — change it and Save; the main sheet rows are replaced right away.'); }
         else if (d.prefill) { banner.className = 'banner'; banner.hidden = false; banner.textContent = tx('Ye ' + d.prefillDate + ' ka data prefill hai — check karke Save karo', 'Prefilled from ' + d.prefillDate + ' — check and Save'); }
         else if (d.rows.length) { banner.className = 'banner ok'; banner.hidden = false; banner.textContent = 'Saved (' + d.rows[0].by + ', ' + d.rows[0].at + '). ' + tx('Badal ke phir Save kar sakte ho.', 'You can change it and Save again.'); }
       })
@@ -520,7 +520,8 @@
         return d;
       })
       .then(function (d) {
-        toast(d.queued ? tx('Offline me save — baad me sync hoga', 'Saved offline — will sync later') : from ? 'Line changed · ' + shortLine(from) + ' → ' + shortLine(att.dept) : 'Saved: ' + d.saved + ' roles', 'ok');
+        if (!d.sheetError) toast(d.queued ? tx('Offline me save — baad me sync hoga', 'Saved offline — will sync later') : (from ? 'Line changed · ' + shortLine(from) + ' → ' + shortLine(att.dept) : 'Saved: ' + d.saved + ' roles') + tx(' · main sheet me gaya', ' · in main sheet'), 'ok');
+        if (d.sheetError) toast(d.sheetError, 'bad', 9000);
         att.moveFrom = ''; invalidateAll(); back();
         if (!d.queued && !isMobile()) setTimeout(function () { offerGroup((att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' group me bhejein?'); }, 400);
       })

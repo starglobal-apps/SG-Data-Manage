@@ -66,7 +66,8 @@ var EN_RULES_ = [
   [/^(.*) ki loading is line par nahi mili — loading sheet check karo$/, 'No loading of $1 on this line — check the loading sheet'],
   [/^Loading se zyada: (.*)$/, 'More than loading: $1'],
   [/^(.*) ki loading (\d+) hai, (\d+) ban chuka — ab sirf (-?\d+) aur ho sakta hai$/, 'Loading of $1 is $2, $3 made — only $4 more possible'],
-  [/^Network nahi mila — internet check karo$/, 'No network — check internet']
+  [/^Network nahi mila — internet check karo$/, 'No network — check internet'],
+  [/^Main sheet me nahi gaya: (.*)$/, 'Saved in app, but not written to the main sheet: $1']
 ];
 function enMsg_(s) {
   s = String(s || ''); if (!s) return s;

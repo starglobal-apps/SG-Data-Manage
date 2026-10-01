@@ -57,7 +57,7 @@ function cleanupSent_() {
   var today = todayStr_(), head = CFG.HEADERS.DAY_SUMMARY, sh = tab_(CFG.TABS.DAY_SUMMARY, true);
   if (head.indexOf('cleaned_at') < 0) return { error: 'cleaned_at column missing in CFG' };
   if (sh.getLastColumn() < head.length) ensureHeaders_(CFG.TABS.DAY_SUMMARY);
-  var ds = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return str_(r.status) === 'Sent' && !str_(r.cleaned_at); });
+  var ds = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return (str_(r.status) === 'Sent' || str_(r.status) === 'Synced') && !str_(r.cleaned_at); });
   if (!ds.length) return { rows: 0 };
   var hourly = readTab_(CFG.TABS.HOURLY_LOG), att = readTab_(CFG.TABS.ATT_DAILY), ev = readTab_(CFG.TABS.MANPOWER_EVENTS);
   var delH = {}, delA = {}, delE = {}, done = [], stamp = nowStr_();

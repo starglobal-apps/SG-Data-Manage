@@ -174,7 +174,6 @@ function manpowerSave_(req, user) {
   if (!isClose && count <= 0) return fail_('COUNT', 'Count 1 ya zyada');
   for (var i = 0; i < depts.length; i++) {
     if (!canWrite_(user, factory, depts[i])) return fail_('PERM', depts[i] + ': permission nahi');
-    if (isLocked_(dayStatus_(date, factory, depts[i], 'ATT'))) return fail_('LOCKED', depts[i] + ': attendance submit ho chuki — manager se reject karwao');
   }
   var eff = effHours_(ev, str_(req.time)), stamp = nowStr_(), ids = [];
   // half day: the phone asks how many hours those people actually worked
@@ -191,7 +190,9 @@ function manpowerSave_(req, user) {
     }));
   });
   audit_(user, 'manpower.save', ids.join(','), { event: ev, depts: depts, role: role, count: count, time: str_(req.time) });
-  return { ok: true, id: ids[0], ids: ids, eff_hours: eff };
+  // the change reaches the main attendance sheet at once (HR status kept)
+  var errs = []; depts.forEach(function(d) { var s = attSync_(date, factory, d, 'Final', user, true); if (!s.ok) errs.push(s.message); });
+  return { ok: true, id: ids[0], ids: ids, eff_hours: eff, sheetError: errs[0] || '' };
 }
 
 // LINE_CLOSED event for a dept that day -> { time, hour, eff } or null
@@ -206,10 +207,10 @@ function manpowerDelete_(req, user) {
   var hit = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.id) === id; })[0];
   if (!hit) return fail_('NF', 'Event nahi mila');
   if (!canWrite_(user, str_(hit.factory), str_(hit.dept))) return fail_('PERM', 'Permission nahi');
-  if (isLocked_(dayStatus_(str_(hit.date), str_(hit.factory), str_(hit.dept), 'ATT'))) return fail_('LOCKED', 'Attendance submit ho chuki');
   deleteRows_(CFG.TABS.MANPOWER_EVENTS, [hit._row]);
   audit_(user, 'manpower.delete', id, '');
-  return { ok: true };
+  var s = attSync_(str_(hit.date), str_(hit.factory), str_(hit.dept), 'Final', user, true);
+  return { ok: true, sheetError: s.ok ? '' : s.message };
 }
 
 // Attendance rows for (date, factory, dept, shift) after applying manpower events -> [{role, hours, count}]

@@ -165,7 +165,7 @@ CFG.FINAL_TARGETS = {
     cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'role', 7: 'hours', 8: 'count', 10: 'incharge', 11: 'supervisor', 12: 'srn', 13: 'remark', 14: 'status' } },
   // 'OT att': C Date · D Location · E Line · F OT · G Degination · H OT hours · I Manpower · J total working hours (formula) · K Incharge · L Supervisor · M SRN · N Remark · O Status (HR)
   ATT_OT:     { srcKey: 'ATT', sheet: 'OT att', keyCol: 3, minRow: 2,
-    cols: { 3: 'date', 4: 'factory', 5: 'dept', 7: 'role', 8: 'hours', 9: 'count', 11: 'incharge', 12: 'supervisor', 13: 'srn', 14: 'remark', 15: 'status' } }
+    cols: { 3: 'date', 4: 'factory', 5: 'dept', 6: 'otType', 7: 'role', 8: 'hours', 9: 'count', 11: 'incharge', 12: 'supervisor', 13: 'srn', 14: 'remark', 15: 'status' } }
 };
 
 CFG.STAFF_KINDS = ['Supervisor', 'Incharge', 'Endline QC'];
