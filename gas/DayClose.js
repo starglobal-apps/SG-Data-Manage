@@ -49,9 +49,13 @@ function dayBuild_(req, user) {
     if (!eff.length) flags.push({ level: 'warn', msg: 'Attendance khali' });
     var nm = attNames_(att, dept, shift);
     var attSrnRow = att.filter(function(r) { return str_(r.dept) === dept && str_(r.shift) === shift && str_(r.srn); })[0];
+    // HR Status column of the main sheet: written blank when attendance is entered / changed; kept when the rows already
+    // in the sheet are only updated (Final: absent / half day from "Update attendance"; OT / Night: edited after entry)
+    var inSheet = !!sheetAttAgg_()[date + '|' + dept + '|' + shift];
+    var keepStatus = inSheet && (shift !== 'Final' || att.some(function(r) { return str_(r.dept) === dept && str_(r.shift) === shift && str_(r.keep_status) === '1'; }));
     rows.push({ date: date, factory: factory, line: lineOf_(dept), dept: dept, type: 'ATT', srn: '', shift: shift,
                 payload: { rows: eff, manpower: sum_(eff, 'count'), manhours: eff.reduce(function(t, r) { return t + r.count * r.hours; }, 0), supervisor: nm.supervisor, incharge: nm.incharge, srn: attSrnRow ? str_(attSrnRow.srn) : '',
-                           replaceSheet: !!sheetAttAgg_()[date + '|' + dept + '|' + shift] }, flags: flags });
+                           replaceSheet: inSheet, keepStatus: keepStatus }, flags: flags });
     if (sheetAttAgg_()[date + '|' + dept + '|' + shift]) flags.push({ level: 'info', msg: 'Sheet me pehle se bhari attendance — approve hone par wo rows is se badal jayengi' });
   });
 
@@ -358,7 +362,15 @@ function reviewSend_(req, user) {
       if (str_(r.type) !== 'ATT') return;
       var p = parseJsonObj_(r.payload); if (!p.replaceSheet) return;
       var fin = finalRow_(r, p); if (!fin) return;
-      try { var n = deleteSheetAttRows_(CFG.FINAL_TARGETS[fin.target], str_(r.date), str_(r.dept)); log.push(fin.target + ': purani ' + n + ' rows hataayi (' + str_(r.dept) + ' ' + str_(r.date) + ')'); }
+      try {
+        var old = {}, n = deleteSheetAttRows_(CFG.FINAL_TARGETS[fin.target], str_(r.date), str_(r.dept), old);
+        log.push(fin.target + ': purani ' + n + ' rows hataayi (' + str_(r.dept) + ' ' + str_(r.date) + ')');
+        // only an update: the HR status of the old rows goes onto the new rows (same role, else the line's status)
+        if (p.keepStatus) (byTarget[fin.target] || []).forEach(function(x) {
+          if (str_(x.r.id) !== str_(r.id)) return;
+          x.rows.forEach(function(row) { row.status = old.byRole[str_(row.role)] || old.any || ''; });
+        });
+      }
       catch (e) { log.push(fin.target + ': purani rows nahi hati — ' + (e && e.message || e)); }
     });
     Object.keys(byTarget).forEach(function(tk) {
@@ -383,19 +395,24 @@ function reviewSend_(req, user) {
 }
 
 // Deletes the rows of one line/date from an attendance target sheet (matched on its date and dept columns).
-function deleteSheetAttRows_(T, dateIso, dept) {
-  var dateCol = 0, deptCol = 0;
-  Object.keys(T.cols).forEach(function(c) { if (T.cols[c] === 'date') dateCol = +c; if (T.cols[c] === 'dept') deptCol = +c; });
+// old (optional) receives the HR status of the removed rows: { byRole: {role: status}, any: first non-blank status }.
+function deleteSheetAttRows_(T, dateIso, dept, old) {
+  var dateCol = 0, deptCol = 0, roleCol = 0, stCol = 0;
+  Object.keys(T.cols).forEach(function(c) { if (T.cols[c] === 'date') dateCol = +c; if (T.cols[c] === 'dept') deptCol = +c; if (T.cols[c] === 'role') roleCol = +c; if (T.cols[c] === 'status') stCol = +c; });
+  if (old) { old.byRole = {}; old.any = ''; }
   if (!dateCol || !deptCol) return 0;
   var id = srcId_(T.srcKey);
   var meta = Sheets.Spreadsheets.get(id, { fields: 'sheets.properties' });
   var sh = (meta.sheets || []).filter(function(s) { return s.properties.title === T.sheet; })[0];
   if (!sh) return 0;
-  var c1 = Math.min(dateCol, deptCol), c2 = Math.max(dateCol, deptCol);
+  var c1 = Math.min(dateCol, deptCol), c2 = Math.max(dateCol, deptCol, roleCol, stCol);
   var got = Sheets.Spreadsheets.Values.get(id, a1_(T.sheet, 1, c1, c2 - c1 + 1), { valueRenderOption: 'FORMATTED_VALUE' });
   var rows = [];
   (got.values || []).forEach(function(v, i) {
-    if (dateKey_(v[dateCol - c1]) === dateIso && str_(v[deptCol - c1]) === dept) rows.push(i);   // 0-based sheet row index
+    if (dateKey_(v[dateCol - c1]) !== dateIso || str_(v[deptCol - c1]) !== dept) return;
+    rows.push(i);   // 0-based sheet row index
+    var st = stCol ? str_(v[stCol - c1]) : '';
+    if (old && st) { if (roleCol && !old.byRole[str_(v[roleCol - c1])]) old.byRole[str_(v[roleCol - c1])] = st; if (!old.any) old.any = st; }
   });
   if (!rows.length) return 0;
   var reqs = rows.sort(function(a, b) { return b - a; }).map(function(i) {

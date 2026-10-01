@@ -234,7 +234,7 @@ function mAttUpd_(req, user) {
         var o = byRole[r]; roles[r] = o.count;
         add.push({ id: uuid_(), date: date, factory: factory, dept: dept, shift: 'Final', role: r, hours: o.hours || shiftHours_('Final'), count: o.count,
                    entered_by: by, entered_at: stamp, srn: prev ? str_(prev.srn) : '', supervisor: (prev && str_(prev.supervisor)) || staff.supervisor,
-                   incharge: (prev && str_(prev.incharge)) || staff.incharge, qc_names: '' });
+                   incharge: (prev && str_(prev.incharge)) || staff.incharge, qc_names: '', keep_status: '1' });   // an update: HR status stays
         o.parts.forEach(function(p) { if (p.h < o.hours) evs.push(ev(r, p.h > 0 ? 'HALF_DAY' : 'ABSENT', p.n, p.h, 'sheet')); });
       });
     }
