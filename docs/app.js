@@ -523,6 +523,16 @@
       return;
     }
     att.moveOk = false;
+    // phone: shown as saved at once, sent in the background (phone.js outbox); a failed save shows Resend on its line
+    if (isMobile()) {
+      var label = att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance';
+      SG.pd.send('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, qc_names: qc, rows: rows },
+                 { dept: att.dept, date: state.date, shift: att.shift, kind: 'att', label: label });
+      if (from) SG.pd.send('att.save', { date: state.date, factory: state.factory, dept: from, shift: att.shift, rows: [] }, { dept: from, date: state.date, shift: att.shift, kind: 'att', label: 'Line change' });
+      toast(from ? 'Line changed · ' + shortLine(from) + ' → ' + shortLine(att.dept) + ' ✓' : label + ' saved ✓', 'ok');
+      att.moveFrom = ''; back();
+      return;
+    }
     api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, qc_names: qc, rows: rows })
       .then(function (d) {
         // line changed in "Change attendance": the old line's attendance is removed
@@ -540,6 +550,10 @@
   function cancelAttendance() {
     ask('Cancel ' + (att.shift === 'Final' ? '' : att.shift + ' ') + 'attendance of ' + shortLine(att.dept) + '? This line will be removed from this date\'s list.', { danger: true, ok: 'Yes, cancel', cancel: 'No' }).then(function (ok) {
       if (!ok) return;
+      if (isMobile()) {
+        SG.pd.send('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, rows: [] }, { dept: att.dept, date: state.date, shift: att.shift, kind: 'att', label: 'Cancel' });
+        toast('Attendance cancelled ✓', 'ok'); att.moveFrom = ''; back(); return;
+      }
       api('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, rows: [] })
         .then(function () { toast('Attendance cancelled', 'ok'); att.moveFrom = ''; invalidateAll(); back(); })
         .catch(function (e) { toast(e.message, 'bad'); });
@@ -792,7 +806,9 @@
     if (state.token && state.user) {
       var shown = !!state.masters;
       if (shown) { ensureLine(); home(); }
-      api('me', {}, { quiet: true }).then(function (d) { if (d.token) { state.token = d.token; localStorage.setItem('sg_token', d.token); } setUser(d.user); return isMobile() && mastersFresh() ? null : loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub && !(shown && isMobile())) tab(nav.tab); else applyRoleNav(); flushQueue(); })
+      var meAt = 0; try { meAt = Number(localStorage.getItem('sg_me_at') || 0); } catch (e) {}
+      var meP = isMobile() && shown && Date.now() - meAt < 6 * 3600 * 1000 ? Promise.resolve({ user: state.user }) : api('me', {}, { quiet: true }).then(function (d) { try { localStorage.setItem('sg_me_at', String(Date.now())); } catch (e) {} return d; });
+      meP.then(function (d) { if (d.token) { state.token = d.token; localStorage.setItem('sg_token', d.token); } setUser(d.user); return isMobile() && mastersFresh() ? null : loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub && !(shown && isMobile())) tab(nav.tab); else applyRoleNav(); flushQueue(); })
         .catch(function (e) { if (!state.masters || !/Network/.test(e.message || '')) logout(); });
     } else showOnly('scr-login');
   }

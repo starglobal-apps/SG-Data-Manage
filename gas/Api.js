@@ -24,11 +24,24 @@ function doPost(e) {
 
     var handler = routes_()[action];
     if (!handler) return json_(fail_('NO_ACTION', 'Unknown action: ' + action));
+    // phone background saves carry a request id (rid): the same save is never applied twice (resend / app reopened)
+    if (req.rid && ONCE_ACTIONS_[action]) {
+      var rc = CacheService.getScriptCache(), rk = 'rid:' + str_(req.rid), seen = rc.get(rk);
+      if (seen === 'running') return out_(fail_('BUSY', 'Still saving — try again in a minute'));
+      if (seen) return out_(JSON.parse(seen));
+      rc.put(rk, 'running', 300);
+      var res;
+      try { res = handler(req, user); } catch (e) { rc.remove(rk); throw e; }
+      if (res && res.ok) rc.put(rk, JSON.stringify(res), 21600); else rc.remove(rk);
+      return out_(res);
+    }
     return out_(handler(req, user));
   } catch (err) {
     return json_(str_(req.lang) === 'en' ? enReply_(fail_('SERVER', String(err && err.message || err))) : fail_('SERVER', String(err && err.message || err)));
   }
 }
+
+var ONCE_ACTIONS_ = { 'att.save': 1, 'm.attUpd': 1, 'm.attSync': 1 };
 
 function routes_() {
   return {
@@ -63,6 +76,7 @@ function routes_() {
     'm.out':          mOut_,
     'm.pms':          mPms_,
     'm.attUpd':       mAttUpd_,
+    'm.attSync':      mAttSync_,
     'm.trCreate':     mTrCreate_,
     'm.warm':         mWarm_,
     'm.all':          mAll_,

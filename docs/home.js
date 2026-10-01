@@ -175,6 +175,26 @@
   function attFail(e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-retry="1" style="margin-top:10px">Try again</button></div>'; }
   S.pdRender.matt = function () { if (AL.box !== '#matt-body' || AL.shift !== 'Final') return; var d = S.pd.get(); if (d && d.att && d.att.ok !== false) applyAtt(d.att); };
   S.pdFail.matt = attFail;
+  // saves still on their way (or failed) shown on their line at once: new numbers for an attendance save, a status line
+  // "Saving… / Not saved · Resend" for every pending save of the line
+  function withPending(items) {
+    var list = items.map(function (x) { return Object.assign({}, x, { ob: [] }); });
+    S.pd.pending(state.date).forEach(function (it) {
+      var x = list.filter(function (i) { return i.dept === it.dept; })[0];
+      if (it.kind === 'att' && it.shift === 'Final' && it.payload.rows && it.payload.rows.length) {
+        var roles = {}, n = 0; it.payload.rows.forEach(function (r) { roles[r.role] = (roles[r.role] || 0) + r.count; n += r.count; });
+        if (!x) { var l = PA.lines.filter(function (p) { return p.dept === it.dept; })[0] || {}; x = { dept: it.dept, cat: l.cat || 'STITCH', events: [], transfers: [], ot: 0, night: 0, ob: [] }; list.push(x); }
+        Object.assign(x, { count: n, mpNow: n, roles: roles, srn: it.payload.srn || '', by: S.state.user.name, fromSheet: false });
+      }
+      if (x) x.ob.push(it);
+    });
+    return list;
+  }
+  function obLine(it) {
+    var what = it.kind === 'att' && it.payload.rows && !it.payload.rows.length ? (it.label === 'Line change' ? 'Line change' : 'Cancel') : it.label || 'Attendance';
+    if (it.state === 'failed') return '<div class="ob-line bad"><span>⚠ ' + esc(what) + ' not saved' + (it.error ? ' — ' + esc(it.error) : '') + '</span><button class="btn small" data-resend="' + esc(it.id) + '">Resend</button></div>';
+    return '<div class="ob-line"><span class="ob-spin"></span>' + esc(what) + ' — saving…</div>';
+  }
   function renderPhoneAtt() {
     var today = S.todayStr(), past = state.date !== today;
     var html = '<div class="card pa-top"><div class="row">' +
@@ -188,13 +208,14 @@
         '<div class="m">From <b>' + hourLabel(t.hour) + '</b>' + (t.date !== S.todayStr() ? ' · ' + esc(S.fmtDay(t.date)) : '') + ' · by ' + esc(t.by) + '</div>' +
         '<div class="tr-acts"><button class="btn small danger" data-trno="' + esc(t.id) + '">Reject</button><button class="btn small ok" data-trok="' + esc(t.id) + '">Accept</button></div></div>';
     });
-    if (!PA.items.length) html += '<div class="empty">' + (past ? 'No attendance on this date' : 'No attendance filled today yet') + '</div>';
-    PA.items.forEach(function (x) {
+    var shown = withPending(PA.items);
+    if (!shown.length) html += '<div class="empty">' + (past ? 'No attendance on this date' : 'No attendance filled today yet') + '</div>';
+    shown.forEach(function (x) {
       var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent', ev = evText(x);
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, x.count) : null;
       html += '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + (x.fromSheet ? ' <em class="ot">from sheet</em>' : '') + '</div>' +
         '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' people' + (!x.fromSheet && x.mpNow !== x.count ? ' · now <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot : '') + (x.night ? ' · Night ' + x.night : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
-        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + trText(x) + (st === 'Synced' ? '<div class="m" style="color:var(--ok)">In main sheet ✓</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
+        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + x.ob.map(obLine).join('') + trText(x) + (st === 'Synced' && !x.ob.length ? '<div class="m" style="color:var(--ok)">In main sheet ✓</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
         (lock ? '<div class="m">' + (st === 'Submitted' ? 'In admin review' : st === 'Sent' ? 'In main sheet ✓' : esc(st)) + '</div>' : '') +
         (x.fromSheet && !lock ? '<div class="m">Filled in main sheet — Update / Change writes to the main sheet</div>' : '') + '</div>' +
         (lock ? '' : '<div class="pa-acts">' +
@@ -294,9 +315,10 @@
       var msg = [];
       if (hd) msg.push(hd + ' half day (' + $('#u-hours').value + ' hrs)');
       if (ab) msg.push(ab + ' absent');
-      S.api('m.attUpd', { date: state.date, factory: state.factory, dept: x.dept, role: role, halfDay: hd, hours: Number($('#u-hours').value), absent: ab }, { busy: true })
-        .then(function (r) { S.sheet.close(); if (r.sheetError) S.toast(r.sheetError, 'bad', 9000); else S.toast(role + ': ' + msg.join(', ') + ' ✓ · main sheet updated', 'ok', 6000); loadAttList(); })
-        .catch(function (er) { S.toast(er.message, 'bad', 7000); loadAttList(); });
+      // shown at once, sent in the background (phone.js outbox)
+      S.pd.send('m.attUpd', { date: state.date, factory: state.factory, dept: x.dept, role: role, halfDay: hd, hours: Number($('#u-hours').value), absent: ab },
+                { dept: x.dept, date: state.date, shift: 'Final', kind: 'upd', label: role + ': ' + msg.join(', ') });
+      S.sheet.close(); S.toast(role + ': ' + msg.join(', ') + ' ✓', 'ok');
     };
   }
 
@@ -331,6 +353,7 @@
     if (b.dataset.tr) { trSheet(PA.items.filter(function (i) { return i.dept === b.dataset.tr; })[0]); return; }
     if (b.dataset.trok) { trDecide(b.dataset.trok, 'accept'); return; }
     if (b.dataset.trno) { trDecide(b.dataset.trno, 'reject'); return; }
+    if (b.dataset.resend) { S.pd.resend(b.dataset.resend); S.toast('Sending again…', ''); return; }
     if (b.dataset.day) { S.setDate(b.dataset.day); return; }
     if (b.dataset.mp) {
       var all = PA.items.filter(function (x) { return !x.fromSheet; }).map(function (x) { return { dept: x.dept }; });

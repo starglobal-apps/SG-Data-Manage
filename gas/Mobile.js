@@ -292,6 +292,15 @@ function mAttUpd_(req, user) {
   return { ok: true, copied: res.copied, inSheet: !!s.ok, sheetError: s.ok ? '' : s.message };
 }
 
+// { date, factory, dept, shift } -> write that line's attendance to the main sheet again (Resend after the sheet failed)
+function mAttSync_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), shift = str_(req.shift) || 'Final';
+  if (!isDateStr_(date) || !dept) return fail_('VAL', 'Wrong date / line');
+  if (!canWrite_(user, factory, dept)) return fail_('PERM', 'No permission for this line');
+  var s = attSync_(date, factory, dept, shift, user, true);
+  return s.ok ? { ok: true, rows: s.rows } : fail_('SHEET', s.message);
+}
+
 // ---------- phone "Transfer manpower": people of one line go to another line from a whole hour ----------
 // The day shift is 9 AM–6 PM with lunch 1–2 PM (8 working hours). Hours are whole hours only (9, 10, 11 …):
 // transfer at 11  ->  2 hours on the old line, 6 hours on the new line (shown as separate rows like a half day).

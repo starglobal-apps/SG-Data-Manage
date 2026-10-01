@@ -70,7 +70,7 @@ var EN_RULES_ = [
   [/^PIN 4 se 8 digit ka number ho$/, 'PIN must be a 4–8 digit number'],
   [/^Role galat$/, 'Wrong role'],
   [/^Apna hi admin access nahi hata sakte$/, 'You cannot remove your own admin access'],
-  [/^Main sheet me nahi gaya: (.*)$/, 'Saved in app, but not written to the main sheet: $1']
+  [/^Main sheet me nahi gaya: (.*)$/, 'Main sheet not updated: $1']
 ];
 function enMsg_(s) {
   s = String(s || ''); if (!s) return s;
