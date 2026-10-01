@@ -90,7 +90,7 @@ function appAgg_(excludeKey) {
       out.keys['E|' + k2_(dept, srn) + '|' + d] = 1;
     } else if (t === 'PACKING') { addTo_(out.packed, srn, r.qty); out.keys['P|' + srn + '|' + d] = 1; }
   });
-  if (!excludeKey) cachePutBig_('app_agg', out, 120);
+  if (!excludeKey) cachePutBig_('app_agg', out, 600);   // every output write invalidates it
   return out;
 }
 function invalidateAppAgg_() { cacheDelBig_('app_agg'); }

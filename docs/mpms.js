@@ -9,7 +9,7 @@
     if (P.fac !== state.factory) { P.rows = null; P.fac = state.factory; }
     if (P.rows) render(); else $('#mpms-body').innerHTML = '<div class="empty">Loading PMS data…</div>';
     api('m.pms', { factory: state.factory }, { quiet: true })
-      .then(function (r) { P.rows = r.rows || []; P.err = r.unloadError || ''; render(); })
+      .then(function (r) { P.rows = r.rows || []; P.err = r.unloadError || ''; render(); S.warm(); })
       .catch(function (e) { if (!P.rows) $('#mpms-body').innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-reload="1" style="margin-top:10px">Try again</button></div>'; });
   };
 

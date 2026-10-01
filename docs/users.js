@@ -5,21 +5,21 @@
   var U = { users: [], roles: [] };
 
   S.screens.users = function () {
-    S.push('users', 'Users & access');
+    S.push('users', S.tx('Users & access', 'Users'));
     $('#users-list').innerHTML = '<div class="empty">Loading…</div>';
     api('users.list').then(function (d) { U.users = d.users; U.roles = d.roles; render(); }).catch(function (e) { $('#users-list').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   };
 
   function render() {
-    var html = '<button class="btn primary big" id="user-new" style="margin:0 0 10px">+ Naya user</button>';
+    var html = '<button class="btn primary big" id="user-new" style="margin:0 0 10px">' + S.tx('+ Naya user', '+ Add user') + '</button>';
     var groups = { Admin: [], Manager: [], Supervisor: [], 'Data Collector': [] };
     U.users.forEach(function (u) { (groups[u.role] = groups[u.role] || []).push(u); });
     Object.keys(groups).forEach(function (role) {
       if (!groups[role].length) return;
       html += '<h2>' + esc(role) + ' (' + groups[role].length + ')</h2>';
       groups[role].forEach(function (u) {
-        var access = u.role === 'Admin' ? 'Pura access' : (u.factory ? 'FAC' + u.factory : 'Dono factory') + (u.depts.length ? ' · ' + u.depts.length + ' line/floor' : (u.role === 'Manager' ? ' · sab lines' : ' · koi line nahi'));
-        html += '<div class="task' + (u.active ? '' : ' lock') + '" data-uid="' + esc(u.user_id) + '"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">' + esc(u.name) + (u.active ? '' : ' <span class="pill">Inactive</span>') + '</div><div class="s">' + esc(access) + '</div></div><span class="chev">' + icon('chev') + '</span></div>';
+        var access = u.role === 'Admin' ? S.tx('Pura access', 'Full access') : (u.factory ? 'FAC' + u.factory : S.tx('Dono factory', 'Both factories')) + (u.depts.length ? ' · ' + u.depts.length + ' line/floor' : (u.role === 'Manager' ? S.tx(' · sab lines', ' · all lines') : S.tx(' · koi line nahi', ' · no line')));
+        html += '<div class="task' + (u.active ? '' : ' lock') + '" data-uid="' + esc(u.user_id) + '"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">' + esc(u.name) + (u.active ? '' : ' <span class="pill">' + S.tx('Inactive', 'Removed') + '</span>') + '</div><div class="s">' + esc(access) + '</div></div><span class="chev">' + icon('chev') + '</span></div>';
       });
     });
     $('#users-list').innerHTML = html;
@@ -39,20 +39,29 @@
 
   function edit(u) {
     u = u || { user_id: '', name: '', pin: '', role: 'Data Collector', factory: '', depts: [], active: true };
-    var html = '<label>Naam (data me yahi save hoga)</label><input id="u-name" type="text" value="' + esc(u.name) + '" placeholder="Jaise: Ramesh Kumar">' +
+    var html = '<label>' + S.tx('Naam (data me yahi save hoga)', 'Name (saved with the data)') + '</label><input id="u-name" type="text" value="' + esc(u.name) + '" placeholder="' + S.tx('Jaise: Ramesh Kumar', 'e.g. Ramesh Kumar') + '">' +
       '<div class="row"><div class="field"><label>PIN (4–8 digit)</label><input id="u-pin" type="tel" inputmode="numeric" value="' + esc(u.pin) + '" placeholder="123456"></div>' +
       '<div class="field"><label>Role</label><select id="u-role">' + U.roles.map(function (r) { return '<option' + (r === u.role ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('') + '</select></div></div>' +
-      '<label>Factory</label><div class="toggle" id="u-fac"><button type="button" data-f="" class="' + (!u.factory ? 'on' : '') + '">Dono</button>' + (state.masters.factories || []).map(function (f) { return '<button type="button" data-f="' + esc(f) + '" class="' + (u.factory === f ? 'on' : '') + '">FAC' + esc(f) + '</button>'; }).join('') + '</div>' +
+      '<label>Factory</label><div class="toggle" id="u-fac"><button type="button" data-f="" class="' + (!u.factory ? 'on' : '') + '">' + S.tx('Dono', 'Both') + '</button>' + (state.masters.factories || []).map(function (f) { return '<button type="button" data-f="' + esc(f) + '" class="' + (u.factory === f ? 'on' : '') + '">FAC' + esc(f) + '</button>'; }).join('') + '</div>' +
       '<div id="u-depts">' + deptChips(u.depts) + '</div>' +
-      '<p class="hint">Manager / Admin: line na chuno to sab lines. Recorder: sirf chuni hui lines / floors dikhengi.</p>' +
-      '<label class="chk" style="margin-top:8px"><input id="u-active" type="checkbox"' + (u.active ? ' checked' : '') + '> Active (login kar sakta hai)</label>' +
-      '<button class="btn primary big" id="u-save">Save</button>';
-    S.sheet.open(u.user_id ? 'User edit' : 'Naya user', html);
+      '<p class="hint">' + S.tx('Manager / Admin: line na chuno to sab lines. Recorder: sirf chuni hui lines / floors dikhengi.', 'Manager / Admin: no line selected = all lines. Recorder: sees only the selected lines / floors.') + '</p>' +
+      '<label class="chk" style="margin-top:8px"><input id="u-active" type="checkbox"' + (u.active ? ' checked' : '') + '> ' + S.tx('Active (login kar sakta hai)', 'Active (can log in)') + '</label>' +
+      '<button class="btn primary big" id="u-save">Save</button>' +
+      (u.user_id && u.active ? '<button class="btn danger big" id="u-remove" style="margin-top:8px">' + S.tx('User hatao', 'Remove user') + '</button>' : '');
+    S.sheet.open(u.user_id ? S.tx('User edit', 'Edit user') : S.tx('Naya user', 'Add user'), html);
     var c = $('#sheet-content');
     c.onclick = function (e) {
       var b = e.target.closest('button'); if (!b) return;
       if (b.dataset.f !== undefined) { $$('#u-fac button').forEach(function (x) { x.classList.toggle('on', x === b); }); return; }
       if (b.dataset.dept) { b.classList.toggle('on'); return; }
+      if (b.id === 'u-remove') {   // remove = can no longer log in (their saved data stays)
+        S.ask(S.tx(u.name + ' ko hatayein? Wo login nahi kar payega, purana data rahega.', 'Remove ' + u.name + '? They can no longer log in; their saved data stays.'), { danger: true, ok: S.tx('Hatao', 'Remove'), cancel: S.tx('Nahi', 'Cancel') }).then(function (ok) {
+          if (!ok) return;
+          api('users.save', { user_id: u.user_id, name: u.name, pin: u.pin, role: u.role, factory: u.factory, depts: u.depts, active: false })
+            .then(function () { toast(S.tx('Hata diya: ', 'Removed: ') + u.name, 'ok'); S.sheet.close(); S.screens.users(); }).catch(function (er) { toast(er.message, 'bad', 6000); });
+        });
+        return;
+      }
       if (b.id === 'u-save') {
         var payload = { user_id: u.user_id, name: $('#u-name').value.trim(), pin: $('#u-pin').value.trim(), role: $('#u-role').value,
           factory: ($('#u-fac button.on') || { dataset: { f: '' } }).dataset.f, depts: $$('#u-depts button.on').map(function (x) { return x.dataset.dept; }), active: $('#u-active').checked };

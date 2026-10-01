@@ -19,7 +19,7 @@
   S.tabs.mout = function () {
     if (!O.loaded) $('#mout-body').innerHTML = '<div class="empty">Loading pending output…</div>';
     api('m.out', { factory: state.factory }, { quiet: true })
-      .then(function (r) { O.loaded = true; O.groups = r.groups || []; O.done = r.done || []; O.today = r.today || S.todayStr(); render(); })
+      .then(function (r) { O.loaded = true; O.groups = r.groups || []; O.done = r.done || []; O.today = r.today || S.todayStr(); render(); S.warm(); })
       .catch(function (e) { $('#mout-body').innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-reload="1" style="margin-top:10px">Try again</button></div>'; });
   };
 

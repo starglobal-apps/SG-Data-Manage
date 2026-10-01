@@ -117,6 +117,11 @@ function str_(v) { return (v === undefined || v === null) ? '' : String(v).trim(
 function csv_(v) { return str_(v).split(',').map(function(s) { return s.trim(); }).filter(String); }
 
 // ---------- chunked CacheService (values > 100 KB) ----------
+// The heavy sheet aggregates are served stale-while-revalidate: past their ttl they are still returned at once (kept up
+// to 6 h), and the phone's quiet m.warm call (SWR_REFRESH_ = true) rebuilds the ones that are past it. So nobody waits
+// for a rebuild from the sheets (that took 7+ s); data is at most ~ttl old while the app is in use.
+var SWR_KEYS_ = { hist_agg2: 1, loading_agg: 1, sheet_att2: 1, orders_agg: 1, unload_agg: 1, bulletin_sam: 1, masters_rows: 1, loading_rows: 1 };
+var SWR_REFRESH_ = false;
 function cachePutBig_(key, obj, ttl) {
   try {
     var json = JSON.stringify(obj), size = 90000, parts = [];
@@ -124,13 +129,15 @@ function cachePutBig_(key, obj, ttl) {
     var c = CacheService.getScriptCache(), map = { };
     parts.forEach(function(pt, i) { map[key + '#' + i] = pt; });
     map[key + '#n'] = String(parts.length);
-    c.putAll(map, ttl || 600);
+    map[key + '#t'] = String(Date.now() + (ttl || 600) * 1000);   // soft expiry
+    c.putAll(map, SWR_KEYS_[key] ? 21600 : (ttl || 600));
   } catch (e) {}
 }
 function cacheGetBig_(key) {
   try {
-    var c = CacheService.getScriptCache(), n = Number(c.get(key + '#n') || 0);
+    var c = CacheService.getScriptCache(), head = c.getAll([key + '#n', key + '#t']), n = Number(head[key + '#n'] || 0);
     if (!n) return null;
+    if (SWR_KEYS_[key] && SWR_REFRESH_ && Date.now() > Number(head[key + '#t'] || 0)) return null;   // m.warm: rebuild the stale ones
     var keys = []; for (var i = 0; i < n; i++) keys.push(key + '#' + i);
     var got = c.getAll(keys), json = '';
     for (var j = 0; j < n; j++) { if (!got[key + '#' + j]) return null; json += got[key + '#' + j]; }
@@ -139,7 +146,7 @@ function cacheGetBig_(key) {
 }
 function cacheDelBig_(key) {
   try {
-    var c = CacheService.getScriptCache(), n = Number(c.get(key + '#n') || 0), keys = [key + '#n'];
+    var c = CacheService.getScriptCache(), n = Number(c.get(key + '#n') || 0), keys = [key + '#n', key + '#t'];
     for (var i = 0; i < n; i++) keys.push(key + '#' + i);
     c.removeAll(keys);
   } catch (e) {}
@@ -165,14 +172,15 @@ function readRecent_(name, n) {
   }
   return out;
 }
-// Day views: last 3000 rows, memoised per execution and cached 90 s across executions; every write invalidates.
+// Day views: last 3000 rows, memoised per execution and cached 10 min across executions; every app write invalidates
+// (appendRows_ / deleteRows_ / status updates), and the phone's "Fresh data" clears them too.
 var DAILY_MEM_ = {};
 function readDaily_(name) {
   if (DAILY_MEM_[name]) return DAILY_MEM_[name];
   var hit = cacheGetBig_('daily:' + name);
   if (hit) { DAILY_MEM_[name] = hit; return hit; }
   var rows = readRecent_(name, 3000);
-  cachePutBig_('daily:' + name, rows, 90);
+  cachePutBig_('daily:' + name, rows, 600);
   DAILY_MEM_[name] = rows;
   return rows;
 }

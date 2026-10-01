@@ -134,6 +134,22 @@ function mOut_(req, user) {
   return { ok: true, today: today, groups: Object.keys(groups).sort().reverse().map(function(d) { return { date: d, lines: groups[d] }; }), done: done };
 }
 
+// ---------- phone: quiet background refresh of the sheet data (called after a screen is shown) ----------
+// { all } -> all: rebuild everything now ("Fresh data" button); otherwise only what is past its refresh time.
+function mWarm_(req, user) {
+  var c = CacheService.getScriptCache();
+  if (!req.all && c.get('warm_running')) return { ok: true, busy: true };
+  c.put('warm_running', '1', 90);
+  var t = Date.now();
+  try {
+    // all: everything counts as old (others keep getting the old copy until the new one is built) + the small caches go
+    if (req.all) { Object.keys(SWR_KEYS_).forEach(function(k) { c.put(k + '#t', '0', 21600); }); ['app_agg', 'hist_agg', 'hist_qc', 'defects_master', 'users_rows'].forEach(cacheDelBig_); Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); }); }
+    SWR_REFRESH_ = true;
+    [mastersRows_, sheetAttAgg_, loadingAgg_, historyAgg_, ordersAgg_, unloadingAgg_, bulletinSam_].forEach(function(fn) { fn(); });
+  } finally { SWR_REFRESH_ = false; c.remove('warm_running'); }
+  return { ok: true, ms: Date.now() - t };
+}
+
 // ---------- phone PMS tab: every unshipped order with the numbers the recorder needs to fill data right ----------
 // Orders  = MASTER DATA col I ('All Orders' A..AA): [2] SRN · [3] Buyer · [6] Shipping Qty · [12] Style · [19] Shipped Status · [23] Shipped Qty
 // Unload  = loading spreadsheet 'Unloading_chalaan': E SRN · K qty in challan · P status (reject) · R qty approved

@@ -132,7 +132,7 @@
     opts = opts || {};
     if (!API_URL) return Promise.reject(new Error('API URL set nahi hai — docs/config.js me daalo'));
     var blocking = opts.busy || (WRITE_ACTIONS.indexOf(action) >= 0 || /\.(save|decide|send|submit|create|clear|delete|refresh)$/.test(action)) && !opts.quiet;
-    if (blocking) busy(true); else prog(true);
+    if (blocking) busy(true); else if (!opts.silent) prog(true);
     return rawPost(Object.assign({}, payload || {}, { action: action, token: state.token }))
       .then(function (data) {
         if (!data.ok) {
@@ -149,7 +149,7 @@
         }
         throw err;
       })
-      .finally(function () { if (blocking) busy(false); else prog(false); });
+      .finally(function () { if (blocking) busy(false); else if (!opts.silent) prog(false); });
   }
 
   // stale-while-revalidate for read calls: instant data from the last copy + a promise for fresh data
@@ -218,7 +218,16 @@
   }
   function setUser(u) { if (!u) return; state.user = u; localStorage.setItem('sg_user', JSON.stringify(u)); }
   function loadMasters() {
-    return api('masters').then(function (d) { state.masters = d; localStorage.setItem('sg_masters', JSON.stringify(d)); });
+    return api('masters').then(function (d) { state.masters = d; localStorage.setItem('sg_masters', JSON.stringify(d)); try { localStorage.setItem('sg_masters_at', String(Date.now())); } catch (e) {} });
+  }
+  // phone: lines / roles change rarely — reuse the saved copy for 6 h ("Fresh data" reloads them)
+  function mastersFresh() { var at = 0; try { at = Number(localStorage.getItem('sg_masters_at') || 0); } catch (e) {} return !!state.masters && Date.now() - at < 6 * 3600 * 1000; }
+  // phone: after a screen is shown, the server quietly rebuilds sheet data that is past its refresh time (at most every 3 min)
+  function warm() {
+    var at = 0; try { at = Number(localStorage.getItem('sg_warm_at') || 0); } catch (e) {}
+    if (Date.now() - at < 180000) return;
+    try { localStorage.setItem('sg_warm_at', String(Date.now())); } catch (e) {}
+    api('m.warm', {}, { quiet: true, silent: true }).catch(function () {});
   }
 
   // ---------- masters helpers ----------
@@ -678,9 +687,9 @@
     var lines = deptsFor(state.factory).length;
     var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : '') + ' · ' + lines + ' lines / floors</div></div></div>';
     html += '<div class="menu">';
-    html += '<div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Staff names</div><div class="s">Supervisor · Incharge — used in attendance</div></div>' + icon('chev') + '</div>';
-    html += '<div class="task" data-m="prefresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Get new data</div><div class="s">New loading / SRN, new line or access changed</div></div>' + icon('chev') + '</div>';
-    if (isManager()) html += '<div class="task" data-m="fullapp"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Show full app</div><div class="s">Review, Reports, PMS — the computer app</div></div>' + icon('chev') + '</div>';
+    if (isAdmin()) html += '<div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users</div><div class="s">Add or remove users, PIN, lines</div></div>' + icon('chev') + '</div>';
+    html += '<div class="task" data-m="prefresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Fresh data</div><div class="s">Load the latest loading, SRN, attendance, output, PMS from the sheets</div></div>' + icon('chev') + '</div>';
+    if (isAdmin()) html += '<div class="task" data-m="import"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Import data</div><div class="s">Main sheets → MASTER DATA (runs in background, 1–2 min)</div></div>' + icon('chev') + '</div>';
     html += '</div>';
     if (q.length) html += queueHtml(q);
     html += '<div class="menu" style="margin-top:12px"><div class="task" data-m="logout"><div class="ic" style="background:var(--bad-soft);color:var(--bad)">' + icon('logout') + '</div><div class="b"><div class="n">Logout</div><div class="s">SG Data v' + VERSION + '</div></div></div></div>';
@@ -689,8 +698,14 @@
   // phone refresh: new loading + masters + access, then only the current screen (no server-wide cache clear)
   function phoneRefresh() {
     busy(true);
-    Promise.all([api('orders.refresh', {}, { quiet: true }).catch(function () {}), api('me', {}, { quiet: true }).then(function (d) { setUser(d.user); }), loadMasters()])
-      .then(function () { busy(false); ensureLine(); toast('New data loaded', 'ok'); tab(nav.tab); })
+    Promise.all([api('me', {}, { quiet: true }).then(function (d) { setUser(d.user); }), loadMasters()])
+      .then(function () {
+        busy(false); ensureLine(); clearLocalCaches(); tab(nav.tab);
+        // the sheets are read again on the server in the background (about a minute); the app stays usable meanwhile
+        toast('Loading fresh data from the sheets — about 1 minute', '', 6000);
+        try { localStorage.setItem('sg_warm_at', String(Date.now())); } catch (e) {}
+        api('m.warm', { all: 1 }, { quiet: true, silent: true }).then(function () { toast('Fresh data loaded', 'ok'); tab(nav.tab); }).catch(function (er) { toast(er.message, 'bad'); });
+      })
       .catch(function (e) { busy(false); toast(e.message, 'bad'); });
   }
   $('#main-body').addEventListener('click', function (e) {
@@ -703,7 +718,7 @@
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
     else if (m === 'prefresh') phoneRefresh();
-    else if (m === 'import') ask('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', { ok: 'Chalao' }).then(function (ok) { if (!ok) return; api('admin.importNow', {}).then(function (d) { toast(d.running ? 'Import pehle se chal raha hai — 2 min baad Refresh karo' : 'Background me shuru · 2 min baad "Refresh sab data" dabao', 'ok', 8000); }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
+    else if (m === 'import') ask(tx('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', 'Run import in the background? It takes 1–2 minutes.'), { ok: tx('Chalao', 'Run') }).then(function (ok) { if (!ok) return; api('admin.importNow', {}).then(function (d) { toast(d.running ? tx('Import pehle se chal raha hai — 2 min baad Refresh karo', 'Import is already running — tap Fresh data after 2 min') : tx('Background me shuru · 2 min baad "Refresh sab data" dabao', 'Started in background · tap Fresh data after 2 min'), 'ok', 8000); }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
     else if (m === 'print') SG.printSrn();
     else if (m === 'staff') screens.staff();
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }
@@ -755,7 +770,7 @@
     $: $, $$: $$, esc: esc, api: api, toast: toast, busy: busy, pill: pill, icon: icon,
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
-    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, tx: tx, hourlyTarget: hourlyTarget,
+    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, tx: tx, warm: warm, hourlyTarget: hourlyTarget,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,
@@ -776,7 +791,7 @@
     if (state.token && state.user) {
       var shown = !!state.masters;
       if (shown) { ensureLine(); home(); }
-      api('me', {}, { quiet: true }).then(function (d) { if (d.token) { state.token = d.token; localStorage.setItem('sg_token', d.token); } setUser(d.user); return loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub && !(shown && isMobile())) tab(nav.tab); else applyRoleNav(); flushQueue(); })
+      api('me', {}, { quiet: true }).then(function (d) { if (d.token) { state.token = d.token; localStorage.setItem('sg_token', d.token); } setUser(d.user); return isMobile() && mastersFresh() ? null : loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub && !(shown && isMobile())) tab(nav.tab); else applyRoleNav(); flushQueue(); })
         .catch(function (e) { if (!state.masters || !/Network/.test(e.message || '')) logout(); });
     } else showOnly('scr-login');
   }

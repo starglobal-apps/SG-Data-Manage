@@ -64,6 +64,7 @@ function routes_() {
     'm.pms':          mPms_,
     'm.attUpd':       mAttUpd_,
     'm.trCreate':     mTrCreate_,
+    'm.warm':         mWarm_,
     'm.trDecide':     mTrDecide_,
     'target.get':     targetGet_,
     'target.sam':     targetSamSave_,

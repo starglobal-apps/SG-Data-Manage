@@ -163,7 +163,7 @@
   function loadPhoneAtt() {
     S.api('m.att', { date: state.date, factory: state.factory }, { quiet: true }).then(function (d) {
       PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
-      trBadge(PA.incoming.length);
+      trBadge(PA.incoming.length); S.warm();
       renderPhoneAtt();
     }).catch(function (e) { box().innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-retry="1" style="margin-top:10px">Try again</button></div>'; });
   }
