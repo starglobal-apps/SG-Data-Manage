@@ -194,7 +194,7 @@ function daySubmit_(req, user) {
   // mismatches do not stop the recorder any more: the rows carry the flags and the admin decides in Review
   var n = 0, stamp = nowStr_();
   withLock_(function() {
-    var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = CFG.HEADERS.DAY_SUMMARY;
+    var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = physHeadOf_(CFG.TABS.DAY_SUMMARY);
     var ci = { status: head.indexOf('status') + 1, by: head.indexOf('submitted_by') + 1, at: head.indexOf('submitted_at') + 1 };
     readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
       if (str_(r.date) !== date || str_(r.factory) !== factory || (onlyDept && str_(r.dept) !== onlyDept)) return;
@@ -211,7 +211,7 @@ function daySubmit_(req, user) {
 }
 
 function setDayStatus_(date, factory, dept, type, status, user, remark) {
-  var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = CFG.HEADERS.DAY_SUMMARY;
+  var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = physHeadOf_(CFG.TABS.DAY_SUMMARY);
   var cs = head.indexOf('status') + 1, cr = head.indexOf('remark') + 1;
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
     if (str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.type) === type) {
@@ -260,7 +260,7 @@ function reviewDecide_(req, user) {
   var ids = Array.isArray(req.ids) ? req.ids.map(str_) : [], action = str_(req.action), remark = str_(req.remark), override = !!req.override;
   if (!ids.length) return fail_('IDS', 'Kuch select karo');
   if (action === 'reject' && !remark) return fail_('REMARK', 'Reject ka reason likho');
-  var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = CFG.HEADERS.DAY_SUMMARY;
+  var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = physHeadOf_(CFG.TABS.DAY_SUMMARY);
   var ci = { status: head.indexOf('status') + 1, by: head.indexOf('reviewed_by') + 1, at: head.indexOf('reviewed_at') + 1, remark: head.indexOf('remark') + 1 };
   var stamp = nowStr_(), done = 0, skipped = [];
   withLock_(function() {
@@ -381,7 +381,7 @@ function reviewSend_(req, user) {
       log.push(tk + ': ' + flat.length + ' rows at row ' + res.startRow);
       byTarget[tk].forEach(function(x) { sentIds.push(str_(x.r.id)); });
     });
-    var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = CFG.HEADERS.DAY_SUMMARY;
+    var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = physHeadOf_(CFG.TABS.DAY_SUMMARY);
     var cs = head.indexOf('status') + 1, cb = head.indexOf('reviewed_by') + 1, ca = head.indexOf('reviewed_at') + 1, stamp = nowStr_();
     ready.forEach(function(r) {
       if (sentIds.indexOf(str_(r.id)) < 0) return;

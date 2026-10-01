@@ -54,7 +54,7 @@ function adminImportNow_(req, user) {
 //   ATT (only for days before today, the app still needs today's attendance) -> ATT_DAILY rows (date, factory, dept, shift)
 //        + MANPOWER_EVENTS of that dept/date when the Final shift goes
 function cleanupSent_() {
-  var today = todayStr_(), head = CFG.HEADERS.DAY_SUMMARY, sh = tab_(CFG.TABS.DAY_SUMMARY, true);
+  var today = todayStr_(), head = physHeadOf_(CFG.TABS.DAY_SUMMARY), sh = tab_(CFG.TABS.DAY_SUMMARY, true);
   if (head.indexOf('cleaned_at') < 0) return { error: 'cleaned_at column missing in CFG' };
   if (sh.getLastColumn() < head.length) ensureHeaders_(CFG.TABS.DAY_SUMMARY);
   var ds = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return (str_(r.status) === 'Sent' || str_(r.status) === 'Synced') && !str_(r.cleaned_at); });
@@ -81,6 +81,9 @@ function cleanupSent_() {
     done.forEach(function(r) { sh.getRange(r._row, cc).setValue(stamp); });
   });
   invalidateDaily_(CFG.TABS.DAY_SUMMARY); invalidateAppAgg_();
+  // the log (OUTPUT sheet, table 'Log') keeps the last 30 days only
+  try { var old = fmtDate_(new Date(new Date().getTime() - 30 * 86400000)), lg = readTab_(CFG.TABS.AUDIT_LOG).filter(function(r) { var a = str_(r.at).slice(0, 10); return a && a < old; });
+        if (lg.length) withLock_(function() { deleteRows_(CFG.TABS.AUDIT_LOG, lg.map(function(r) { return r._row; })); }); } catch (e) {}
   return { rows: done.length, hourly: toNums(delH).length, att: toNums(delA).length, events: toNums(delE).length };
 }
 
@@ -96,7 +99,7 @@ function attSend_(req, user) {
     var b = dayBuild_({ date: date, factory: factory, dept: d, onlyType: 'ATT' }, user);
     if (!b.ok) return;
   });
-  var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = CFG.HEADERS.DAY_SUMMARY, stamp = nowStr_();
+  var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = physHeadOf_(CFG.TABS.DAY_SUMMARY), stamp = nowStr_();
   var ci = { status: head.indexOf('status') + 1, sby: head.indexOf('submitted_by') + 1, sat: head.indexOf('submitted_at') + 1, rby: head.indexOf('reviewed_by') + 1, rat: head.indexOf('reviewed_at') + 1 };
   withLock_(function() {
     readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {

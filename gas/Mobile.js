@@ -367,7 +367,7 @@ function mTrDecide_(req, user) {
       var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
       deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
     }
-    var sh = tab_(CFG.TABS.TRANSFERS, true), head = CFG.HEADERS.TRANSFERS;
+    var sh = tab_(CFG.TABS.TRANSFERS, true), head = physHeadOf_(CFG.TABS.TRANSFERS);
     sh.getRange(t._row, head.indexOf('status') + 1).setValue(action === 'accept' ? 'Accepted' : 'Rejected');
     sh.getRange(t._row, head.indexOf('decided_by') + 1).setValue(by);
     sh.getRange(t._row, head.indexOf('decided_at') + 1).setValue(stamp);

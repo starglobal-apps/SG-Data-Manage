@@ -15,7 +15,6 @@ var CFG = {
     HOURLY_LOG: 'HOURLY_LOG',
     MANPOWER_EVENTS: 'MANPOWER_EVENTS',
     DAY_SUMMARY: 'DAY_SUMMARY',
-    ACTIVE_ORDERS: 'ACTIVE_ORDERS',
     TRANSFERS: 'TRANSFERS',
     AUDIT_LOG: 'AUDIT_LOG'
   },
@@ -27,7 +26,6 @@ var CFG = {
     HOURLY_LOG:      ['id', 'date', 'factory', 'line', 'dept', 'srn', 'floor', 'type', 'shift', 'slot', 'qty', 'checked', 'pass', 'reject', 'cartons', 'pcs_per_ctn', 'checker', 'entered_by', 'entered_at', 'defects'],
     MANPOWER_EVENTS: ['id', 'date', 'factory', 'dept', 'role', 'event', 'count', 'time', 'eff_hours', 'note', 'entered_by', 'entered_at'],
     DAY_SUMMARY:     ['id', 'date', 'factory', 'line', 'dept', 'type', 'srn', 'shift', 'payload', 'status', 'flags', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'remark', 'cleaned_at'],
-    ACTIVE_ORDERS:   ['factory', 'line', 'dept', 'srn', 'loaded', 'stitched', 'balance', 'last_loading'],
     TRANSFERS:       ['id', 'date', 'factory', 'from_dept', 'to_dept', 'role', 'count', 'time', 'srn', 'status', 'note', 'by', 'at', 'decided_by', 'decided_at', 'to_user', 'items', 'allocations'],
     AUDIT_LOG:       ['at', 'user', 'action', 'ref', 'detail']
   },
@@ -39,8 +37,7 @@ var CFG = {
     HOURLY_LOG: ['date', 'slot'],
     MANPOWER_EVENTS: ['date', 'time'],
     DAY_SUMMARY: ['date'],
-    TRANSFERS: ['date', 'time'],
-    ACTIVE_ORDERS: ['last_loading']
+    TRANSFERS: ['date', 'time']
   },
 
   USER_ROLES: ['Data Collector', 'Supervisor', 'Manager', 'Admin'],
@@ -115,6 +112,18 @@ CFG.HOURLY_TYPES = [
 ];
 
 // Manpower change events. eff = how many hours that person effectively worked (null = computed from time)
+// Where each table is kept (Util.js tab_ / readTab_ / appendRows_): 3 sheets besides USERS, MASTER DATA and APP SUMMARY.
+// 'label' = the value in the sheet's first column ('table') for that table's rows.
+CFG.STORE = {
+  MASTERS:         { sheet: 'SETTINGS' },
+  ATT_DAILY:       { sheet: 'ATTENDANCE', label: 'Attendance' },
+  MANPOWER_EVENTS: { sheet: 'ATTENDANCE', label: 'Change' },
+  TRANSFERS:       { sheet: 'ATTENDANCE', label: 'Transfer' },
+  HOURLY_LOG:      { sheet: 'OUTPUT', label: 'Output' },
+  DAY_SUMMARY:     { sheet: 'OUTPUT', label: 'Review' },
+  AUDIT_LOG:       { sheet: 'OUTPUT', label: 'Log' }
+};
+
 CFG.MP_EVENTS = [
   { key: 'HALF_DAY',  label: 'Half day (4 hrs)',       eff: 4,    needsTime: false },
   { key: 'LEFT_AT',   label: 'Beech me chala gaya',    eff: null, needsTime: true,  from: 9 },

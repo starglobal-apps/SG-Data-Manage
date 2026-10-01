@@ -15,33 +15,47 @@ function uuid_() { return Utilities.getUuid(); }
 
 function isDateStr_(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')); }
 
+// ---------- storage: the app's tables live in a few sheets ----------
+// CFG.STORE puts each table in a sheet: SETTINGS (= MASTERS), ATTENDANCE (attendance · changes · transfers),
+// OUTPUT (output · review · log); USERS stays its own sheet. A sheet holding several tables has a first column
+// 'table' that says which table each row belongs to, and the union of their columns (unused ones stay blank).
+function store_(name) { return (CFG.STORE && CFG.STORE[name]) || { sheet: name }; }
+function sheetOf_(name) { return store_(name).sheet; }
+var PHYS_HEAD_ = {};
+// the column headers of the sheet that holds table `name`
+function physHeadOf_(name) {
+  var sheet = sheetOf_(name);
+  if (PHYS_HEAD_[sheet]) return PHYS_HEAD_[sheet];
+  var members = Object.keys(CFG.HEADERS).filter(function(t) { return sheetOf_(t) === sheet; });
+  var multi = members.some(function(t) { return store_(t).label; });
+  var head = multi ? ['table'] : [];
+  members.forEach(function(t) { CFG.HEADERS[t].forEach(function(h) { if (head.indexOf(h) < 0) head.push(h); }); });
+  return (PHYS_HEAD_[sheet] = head);
+}
+function siblings_(name) { var sheet = sheetOf_(name); return Object.keys(CFG.HEADERS).filter(function(t) { return sheetOf_(t) === sheet; }); }
+
 function tab_(name, create) {
-  var ss = getSS_();
-  var sh = ss.getSheetByName(name);
+  var ss = getSS_(), sheet = sheetOf_(name);
+  var sh = ss.getSheetByName(sheet);
   if (!sh && create) {
-    sh = ss.insertSheet(name);
-    var head = CFG.HEADERS[name];
-    if (head) {
-      sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
-      sh.setFrozenRows(1);
-      (CFG.TEXT_COLS[name] || []).forEach(function(col) {
-        var idx = head.indexOf(col);
-        if (idx >= 0) sh.getRange(2, idx + 1, sh.getMaxRows() - 1, 1).setNumberFormat('@');
-      });
-    }
+    sh = ss.insertSheet(sheet);
+    var head = physHeadOf_(name);
+    if (sh.getMaxColumns() < head.length) sh.insertColumnsAfter(sh.getMaxColumns(), head.length - sh.getMaxColumns());
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    var text = {}; siblings_(name).forEach(function(t) { (CFG.TEXT_COLS[t] || []).forEach(function(c) { text[c] = 1; }); });
+    Object.keys(text).forEach(function(col) { var idx = head.indexOf(col); if (idx >= 0) sh.getRange(2, idx + 1, sh.getMaxRows() - 1, 1).setNumberFormat('@'); });
   }
   return sh;
 }
 
-// Adds any header columns that CFG.HEADERS has but the sheet does not (appended at the end, in order).
-// Column order in CFG.HEADERS must match the sheet for existing columns; new ones are appended.
+// Adds any header columns the sheet does not have yet (at their place in the CFG order).
 function ensureHeaders_(name) {
-  var sh = tab_(name, true), head = CFG.HEADERS[name];
+  var sh = tab_(name, true), head = physHeadOf_(name);
   var cur = sh.getLastColumn() ? sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(str_) : [];
   var added = [];
   head.forEach(function(h, i) {
     if (cur.indexOf(h) >= 0) return;
-    // insert at position i so CFG order and sheet order stay aligned
     sh.insertColumnBefore(i + 1);
     sh.getRange(1, i + 1).setValue(h).setFontWeight('bold');
     cur.splice(i, 0, h);
@@ -50,45 +64,56 @@ function ensureHeaders_(name) {
   return added;
 }
 
-// Read a tab as an array of objects keyed by CFG.HEADERS. Adds _row (sheet row number).
-function readTab_(name) {
-  var sh = tab_(name, false);
-  if (!sh) return [];
-  var last = sh.getLastRow();
-  if (last < 2) return [];
-  var head = CFG.HEADERS[name];
-  var vals = sh.getRange(2, 1, last - 1, head.length).getValues();
-  var out = [];
+// rows (array of arrays from the sheet, starting at sheet row `first`) -> objects of table `name`, with _row
+function rowsToObjs_(name, vals, first) {
+  var head = physHeadOf_(name), label = store_(name).label, out = [];
   for (var i = 0; i < vals.length; i++) {
-    var row = vals[i], o = { _row: i + 2 }, empty = true;
-    for (var j = 0; j < head.length; j++) {
+    var row = vals[i];
+    if (label && str_(row[0]) !== label) continue;
+    var o = { _row: first + i }, empty = true;
+    for (var j = label ? 1 : 0; j < head.length; j++) {
       var v = row[j];
-      if (v !== '' && v !== null) empty = false;
-      o[head[j]] = (v instanceof Date) ? fmtDate_(v) : v;
+      if (v !== '' && v !== null && v !== undefined) empty = false;
+      o[head[j]] = (v instanceof Date) ? fmtDate_(v) : (v === undefined ? '' : v);
     }
     if (!empty) out.push(o);
   }
   return out;
 }
 
+// Read a table as an array of objects keyed by its headers. Adds _row (sheet row number).
+function readTab_(name) {
+  var sh = tab_(name, false);
+  if (!sh) return [];
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return rowsToObjs_(name, sh.getRange(2, 1, last - 1, physHeadOf_(name).length).getValues(), 2);
+}
+
 function appendRows_(name, objs) {
   if (!objs || !objs.length) return;
-  var sh = tab_(name, true);
-  var head = CFG.HEADERS[name];
-  if (sh.getLastColumn() < head.length) ensureHeaders_(name); // a column was added to CFG after the tab was created
+  var sh = tab_(name, true), head = physHeadOf_(name), label = store_(name).label;
+  if (sh.getLastColumn() < head.length) ensureHeaders_(name); // a column was added to CFG after the sheet was created
   var rows = objs.map(function(o) {
-    return head.map(function(h) { var v = o[h]; return (v === undefined || v === null) ? '' : v; });
+    return head.map(function(h) { if (h === 'table' && label) return label; var v = o[h]; return (v === undefined || v === null) ? '' : v; });
   });
   sh.getRange(sh.getLastRow() + 1, 1, rows.length, head.length).setValues(rows);
   invalidateDaily_(name);
 }
 
-// Delete the given sheet row numbers (bottom-up so indices stay valid)
+// Delete the given sheet row numbers (bottom-up so indices stay valid). The other tables of the same sheet move
+// up too, so their cached copies go as well.
 function deleteRows_(name, rowNums) {
   if (!rowNums.length) return;
   var sh = tab_(name, false);
   rowNums.sort(function(a, b) { return b - a; }).forEach(function(r) { sh.deleteRow(r); });
-  invalidateDaily_(name);
+  siblings_(name).forEach(invalidateDaily_);
+}
+
+// one field of one row (row from readTab_ / readDaily_)
+function setField_(name, row, field, value) {
+  var c = physHeadOf_(name).indexOf(field) + 1;
+  if (c > 0) tab_(name, true).getRange(row, c).setValue(value);
 }
 
 function audit_(user, action, ref, detail) {
@@ -158,19 +183,9 @@ function readRecent_(name, n) {
   if (!sh) return [];
   var last = sh.getLastRow();
   if (last < 2) return [];
-  var head = CFG.HEADERS[name], start = Math.max(2, last - n + 1);
-  var vals = sh.getRange(start, 1, last - start + 1, head.length).getValues();
-  var out = [];
-  for (var i = 0; i < vals.length; i++) {
-    var row = vals[i], o = { _row: start + i }, empty = true;
-    for (var j = 0; j < head.length; j++) {
-      var v = row[j];
-      if (v !== '' && v !== null) empty = false;
-      o[head[j]] = (v instanceof Date) ? fmtDate_(v) : v;
-    }
-    if (!empty) out.push(o);
-  }
-  return out;
+  if (store_(name).label) n = n * 2;   // the sheet holds other tables too
+  var start = Math.max(2, last - n + 1);
+  return rowsToObjs_(name, sh.getRange(start, 1, last - start + 1, physHeadOf_(name).length).getValues(), start);
 }
 // Day views: last 3000 rows, memoised per execution and cached 10 min across executions; every app write invalidates
 // (appendRows_ / deleteRows_ / status updates), and the phone's "Fresh data" clears them too.

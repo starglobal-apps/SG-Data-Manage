@@ -363,7 +363,7 @@ function transferDecide_(req, user) {
   if (str_(t.to_user) !== user.user_id && !isManager_(user)) return fail_('PERM', 'Ye transfer aapke liye nahi hai');
   var factory = str_(t.factory), from = str_(t.from_dept), date = str_(t.date);
   var items = parseJsonArr_(t.items); if (!items.length && str_(t.role)) items = [{ role: str_(t.role), count: num_(t.count) }];
-  var sh = tab_(CFG.TABS.TRANSFERS, true), head = CFG.HEADERS.TRANSFERS, stamp = nowStr_();
+  var sh = tab_(CFG.TABS.TRANSFERS, true), head = physHeadOf_(CFG.TABS.TRANSFERS), stamp = nowStr_();
   var allocs = [];
   if (action === 'accept') {
     allocs = (Array.isArray(req.allocations) ? req.allocations : []).map(function(a) { return { dept: str_(a.dept), role: str_(a.role), count: num_(a.count) }; }).filter(function(a) { return a.dept && a.role && a.count > 0; });
