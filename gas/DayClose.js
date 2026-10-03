@@ -78,14 +78,14 @@ function dayBuild_(req, user) {
     var byH = {};
     effAtt.forEach(function(r) { var g = byH[r.hours] = byH[r.hours] || { hours: r.hours, manpower: 0, roles: {}, remark: [] }; g.manpower += r.count; g.roles[r.role] = (g.roles[r.role] || 0) + r.count; if (r.remark) g.remark.push(r.role + ': ' + r.remark); });
     var splits = Object.keys(byH).map(function(h) { return byH[h]; }).sort(function(a, b) { return b.hours - a.hours || b.manpower - a.manpower; })
-      .map(function(g) { var o = { hours: g.hours, manpower: g.manpower, remark: g.remark.join('; ') }; CFG.STITCH_ROLE_COLS.forEach(function(role, i) { o['r' + (i + 1)] = g.roles[role] || 0; }); return o; });
+      .map(function(g) { var o = { hours: g.hours, manpower: g.manpower, operators: g.roles.Operator || 0, remark: g.remark.join('; ') }; CFG.STITCH_ROLE_COLS.forEach(function(role, i) { o['r' + (i + 1)] = g.roles[role] || 0; }); return o; });
     var names = attNames_(att, dept, shift === 'Final' ? 'Final' : '');
     var closeS = shift === 'Final' ? lineClose_(events, dept) : null;
     var attHrs = attHours_(effAtt, shift);
     var payload = {
       date: date, line: lineOf_(dept), dept: dept, srn: srn,
       floor: str_(g[0].floor) || (lineFloor[dept] ? lineFloor[dept].value : ''),
-      shift: shift, manpower: sum_(effAtt, 'count'), hours: closeS ? Math.min(attHrs, closeS.eff) : attHrs, output: sum_(g, 'qty'),
+      shift: shift, manpower: sum_(effAtt, 'count'), operators: byRole.Operator || 0, hours: closeS ? Math.min(attHrs, closeS.eff) : attHrs, output: sum_(g, 'qty'),
       supervisor: names.supervisor, incharge: names.incharge, slots: g.length, splits: splits
     };
     // plan output = hourly target (manpower × 60 ÷ SAM of the SRN) × working hours — i.e. worked man-minutes ÷ SAM
@@ -308,10 +308,11 @@ function finalRow_(r, p) {
     var sp = p.splits || [];
     if (sp.length > 1) {
       return { target: t, rows: sp.map(function(g, i) {
-        return Object.assign({}, base, { manpower: g.manpower, hours: i === 0 ? p.hours : g.hours, output: i === 0 ? p.output : 0, plan: i === 0 ? (p.plan === undefined ? '' : p.plan) : '', r1: g.r1, r2: g.r2, r3: g.r3, r4: g.r4, r5: g.r5, remark: g.remark || '' });
+        return Object.assign({}, base, { manpower: g.operators !== undefined ? g.operators : g.manpower, hours: i === 0 ? p.hours : g.hours, output: i === 0 ? p.output : 0, plan: i === 0 ? (p.plan === undefined ? '' : p.plan) : '', reason: i === 0 ? (p.reason || '') : '', r1: g.r1, r2: g.r2, r3: g.r3, r4: g.r4, r5: g.r5, remark: g.remark || '' });
       }) };
     }
-    return { target: t, rows: [Object.assign({}, base, { manpower: p.manpower, hours: p.hours, output: p.output, plan: p.plan === undefined ? '' : p.plan, r1: p.r1, r2: p.r2, r3: p.r3, r4: p.r4, r5: p.r5 })] };
+    // manpower column = operators (helper, paster, thread cutter, endline QC, hand needle have their own columns)
+    return { target: t, rows: [Object.assign({}, base, { manpower: p.operators !== undefined ? p.operators : p.manpower, hours: p.hours, output: p.output, plan: p.plan === undefined ? '' : p.plan, reason: p.reason || '', r1: p.r1, r2: p.r2, r3: p.r3, r4: p.r4, r5: p.r5 })] };
   }
   if (type === 'ENDLINE') {
     var row2 = { entryDate: fmtSheetDate_(todayStr_()), factoryName: p.factoryName, date: fmtSheetDate_(p.date),

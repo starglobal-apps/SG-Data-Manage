@@ -554,3 +554,12 @@ h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; 
 .rv-card { margin: 0 0 8px; } .rv-card .rv-h { display: flex; align-items: baseline; gap: 6px; font-size: 17px; } .rv-card .rv-q { margin-left: auto; font-size: 20px; font-weight: 800; }
 .rv-card .m { font-size: 13px; color: var(--muted); } .rv-flag.block { color: var(--bad); font-weight: 600; } .rv-flag.warn { color: var(--warn); }
 .rv-card .rv-h em { white-space: nowrap; }
+/* phone: Making Output Report (admin review) */
+.rv-acts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; } .rv-acts .btn { margin: 0; min-height: 44px; }
+.mor { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; border: 1px solid var(--line); border-radius: 10px; }
+.mor-t { border-collapse: collapse; font-size: 12px; min-width: 1100px; background: var(--card); }
+.mor-t th, .mor-t td { border: 1px solid var(--line); padding: 5px 6px; text-align: center; white-space: nowrap; }
+.mor-t th { background: var(--bg); font-weight: 700; } .mor-t .mor-h th { white-space: normal; min-width: 54px; } .mor-t .mor-g th { font-size: 13px; }
+.mor-t td:nth-child(7) { white-space: normal; min-width: 160px; text-align: left; }
+.mor-t tr.mor-cf td { font-weight: 700; background: var(--bg); } .mor-t tr.mor-pend td { background: #fff4d6; font-weight: 700; } .mor-t tr.mor-app td { background: #f3f7ff; }
+.mor-t td.bad { color: var(--bad); } .mor-why { width: 100%; min-width: 150px; font-size: 13px; padding: 6px; border: 1px solid var(--warn); border-radius: 6px; }

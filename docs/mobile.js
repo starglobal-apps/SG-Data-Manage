@@ -48,9 +48,10 @@
     });
     if (!n) html += '<div class="empty">✓ No output pending<br><span class="muted" style="font-size:13px">Lines with attendance show up here for output</span></div>';
     if (O.waiting.length) {
-      html += '<h2 class="mo-date">Waiting for approval <span>' + O.waiting.length + '</span></h2>' + O.waiting.map(function (l) {
-        return '<div class="mo-card lock wait"><span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + '</span><span class="s">' + esc(S.fmtDay(l.date)) + ' · ' + l.entries.map(function (e) { return esc(e.srn); }).join(', ') + ' · ' + l.mp + ' people</span>' +
-          '<span class="st" style="color:var(--warn)">' + (l.status === 'Approved' ? 'Approved — going to main sheet' : '⏳ Pending approval') + '</span></span><span class="v">' + total(l) + '<small>pcs</small></span></div>';
+      html += '<h2 class="mo-date">Waiting for approval <span>' + O.waiting.length + '</span></h2>' + O.waiting.map(function (l, i) {
+        var edit = l.status === 'Submitted';
+        return '<' + (edit ? 'button type="button" data-wopen="' + i + '"' : 'div') + ' class="mo-card wait' + (edit ? '' : ' lock') + '"><span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + '</span><span class="s">' + esc(S.fmtDay(l.date)) + ' · ' + l.entries.map(function (e) { return esc(e.srn); }).join(', ') + ' · ' + l.mp + ' people</span>' +
+          '<span class="st" style="color:var(--warn)">' + (l.status === 'Approved' ? 'Approved — going to main sheet' : '⏳ Pending approval · tap to edit') + '</span></span><span class="v">' + total(l) + '<small>pcs</small></span></' + (edit ? 'button' : 'div') + '>';
       }).join('');
     }
     if (O.done.length) {
@@ -94,8 +95,8 @@
   }
 
   // ---- one line + shift of a date: SRN dropdown (this line's loading), auto manpower/hours, qty, live loading check
-  function openLine(gi, li) {
-    var l = O.groups[gi] && O.groups[gi].lines[li]; if (!l) return;
+  function openLine(l) {
+    if (!l) return;
     var opts = l.srns || [], cur = l.entries[0] || { srn: l.attSrn || (opts[0] || {}).srn || '', total: 0, other: 0 };
     var fixed = !!l.entries.length;
     var mpNote = l.events && l.events.length ? l.events.map(function (e) { return e.event === 'LINE_CLOSED' ? 'line closed ' + e.time : e.count + ' ' + e.role + ' ' + evLabel(e.event) + (e.time ? ' ' + e.time : ''); }).join(', ') : '';
@@ -138,7 +139,8 @@
 
   function saveLine(l, x) {
     if (O.saving) return; O.saving = true; S.busy(true);
-    api('hour.save', { lite: true, date: l.date, factory: state.factory, slot: l.slot, items: [{ type: 'STITCH', dept: l.dept, srn: x.srn, qty: x.qty - x.other, floor: l.floor, allowOver: x.allowOver }] })
+    var reopen = l.status === 'Submitted' ? api('m.outReopen', { date: l.date, factory: state.factory, dept: l.dept, shift: l.shift }) : Promise.resolve();
+    reopen.then(function () { return api('hour.save', { lite: true, date: l.date, factory: state.factory, slot: l.slot, items: [{ type: 'STITCH', dept: l.dept, srn: x.srn, qty: x.qty - x.other, floor: l.floor, allowOver: x.allowOver }] }); })
       .then(function (d) {
         var f = d.results.filter(function (r) { return !r.ok; })[0];
         if (f) throw new Error(f.message);
@@ -185,7 +187,8 @@
   $('#mout-body').addEventListener('click', function (ev) {
     var b = ev.target.closest('button'); if (!b) return;
     if (b.dataset.view) { O.view = b.dataset.view; if (O.view === 'day') loadDay(); else render(); return; }
-    if (b.dataset.open) { var p = b.dataset.open.split('|'); openLine(+p[0], +p[1]); return; }
+    if (b.dataset.open) { var p = b.dataset.open.split('|'); openLine(O.groups[+p[0]] && O.groups[+p[0]].lines[+p[1]]); return; }
+    if (b.dataset.wopen) { openLine(O.waiting[+b.dataset.wopen]); return; }
     if (b.dataset.wa) { S.shareText('Send output to group', waOutputText()); return; }
     if (b.dataset.reload) { $('#mout-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false).catch(fail); return; }
   });

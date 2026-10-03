@@ -130,7 +130,7 @@ function mOut_(req, user) {
     var hasOut = outRows.length > 0 || sheetDays[dept + '|' + d + '|' + sh];
     if (d === today && outRows.length) done.push(line);
     // saved in the app and with the admin: listed as waiting until approved / rejected (a rejected one is pending again)
-    if (outRows.length && (status === 'Submitted' || status === 'Approved')) { waiting.push(line); return; }
+    if (outRows.length && (status === 'Submitted' || status === 'Approved')) { if (status === 'Submitted') line.srns = srnsOf(dept); waiting.push(line); return; }
     if (status === 'Rejected') line.remark = rejRemark[d + '|' + dept] || '';
     if (hasOut && status !== 'Rejected') return;
     if (isLocked_(status)) return;
@@ -434,6 +434,15 @@ function mReviewDecide_(req, user) {
   if (!ids.length) return fail_('IDS', 'Select something');
   if (decision === 'reject') { if (!remark) return fail_('REMARK', 'Enter the reject reason'); return reviewDecide_({ ids: ids, decision: 'reject', remark: remark }, user); }
   if (decision !== 'approve') return fail_('VAL', 'Approve or reject?');
+  // optional reason (output below plan), per row: { id: reason } -> goes to the sheet's Reason column
+  var reasons = req.reasons && typeof req.reasons === 'object' ? req.reasons : {};
+  if (Object.keys(reasons).length) withLock_(function() {
+    readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+      var why = str_(reasons[str_(r.id)]); if (!why || ids.indexOf(str_(r.id)) < 0) return;
+      var p = parseJsonObj_(r.payload); p.reason = why; setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
+    });
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+  });
   var d = reviewDecide_({ ids: ids, decision: 'approve', remark: remark, override: !!remark }, user);
   if (!d.ok) return d;
   var ok = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return ids.indexOf(str_(r.id)) >= 0 && str_(r.status) === 'Approved'; }).map(function(r) { return str_(r.id); });
@@ -463,4 +472,97 @@ function mOutDay_(req, user) {
   Object.keys(loose).forEach(function(k) { rows.push(loose[k]); });
   rows.sort(function(a, b) { return a.by.localeCompare(b.by) || a.dept.localeCompare(b.dept); });
   return { ok: true, date: date, rows: rows };
+}
+
+// { date, factory, dept, shift } -> the recorder edits output still waiting for approval: that shift's Submitted rows go
+// back to Draft (the following hour.save + day.submit sends the new numbers). Approved / Sent rows cannot be edited.
+function mOutReopen_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), shift = str_(req.shift) || 'Final';
+  if (!isDateStr_(date) || !dept) return fail_('VAL', 'Wrong date / line');
+  if (!canWrite_(user, factory, dept)) return fail_('PERM', 'No permission for this line');
+  var n = 0, blocked = '';
+  withLock_(function() {
+    readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+      if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept || str_(r.type) !== 'STITCH' || (str_(r.shift) || 'Final') !== shift) return;
+      var st = str_(r.status);
+      if (st === 'Approved' || st === 'Sent') { blocked = st; return; }
+      if (st === 'Submitted') { setField_(CFG.TABS.DAY_SUMMARY, r._row, 'status', 'Draft'); n++; }
+    });
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+  });
+  if (blocked) return fail_('LOCKED', 'Already approved — it cannot be edited now');
+  audit_(user, 'm.outReopen', date + '|' + factory + '|' + dept + '|' + shift, { rows: n });
+  return { ok: true, reopened: n };
+}
+
+// { id } (admin) -> "Making Output Report" of that line + SRN: every day's output from the main stitching sheet, the
+// output waiting in the app, manpower per role, plan / variance / reason, and the loading challans. Read on demand only.
+function mReviewReport_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  var id = str_(req.id), it = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return str_(r.id) === id; })[0];
+  if (!it) return fail_('NF', 'Not found');
+  var factory = str_(it.factory), dept = str_(it.dept), srn = str_(it.srn).toUpperCase();
+  var T = CFG.FINAL_TARGETS[factory === '117' ? 'STITCH_117' : 'STITCH_666'], col = {};
+  Object.keys(T.cols).forEach(function(c) { col[T.cols[c]] = +c - 1; });
+  var rows = [], head = { factory: 'FAC' + factory, srn: srn, line: dept, incharge: '', supervisor: '', junior: '' };
+  // 1) the main stitching sheet (only this line + SRN)
+  var v = Sheets.Spreadsheets.Values.get(srcId_(T.srcKey), "'" + T.sheet + "'!A" + T.minRow + ':AB', { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || [];
+  v.forEach(function(r) {
+    if (str_(r[col.dept]) !== dept || str_(r[col.srn]).toUpperCase() !== srn) return;
+    var g = function(f) { return col[f] === undefined ? '' : r[col[f]]; };
+    rows.push({ date: dateKey_(g('date')), shift: /OT/i.test(str_(g('shift'))) ? 'OT' : 'Final', plan: g('plan') === '' ? '' : num_(g('plan')), actual: num_(g('output')),
+                remark: [str_(g('remark')), str_(g('reason'))].filter(String).join(' · '), op: num_(g('manpower')),
+                r1: num_(g('r1')), r2: num_(g('r2')), r3: num_(g('r3')), r4: num_(g('r4')), r5: num_(g('r5')), hours: num_(g('hours')), src: 'sheet' });
+    head.incharge = str_(g('master')) || head.incharge; head.supervisor = str_(g('supervisor')) || head.supervisor;
+    if (factory !== '117' && str_(r[27])) head.junior = str_(r[27]);
+  });
+  // 2) output in the app not in the sheet yet (waiting / approved)
+  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.dept) !== dept || str_(r.srn).toUpperCase() !== srn || str_(r.type) !== 'STITCH') return;
+    var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved' && str_(r.id) !== id) return;
+    var p = parseJsonObj_(r.payload);
+    rows.push({ id: str_(r.id), date: str_(r.date), shift: str_(r.shift) || 'Final', plan: p.plan === undefined ? '' : p.plan, actual: num_(p.output), remark: str_(p.reason),
+                op: p.operators !== undefined ? num_(p.operators) : num_(p.manpower), r1: num_(p.r1), r2: num_(p.r2), r3: num_(p.r3), r4: num_(p.r4), r5: num_(p.r5),
+                hours: num_(p.hours), src: 'app', status: st, by: str_(r.submitted_by) });
+    head.incharge = head.incharge || str_(p.incharge); head.supervisor = head.supervisor || str_(p.supervisor);
+  });
+  // 3) loading challans of this SRN on this line
+  var ld = [];
+  try {
+    (Sheets.Spreadsheets.Values.get(srcId_(LOADING_JOB.srcKey), a1_(LOADING_JOB.srcSheet, LOADING_JOB.srcRow, LOADING_JOB.srcCol, LOADING_JOB.cols),
+      { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || []).forEach(function(r) {
+      if (str_(r[5]).toUpperCase() !== srn || str_(r[10]) !== dept || !num_(r[7])) return;
+      ld.push({ date: dateKey_(r[1]), challan: str_(r[2]), qty: num_(r[7]) });
+    });
+  } catch (e) {}
+  // one row per date + shift; a loading day without output gets its own row
+  var byKey = {};
+  rows.forEach(function(x) {
+    var k = x.date + '|' + (x.shift === 'OT' ? 2 : 1), y = byKey[k];
+    if (!y) { byKey[k] = x; return; }
+    if (x.src === 'app' || y.src === 'app') { if (x.src === 'app' && y.src !== 'app') byKey[k] = x; return; }   // waiting output replaces nothing already in the sheet
+    // several sheet rows of one day (half day / absent split rows): add them up, longest hours
+    ['plan', 'actual', 'op', 'r1', 'r2', 'r3', 'r4', 'r5'].forEach(function(f) { if (x[f] !== '' && x[f] !== undefined) y[f] = (y[f] === '' ? 0 : num_(y[f])) + num_(x[f]); });
+    y.hours = Math.max(num_(y.hours), num_(x.hours)); if (x.remark) y.remark = [y.remark, x.remark].filter(String).join(' · ');
+  });
+  ld.forEach(function(l) {
+    var k = l.date + '|1', x = byKey[k] || byKey[l.date + '|2'];
+    if (!x) x = byKey[k] = { date: l.date, shift: '', plan: '', actual: 0, remark: '', op: '', r1: '', r2: '', r3: '', r4: '', r5: '', hours: '', src: 'loading' };
+    x.challan = (x.challan ? x.challan + ', ' : '') + l.challan; x.load = num_(x.load) + l.qty;
+  });
+  var list = Object.keys(byKey).sort().map(function(k) { return byKey[k]; }), cum = 0, loadCum = 0;
+  list.forEach(function(x) {
+    cum += num_(x.actual); x.total = cum; loadCum += num_(x.load); x.loadTotal = loadCum;
+    x.variance = x.plan === '' || x.plan === null ? '' : num_(x.plan) - num_(x.actual);
+  });
+  // one page = 15 rows: older rows fold into a "carry forward" first row
+  var PAGE = 15, carry = null;
+  if (list.length > PAGE) {
+    var old = list.slice(0, list.length - (PAGE - 1)), last = old[old.length - 1];
+    carry = { plan: old.reduce(function(t, x) { return t + num_(x.plan); }, 0), actual: old.reduce(function(t, x) { return t + num_(x.actual); }, 0), total: last.total,
+              load: old.reduce(function(t, x) { return t + num_(x.load); }, 0), loadTotal: last.loadTotal, days: old.length };
+    carry.variance = carry.plan - carry.actual;
+    list = list.slice(list.length - (PAGE - 1));
+  }
+  return { ok: true, head: head, carry: carry, rows: list, id: id };
 }

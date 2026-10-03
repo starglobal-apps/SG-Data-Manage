@@ -79,6 +79,8 @@ function routes_() {
     'm.attSync':      mAttSync_,
     'm.reviewDecide': mReviewDecide_,
     'm.outDay':       mOutDay_,
+    'm.outReopen':    mOutReopen_,
+    'm.reviewReport': mReviewReport_,
     'm.trCreate':     mTrCreate_,
     'm.warm':         mWarm_,
     'm.all':          mAll_,

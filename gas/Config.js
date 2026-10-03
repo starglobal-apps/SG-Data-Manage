@@ -154,7 +154,7 @@ CFG.FINAL_TARGETS = {
   STITCH_666: { srcKey: 'ATT', sheet: 'Data', keyCol: 3, minRow: 2,
     // col 12 (L) Remark added by the user on 30 Sep 2026 (why a line has several rows: half day / absent / left)
     cols: { 1: 'date', 3: 'dept', 4: 'srn', 5: 'floor', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
-            10: 'master', 11: 'supervisor', 12: 'remark', 13: 'plan', 23: 'r1', 24: 'r2', 25: 'r3', 26: 'r4', 27: 'r5' } },
+            10: 'master', 11: 'supervisor', 12: 'remark', 13: 'plan', 15: 'reason', 23: 'r1', 24: 'r2', 25: 'r3', 26: 'r4', 27: 'r5' } },   // O Reason: why output < plan (admin, on approval)
   STITCH_117: { srcKey: 'STITCH117', sheet: 'FAC117-Stitching Output', keyCol: 1, minRow: 2,
     cols: { 1: 'date', 2: 'floor', 3: 'line', 4: 'dept', 5: 'srn', 6: 'shift', 7: 'manpower', 8: 'hours', 9: 'output',
             10: 'master', 11: 'supervisor', 12: 'r1', 13: 'r2', 14: 'r3', 15: 'r4', 16: 'r5' } },
