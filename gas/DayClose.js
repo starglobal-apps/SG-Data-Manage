@@ -254,10 +254,12 @@ function reviewList_(req, user) {
 function parseJsonObj_(v) { try { var o = JSON.parse(v); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
 function parseJsonArr_(v) { try { var a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
 
-// { ids: [], action: 'approve'|'reject', remark, override }
+// { ids: [], decision: 'approve'|'reject', remark, override }
+// (the field was 'action', which the app overwrites with the call's name — a missing decision must never reject)
 function reviewDecide_(req, user) {
   if (!isAdmin_(user)) return fail_('PERM', 'Sirf admin');
-  var ids = Array.isArray(req.ids) ? req.ids.map(str_) : [], action = str_(req.action), remark = str_(req.remark), override = !!req.override;
+  var ids = Array.isArray(req.ids) ? req.ids.map(str_) : [], action = str_(req.decision || req.action), remark = str_(req.remark), override = !!req.override;
+  if (action !== 'approve' && action !== 'reject') return fail_('VAL', 'Approve ya reject?');
   if (!ids.length) return fail_('IDS', 'Kuch select karo');
   if (action === 'reject' && !remark) return fail_('REMARK', 'Reject ka reason likho');
   var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = physHeadOf_(CFG.TABS.DAY_SUMMARY);

@@ -7,17 +7,17 @@
 (function () {
   'use strict';
   var S = window.SG, $ = S.$, esc = S.esc, api = S.api, state = S.state, toast = S.toast, icon = S.icon;
-  var O = { groups: [], done: [], today: '', saving: false, loaded: false };
+  var O = { groups: [], done: [], waiting: [], today: '', saving: false, loaded: false, view: 'pending', day: '', dayRows: null, dayErr: '' };
   function num(v) { var n = Number(v); return isNaN(n) ? 0 : n; }
   function pad(n) { return String(n).padStart(2, '0'); }
   function shLabel(sh) { return sh === 'OT' ? 'OT' : sh === 'Night' ? 'Night' : 'Shift'; }
   function shBadge(sh) { return '<em class="ot sh-' + esc(sh) + '">' + shLabel(sh) + ' output</em>'; }
   function total(l) { var t = 0; (l.entries || []).forEach(function (e) { t += num(e.total); }); return t; }
   function srnOpt(l, srn) { return (l.srns || []).filter(function (x) { return x.srn === srn; })[0] || null; }
-  function statusText(st) { return st === 'Submitted' ? 'In admin review' : st === 'Approved' ? 'Approved' : st === 'Sent' ? 'Sent to main sheet' : st === 'Rejected' ? 'Sent back by admin — fill again' : st; }
+  function statusText(st) { return st === 'Submitted' ? '⏳ Pending approval' : st === 'Approved' ? 'Approved' : st === 'Sent' ? '✓ In main sheet' : st === 'Rejected' ? 'Sent back by admin — fill again' : st; }
 
   // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
-  function apply(r) { O.loaded = true; O.groups = r.groups || []; O.done = r.done || []; O.today = r.today || S.todayStr(); render(); }
+  function apply(r) { O.loaded = true; O.groups = r.groups || []; O.done = r.done || []; O.waiting = r.waiting || []; O.today = r.today || S.todayStr(); render(); }
   function fail(e) { $('#mout-body').innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-reload="1" style="margin-top:10px">Try again</button></div>'; }
   S.tabs.mout = function () {
     var d = S.pd.need();
@@ -32,16 +32,27 @@
     return '<button type="button" class="mo-card" data-open="' + gi + '|' + li + '">' +
       '<span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + (l.fromSheet ? ' <em class="ot">sheet att.</em>' : '') + '</span>' +
       '<span class="s">' + esc(l.attSrn || ((l.srns || [])[0] || {}).srn || 'SRN') + ' · ' + l.mp + ' people' + (l.mp !== l.mpBase ? ' (morning ' + l.mpBase + ')' : '') + ' · ' + l.hours + ' hrs</span>' +
-      (l.status === 'Rejected' ? '<span class="st" style="color:var(--bad)">' + esc(statusText(l.status)) + '</span>' : '') + '</span>' +
+      (l.status === 'Rejected' ? '<span class="st" style="color:var(--bad)">' + esc(statusText(l.status)) + (l.remark ? ' · ' + esc(l.remark) : '') + '</span>' : '') + '</span>' +
       '<span class="v"><small>fill ›</small></span></button>';
   }
+  // top switch: Pending (what is still to fill + waiting for the admin) · By date (who entered how much that day)
+  function viewTabs() {
+    return '<div class="seg mo-seg"><button data-view="pending" class="' + (O.view === 'pending' ? 'on' : '') + '">Pending</button><button data-view="day" class="' + (O.view === 'day' ? 'on' : '') + '">By date</button></div>';
+  }
   function render() {
-    var html = '', n = 0;
+    if (O.view === 'day') { renderDay(); return; }
+    var html = viewTabs(), n = 0;
     O.groups.forEach(function (g, gi) {
       html += '<h2 class="mo-date">' + (g.date === O.today ? 'Today · ' : '') + esc(S.fmtDay(g.date)) + ' <span>' + g.lines.length + ' pending</span></h2>';
       g.lines.forEach(function (l, li) { n++; html += card(l, gi, li); });
     });
     if (!n) html += '<div class="empty">✓ No output pending<br><span class="muted" style="font-size:13px">Lines with attendance show up here for output</span></div>';
+    if (O.waiting.length) {
+      html += '<h2 class="mo-date">Waiting for approval <span>' + O.waiting.length + '</span></h2>' + O.waiting.map(function (l) {
+        return '<div class="mo-card lock wait"><span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + '</span><span class="s">' + esc(S.fmtDay(l.date)) + ' · ' + l.entries.map(function (e) { return esc(e.srn); }).join(', ') + ' · ' + l.mp + ' people</span>' +
+          '<span class="st" style="color:var(--warn)">' + (l.status === 'Approved' ? 'Approved — going to main sheet' : '⏳ Pending approval') + '</span></span><span class="v">' + total(l) + '<small>pcs</small></span></div>';
+      }).join('');
+    }
     if (O.done.length) {
       var t = 0; O.done.forEach(function (l) { t += total(l); });
       html += '<h2 class="mo-date">Filled today <span>' + t + ' pcs</span></h2>' + O.done.map(function (l) {
@@ -50,6 +61,36 @@
       html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="1" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send today\'s output to group</button></div>';
     }
     $('#mout-body').innerHTML = html;
+  }
+
+  // ---- By date: every line's output of the chosen date and who entered it (m.outDay, small call)
+  function renderDay() {
+    if (!O.day) O.day = S.todayStr();
+    var html = viewTabs() + '<div class="card pa-top"><div class="field"><label>Date</label><input type="date" id="mo-day" value="' + esc(O.day) + '" max="' + S.todayStr() + '"></div></div>';
+    if (O.dayErr) html += '<div class="empty">' + esc(O.dayErr) + '</div>';
+    else if (!O.dayRows) html += '<div class="empty">Loading…</div>';
+    else if (!O.dayRows.length) html += '<div class="empty">No output entered on this date</div>';
+    else {
+      var by = {}, grand = 0;
+      O.dayRows.forEach(function (r) { (by[r.by || '—'] = by[r.by || '—'] || []).push(r); grand += r.qty; });
+      html += '<div class="mo-sum">' + O.dayRows.length + ' entries · <b>' + grand + ' pcs</b></div>';
+      Object.keys(by).forEach(function (who) {
+        var list = by[who], t = 0; list.forEach(function (r) { t += r.qty; });
+        html += '<h2 class="mo-date">' + esc(who) + ' <span>' + t + ' pcs</span></h2>' + list.map(function (r) {
+          var st = r.status === 'Submitted' ? '⏳ Pending approval' : r.status === 'Sent' ? '✓ In main sheet' : r.status === 'Approved' ? 'Approved' : r.status === 'Rejected' ? 'Sent back' + (r.remark ? ': ' + r.remark : '') : r.status;
+          var col = r.status === 'Rejected' ? 'var(--bad)' : r.status === 'Submitted' || r.status === 'Not submitted' ? 'var(--warn)' : 'var(--ok)';
+          return '<div class="mo-card lock"><span class="b"><span class="nm">' + esc(S.shortLine(r.dept)) + ' ' + shBadge(r.shift) + (r.type !== 'STITCH' ? ' <em class="ot">' + esc(r.type.toLowerCase()) + '</em>' : '') + '</span><span class="s">' + esc(r.srn) + '</span><span class="st" style="color:' + col + '">' + esc(st) + '</span></span><span class="v">' + r.qty + '<small>pcs</small></span></div>';
+        }).join('');
+      });
+    }
+    $('#mout-body').innerHTML = html;
+  }
+  function loadDay() {
+    O.dayRows = null; O.dayErr = ''; renderDay();
+    var d = O.day;
+    api('m.outDay', { date: d, factory: state.factory }, { quiet: true })
+      .then(function (r) { if (d !== O.day) return; O.dayRows = r.rows || []; if (O.view === 'day') renderDay(); })
+      .catch(function (e) { if (d !== O.day) return; O.dayErr = e.message; if (O.view === 'day') renderDay(); });
   }
 
   // ---- one line + shift of a date: SRN dropdown (this line's loading), auto manpower/hours, qty, live loading check
@@ -85,6 +126,7 @@
       if (!e.target.closest('#mo-save')) return;
       var srn = srnNow(), v = String($('#mo-qty').value).trim(), q = num(v);
       if (!v || !/^\d+$/.test(v)) { toast('Pieces made — enter a whole number', 'bad'); return; }
+      if (q === 0 && !num(cur.total)) { toast('Pieces made must be more than 0', 'bad'); return; }
       if (q > 0 && !srn) { toast('Select SRN', 'bad'); return; }
       if (q < num(cur.other)) { toast(cur.other + ' already filled hour-wise from computer — total cannot be less than ' + cur.other, 'bad', 6000); return; }
       var c = check(), go = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0 }); };
@@ -137,8 +179,12 @@
     };
   };
 
+  $('#mout-body').addEventListener('change', function (ev) {
+    if (ev.target.id === 'mo-day') { var v = ev.target.value; if (v && v <= S.todayStr()) { O.day = v; loadDay(); } else ev.target.value = O.day; }
+  });
   $('#mout-body').addEventListener('click', function (ev) {
     var b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.view) { O.view = b.dataset.view; if (O.view === 'day') loadDay(); else render(); return; }
     if (b.dataset.open) { var p = b.dataset.open.split('|'); openLine(+p[0], +p[1]); return; }
     if (b.dataset.wa) { S.shareText('Send output to group', waOutputText()); return; }
     if (b.dataset.reload) { $('#mout-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false).catch(fail); return; }

@@ -107,7 +107,8 @@ function mOut_(req, user) {
   var keys = {};
   att.forEach(function(r) { if (M_SLOT[str_(r.shift)]) keys[str_(r.date) + '|' + str_(r.dept) + '|' + str_(r.shift)] = 'app'; });
   Object.keys(sheet).forEach(function(k) { var p = k.split('|'); if (p[0] >= from && p[0] <= today && mine[p[1]] && !keys[k] && sheet[k].factory === factory) keys[k] = 'sheet'; });
-  var groups = {}, done = [];
+  var groups = {}, done = [], waiting = [], rejRemark = {};
+  readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Rejected' && str_(r.type) === 'STITCH') rejRemark[str_(r.date) + '|' + str_(r.dept)] = str_(r.remark); });
   Object.keys(keys).sort().forEach(function(k) {
     var p = k.split('|'), d = p[0], dept = p[1], sh = p[2], src = keys[k];
     var outRows = hourly.filter(function(r) { return str_(r.date) === d && str_(r.dept) === dept && (str_(r.shift) || 'Final') === sh; });
@@ -128,12 +129,16 @@ function mOut_(req, user) {
                  floor: lineFloor[dept] ? lineFloor[dept].value : '', events: sh === 'Final' ? mEvents_(dayEv, dept) : [], entries: entries, status: status };
     var hasOut = outRows.length > 0 || sheetDays[dept + '|' + d + '|' + sh];
     if (d === today && outRows.length) done.push(line);
+    // saved in the app and with the admin: listed as waiting until approved / rejected (a rejected one is pending again)
+    if (outRows.length && (status === 'Submitted' || status === 'Approved')) { waiting.push(line); return; }
+    if (status === 'Rejected') line.remark = rejRemark[d + '|' + dept] || '';
     if (hasOut && status !== 'Rejected') return;
     if (isLocked_(status)) return;
     line.srns = srnsOf(dept);
     (groups[d] = groups[d] || []).push(line);
   });
-  return { ok: true, today: today, groups: Object.keys(groups).sort().reverse().map(function(d) { return { date: d, lines: groups[d] }; }), done: done };
+  waiting.sort(function(a, b) { return (b.date + a.dept).localeCompare(a.date + b.dept); });
+  return { ok: true, today: today, groups: Object.keys(groups).sort().reverse().map(function(d) { return { date: d, lines: groups[d] }; }), done: done, waiting: waiting };
 }
 
 // ---------- phone: everything the three screens need in ONE call (Attendance of the date · Output · PMS) ----------
@@ -146,7 +151,8 @@ function mAll_(req, user) {
     return { ok: true, date: date, factory: factory, at: nowStr_(),
              att: safe(function() { return mAtt_({ date: date, factory: factory }, user); }),
              out: safe(function() { return mOut_({ factory: factory }, user); }),
-             pms: safe(function() { return mPms_({ factory: factory }, user); }), ms: 0 };
+             pms: safe(function() { return mPms_({ factory: factory }, user); }),
+             rev: isAdmin_(user) ? safe(function() { return mReview_({ factory: factory }, user); }) : null };
   } finally { LEDGER_MEMO_ON_ = false; LEDGER_MEMO_ = null; LITE_MEMO_ = null; }
 }
 
@@ -400,4 +406,61 @@ function mTransfers_(date, factory, user, depts) {
     if (x.date === date && mine[x.to] && x.status === 'Accepted') (out[x.to] = out[x.to] || []).push(x);
   });
   return { incoming: incoming, byLine: out };
+}
+
+// ---------- phone: output approval (admin) and output of a date ----------
+function mOutQty_(type, p) { return type === 'ENDLINE' ? num_(p.pass) : num_(p.output !== undefined ? p.output : p.qty); }
+
+// Output waiting for the admin: Submitted rows (not attendance) of the factory, last 30 days
+function mReview_(req, user) {
+  if (!isAdmin_(user)) return { ok: true, items: [] };
+  var factory = str_(req.factory), since = fmtDate_(new Date(new Date().getTime() - 30 * 86400000));
+  var items = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
+    return str_(r.status) === 'Submitted' && str_(r.type) !== 'ATT' && (!factory || str_(r.factory) === factory) && str_(r.date) >= since;
+  }).map(function(r) {
+    var p = parseJsonObj_(r.payload), t = str_(r.type);
+    return { id: str_(r.id), date: str_(r.date), dept: str_(r.dept), type: t, srn: str_(r.srn), shift: str_(r.shift), qty: mOutQty_(t, p),
+             manpower: num_(p.manpower), hours: num_(p.hours), plan: p.plan === undefined ? '' : p.plan, by: str_(r.submitted_by), at: str_(r.submitted_at),
+             flags: parseJsonArr_(r.flags).filter(function(f) { return f.level === 'block' || f.level === 'warn'; }).map(function(f) { return { level: f.level, msg: enMsg_(f.msg) }; }) };
+  });
+  items.sort(function(a, b) { return (b.date + a.dept).localeCompare(a.date + b.dept); });
+  return { ok: true, items: items };
+}
+
+// { ids, decision: 'approve' | 'reject', remark } (admin). Approve = approved and written to the main sheet at once.
+function mReviewDecide_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  var ids = Array.isArray(req.ids) ? req.ids.map(str_).filter(String) : [], decision = str_(req.decision), remark = str_(req.remark);
+  if (!ids.length) return fail_('IDS', 'Select something');
+  if (decision === 'reject') { if (!remark) return fail_('REMARK', 'Enter the reject reason'); return reviewDecide_({ ids: ids, decision: 'reject', remark: remark }, user); }
+  if (decision !== 'approve') return fail_('VAL', 'Approve or reject?');
+  var d = reviewDecide_({ ids: ids, decision: 'approve', remark: remark, override: !!remark }, user);
+  if (!d.ok) return d;
+  var ok = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return ids.indexOf(str_(r.id)) >= 0 && str_(r.status) === 'Approved'; }).map(function(r) { return str_(r.id); });
+  var s = ok.length ? reviewSend_({ ids: ok }, user) : { ok: true, sent: 0 };
+  return { ok: true, approved: d.done, sent: s.sent || 0, skipped: (d.skipped || []).concat(s.skipped || []), sendError: s.ok ? '' : s.message };
+}
+
+// { date, factory } -> who entered how much output that date (every line of the factory)
+function mOutDay_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory);
+  if (!isDateStr_(date)) return fail_('DATE', 'Wrong date');
+  var rows = [], seen = {};
+  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.type) === 'ATT' || str_(r.status) === 'Draft') return;
+    var p = parseJsonObj_(r.payload), t = str_(r.type);
+    seen[[str_(r.dept), t, str_(r.srn), str_(r.shift)].join('|')] = 1;
+    rows.push({ dept: str_(r.dept), type: t, srn: str_(r.srn), shift: str_(r.shift), qty: mOutQty_(t, p), by: str_(r.submitted_by), status: str_(r.status), remark: str_(r.remark) });
+  });
+  var loose = {};   // entered in the app but not submitted yet
+  readDaily_(CFG.TABS.HOURLY_LOG).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory) return;
+    var t = str_(r.type), k = [str_(r.dept), t, str_(r.srn), str_(r.shift) || 'Final'].join('|');
+    if (seen[k]) return;
+    var o = loose[k] = loose[k] || { dept: str_(r.dept), type: t, srn: str_(r.srn), shift: str_(r.shift) || 'Final', qty: 0, by: str_(r.entered_by), status: 'Not submitted', remark: '' };
+    o.qty += t === 'ENDLINE' ? num_(r.pass) : num_(r.qty);
+  });
+  Object.keys(loose).forEach(function(k) { rows.push(loose[k]); });
+  rows.sort(function(a, b) { return a.by.localeCompare(b.by) || a.dept.localeCompare(b.dept); });
+  return { ok: true, date: date, rows: rows };
 }

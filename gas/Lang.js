@@ -67,6 +67,7 @@ var EN_RULES_ = [
   [/^Loading se zyada: (.*)$/, 'More than loading: $1'],
   [/^(.*) ki loading (\d+) hai, (\d+) ban chuka — ab sirf (-?\d+) aur ho sakta hai$/, 'Loading of $1 is $2, $3 made — only $4 more possible'],
   [/^Network nahi mila — internet check karo$/, 'No network — check internet'],
+  [/^Approve ya reject\?$/, 'Approve or reject?'],
   [/^PIN 4 se 8 digit ka number ho$/, 'PIN must be a 4–8 digit number'],
   [/^Role galat$/, 'Wrong role'],
   [/^Apna hi admin access nahi hata sakte$/, 'You cannot remove your own admin access'],

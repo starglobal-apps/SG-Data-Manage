@@ -37,6 +37,7 @@
         } catch (e) {}
         PD.render();
         if (S.trBadge && d.att && d.att.incoming) S.trBadge(d.att.incoming.length);
+        if (S.revBadge) S.revBadge(d);
         S.warm();
         return d;
       })

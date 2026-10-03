@@ -356,7 +356,8 @@ function transferCreate_(req, user) {
 
 // { id, action: 'accept' | 'reject', allocations: [{dept, role, count}] }  — accept places every person on one of my lines/floors
 function transferDecide_(req, user) {
-  var id = str_(req.id), action = str_(req.action);
+  var id = str_(req.id), action = str_(req.decision || req.action);
+  if (action !== 'accept' && action !== 'reject') return fail_('VAL', 'Accept ya reject?');   // 'action' is overwritten by the call name: never treat that as reject
   var t = readDaily_(CFG.TABS.TRANSFERS).filter(function(r) { return str_(r.id) === id; })[0];
   if (!t) return fail_('NF', 'Transfer nahi mila');
   if (str_(t.status) !== 'Pending') return fail_('VAL', 'Ye transfer pehle se ' + str_(t.status));

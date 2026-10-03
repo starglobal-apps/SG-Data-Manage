@@ -547,3 +547,10 @@ h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; 
 .ob-line .btn.small { margin: 0; min-height: 34px; padding: 4px 12px; }
 .ob-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--primary); animation: obspin .8s linear infinite; flex: none; }
 @keyframes obspin { to { transform: rotate(360deg); } }
+/* phone: output by date + admin approve */
+.mo-seg { display: grid; grid-template-columns: 1fr 1fr; margin: 0 0 10px; }
+.mo-sum { font-size: 14px; color: var(--muted); margin: 0 2px 6px; }
+.mo-card.wait { border-color: var(--warn); }
+.rv-card { margin: 0 0 8px; } .rv-card .rv-h { display: flex; align-items: baseline; gap: 6px; font-size: 17px; } .rv-card .rv-q { margin-left: auto; font-size: 20px; font-weight: 800; }
+.rv-card .m { font-size: 13px; color: var(--muted); } .rv-flag.block { color: var(--bad); font-weight: 600; } .rv-flag.warn { color: var(--warn); }
+.rv-card .rv-h em { white-space: nowrap; }

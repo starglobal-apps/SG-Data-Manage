@@ -81,7 +81,8 @@
     if (name === 'review' && !isAdmin()) name = 'home';
     if (isRecorder() && (name === 'reports' || name === 'data' || name === 'pms')) name = 'home';
     if (isMobile() && PHONE_TABS.indexOf(name) < 0) name = 'matt';
-    if (!isMobile() && (name === 'matt' || name === 'mout' || name === 'mpms')) name = 'home';
+    if (!isMobile() && (name === 'matt' || name === 'mout' || name === 'mpms' || name === 'mrev')) name = 'home';
+    if (name === 'mrev' && !isAdmin()) name = 'matt';
     applyRoleNav();
     if (nav.sub || nav.tab !== name) pushHist({ tab: name });
     nav.tab = name; nav.sub = null;
@@ -95,6 +96,7 @@
     else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
     else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · pending', false);
     else if (name === 'mpms') setHeader('PMS data', 'FAC' + state.factory + ' · not shipped', false);
+    else if (name === 'mrev') setHeader('Approve output', 'FAC' + state.factory + ' · waiting for approval', false);
     else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
     else if (name === 'review') setHeader('Review', 'FAC' + state.factory, false);
@@ -238,7 +240,7 @@
   function isRecorder() { return !!state.user && !isManager(); }
   // Phone = the simple app: Attendance · Output · Main. The web (computer) keeps every tab exactly as before.
   // An admin/manager on a phone can switch to the full app from Main (sg_full).
-  var PHONE_TABS = ['matt', 'mout', 'mpms', 'main'];
+  var PHONE_TABS = ['matt', 'mout', 'mpms', 'mrev', 'main'];   // mrev: admin only
   function isPhoneScreen() { try { return window.matchMedia('(max-width: 820px)').matches; } catch (e) { return false; } }
   // phone app text is English; the web keeps its text
   function tx(hi, en) { return isMobile() ? en : hi; }
@@ -255,9 +257,9 @@
     var rec = isRecorder(), mob = isMobile();
     $$('#nav button').forEach(function (b) {
       var t = b.dataset.tab;
-      if (mob) { b.hidden = PHONE_TABS.indexOf(t) < 0; return; }
+      if (mob) { b.hidden = PHONE_TABS.indexOf(t) < 0 || (t === 'mrev' && !isAdmin()); return; }
       b.hidden = false;
-      if (t === 'matt' || t === 'mout' || t === 'mpms') b.hidden = true;
+      if (t === 'matt' || t === 'mout' || t === 'mpms' || t === 'mrev') b.hidden = true;
       if (t === 'reports' || t === 'data' || t === 'pms') b.hidden = rec;
       if (t === 'review') b.hidden = !isAdmin();
     });
