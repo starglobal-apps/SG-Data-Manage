@@ -583,7 +583,7 @@ function mOutSave_(req, user) {
   var re = mOutReopen_({ date: date, factory: factory, dept: dept, shift: shift }, user);
   if (!re.ok) return re;
   var h = hourSave_({ lite: true, date: date, factory: factory, slot: str_(req.slot),
-                      items: [{ type: 'STITCH', dept: dept, srn: str_(req.srn), qty: num_(req.qty) - num_(req.other), floor: str_(req.floor), allowOver: !!req.allowOver }] }, user);
+                      items: [{ type: 'STITCH', dept: dept, srn: str_(req.srn), qty: num_(req.qty) - num_(req.other), floor: str_(req.floor), allowOver: !!req.allowOver, keepZero: true }] }, user);
   if (!h.ok) return h;
   var f = (h.results || []).filter(function(r) { return !r.ok; })[0];
   if (f) return fail_(f.error || 'VAL', f.message);

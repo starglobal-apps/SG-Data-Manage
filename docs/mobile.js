@@ -140,10 +140,10 @@
       if (!e.target.closest('#mo-save')) return;
       var srn = srnNow(), v = String($('#mo-qty').value).trim(), q = num(v);
       if (!v || !/^\d+$/.test(v)) { toast('Pieces made — enter a whole number', 'bad'); return; }
-      if (q === 0 && !num(cur.total)) { toast('Pieces made must be more than 0', 'bad'); return; }
       if (q > 0 && !srn) { toast('Select SRN', 'bad'); return; }
       if (q < num(cur.other)) { toast(cur.other + ' already filled hour-wise from computer — total cannot be less than ' + cur.other, 'bad', 6000); return; }
       var c = check(), go = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0 }); };
+      if (q === 0) { S.ask('Save 0 pieces for ' + S.shortLine(l.dept) + ' (' + shLabel(l.shift) + ')? It goes to the admin as no output.', { ok: 'Yes, 0 output', cancel: 'Cancel' }).then(function (ok) { if (ok) go(); }); return; }
       if (c.over > 0) S.ask(c.over + ' pcs more than loading. Save anyway? Admin gets an alert.', { ok: 'Yes, save', cancel: 'Let me fix it' }).then(function (ok) { if (ok) go(); });
       else go();
     };

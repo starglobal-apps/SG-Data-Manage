@@ -163,9 +163,10 @@ function slotUpsert_(p, user, ctx) {
   // endline rows are per checker: two QCs on one line keep separate rows for the same slot
   var existing = ctx.rows.filter(function(r) { return hourlyKey_(r) === key && str_(r.slot) === slot && (type !== 'ENDLINE' || str_(r.checker) === str_(p.checker)); });
   var oldAmt = 0; existing.forEach(function(r) { oldAmt += type === 'ENDLINE' ? num_(r.checked) : num_(r.qty); });
-  if (newAmt === oldAmt && !existing.length) return { ok: true, skipped: true };
+  // keepZero (phone): a day with 0 output is still recorded (row with 0) so it goes to the admin and leaves the pending list
+  if (newAmt === oldAmt && !existing.length && !p.keepZero) return { ok: true, skipped: true };
   // unchanged (same numbers as the one saved row) -> nothing to write
-  if (existing.length === 1 && newAmt > 0) {
+  if (existing.length === 1 && (newAmt > 0 || p.keepZero)) {
     var ex = existing[0], same = ['qty', 'checked', 'pass', 'reject', 'cartons'].every(function(f) { return num_(ex[f]) === row[f]; }) && (!str_(p.floor) || str_(ex.floor) === str_(p.floor));
     if (same) return { ok: true, skipped: true, unchanged: true };
   }
@@ -184,7 +185,7 @@ function slotUpsert_(p, user, ctx) {
   // sheet rows above the deleted ones keep their numbers; rows below shift up
   var delRows = existing.map(function(r) { return r._row; }).sort(function(a, b) { return a - b; });
   ctx.rows.forEach(function(r) { var shift = 0; delRows.forEach(function(d) { if (r._row > d) shift++; }); r._row -= shift; });
-  if (newAmt > 0) {
+  if (newAmt > 0 || p.keepZero) {
     var nr = { id: uuid_(), date: date, factory: factory, line: lineOf_(dept), dept: dept, srn: srn, floor: floor, type: type,
       shift: sd.shift, slot: slot, qty: row.qty, checked: row.checked, pass: row.pass, reject: row.reject, cartons: row.cartons,
       pcs_per_ctn: row.pcs_per_ctn, checker: str_(p.checker), entered_by: userName_(user), entered_at: stamp, defects: row.defects || '' };
