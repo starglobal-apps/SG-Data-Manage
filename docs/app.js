@@ -445,7 +445,7 @@
   }
   function loadAttSrns() {
     att.srns = null; renderAttSrns();
-    api('orders.active', { factory: state.factory, dept: att.dept, type: attType() }, { quiet: true })
+    api('orders.active', { factory: state.factory, dept: att.dept, type: attType(), lite: isMobile() }, { quiet: true })
       .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all) att.srn = d.srns[0].srn; renderAttSrns(); updateAttTotals(); })
       .catch(function () { att.srns = []; renderAttSrns(); });
   }

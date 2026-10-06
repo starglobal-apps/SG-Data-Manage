@@ -33,7 +33,7 @@ function loadingAgg_() {
                            factory: str_(r[3]).replace(/^FAC/, ''), line: str_(r[6]) };
     }
   });
-  cachePutBig_('loading_agg', out, 900);
+  cachePutBig_('loading_agg', out, 300);   // 5 min: a new challan reaches the phone's SRN lists soon
   return out;
 }
 
@@ -154,7 +154,7 @@ function chainCheck_(L, type, dept, srn, add) {
 // { factory, dept, type }  ->  SRN options with balances for that dept/type
 function ordersActive_(req, user) {
   var dept = str_(req.dept), type = str_(req.type) || 'STITCH', factory = str_(req.factory);
-  var L = ledger_();
+  var L = req.lite ? ledgerLite_() : ledger_();   // lite: phone (no MASTER DATA history read)
   var list = [];
   if (type === 'PACKING') {
     var seen = {};

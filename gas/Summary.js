@@ -139,6 +139,16 @@ function ledgerLite_() {
   Object.keys(A.endPass).forEach(function(k) { addTo_(L.endPass, up(k), A.endPass[k]); });
   Object.keys(A.endChecked).forEach(function(k) { addTo_(L.endChecked, up(k), A.endChecked[k]); });
   Object.keys(A.packed).forEach(function(s) { addTo_(L.packed, s.toUpperCase(), A.packed[s]); });
+  // loading straight from the loading sheet (fresh within minutes) — APP SUMMARY only has it after the next import
+  var ld = loadingAgg_(), up2 = function(k) { var i = k.lastIndexOf('|'); return k.slice(0, i + 1) + k.slice(i + 1).toUpperCase(); };
+  L.loaded = {}; L.loadedSrn = {}; L.deptSrns = {};
+  Object.keys(ld.loaded || {}).forEach(function(k) { L.loaded[up2(k)] = ld.loaded[k]; });
+  Object.keys(ld.loadedSrn || {}).forEach(function(s) { L.loadedSrn[s.toUpperCase()] = ld.loadedSrn[s]; });
+  Object.keys(ld.deptSrns || {}).forEach(function(d) { L.deptSrns[d] = {}; Object.keys(ld.deptSrns[d]).forEach(function(s) { L.deptSrns[d][s.toUpperCase()] = true; }); });
+  Object.keys(ld.srnInfo || {}).forEach(function(s) { var S2 = s.toUpperCase(), a = L.srnInfo[S2] || {}, b = ld.srnInfo[s];
+    L.srnInfo[S2] = { buyer: a.buyer || b.buyer, item: a.item || b.item, orderQty: a.orderQty || b.orderQty, factory: a.factory || b.factory, line: b.line };
+    if (!L.pms[S2]) L.pms[S2] = { stitched: 0, unloaded: 0, shipped: 0, status: '', order: b.orderQty || 0 }; });
+  L.lastLoad = ld.lastLoad || {};
   if (LEDGER_MEMO_ON_) LITE_MEMO_ = L;
   return L;
 }

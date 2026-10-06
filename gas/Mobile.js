@@ -175,7 +175,7 @@ function mWarm_(req, user) {
     // all: everything counts as old (others keep getting the old copy until the new one is built) + the small caches go
     if (req.all) { Object.keys(SWR_KEYS_).forEach(function(k) { c.put(k + '#t', '0', 21600); }); ['app_agg', 'hist_agg', 'hist_qc', 'defects_master', 'users_rows'].forEach(cacheDelBig_); Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); }); }
     SWR_REFRESH_ = true;
-    [mastersRows_, summaryAgg_, bulletinSam_].forEach(function(fn) { fn(); });   // the phone reads only these
+    [mastersRows_, loadingAgg_, summaryAgg_, bulletinSam_].forEach(function(fn) { fn(); });   // the phone reads only these (loading: new challans show within minutes)
   } finally { SWR_REFRESH_ = false; c.remove('warm_running'); }
   return { ok: true, ms: Date.now() - t };
 }
