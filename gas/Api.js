@@ -41,7 +41,7 @@ function doPost(e) {
   }
 }
 
-var ONCE_ACTIONS_ = { 'att.save': 1, 'm.attUpd': 1, 'm.attSync': 1 };
+var ONCE_ACTIONS_ = { 'att.save': 1, 'm.attUpd': 1, 'm.attSync': 1, 'm.outSave': 1 };
 
 function routes_() {
   return {
@@ -77,6 +77,7 @@ function routes_() {
     'm.pms':          mPms_,
     'm.attUpd':       mAttUpd_,
     'm.attSync':      mAttSync_,
+    'm.outSave':      mOutSave_,
     'm.reviewDecide': mReviewDecide_,
     'm.outDay':       mOutDay_,
     'm.outReopen':    mOutReopen_,
@@ -119,14 +120,16 @@ var LOGIN_MAX_FAILS = 8;
 var LOGIN_LOCK_SEC = 900;
 
 // USERS rows cached 2 min (invalidated on every users.save)
+var USERS_MEM_ = null;
 function usersRows_() {
+  if (USERS_MEM_) return USERS_MEM_;
   var hit = cacheGetBig_('users_rows');
-  if (hit) return hit;
+  if (hit) return (USERS_MEM_ = hit);
   var rows = readTab_(CFG.TABS.USERS);
   cachePutBig_('users_rows', rows, 120);
-  return rows;
+  return (USERS_MEM_ = rows);
 }
-function invalidateUsers_() { cacheDelBig_('users_rows'); }
+function invalidateUsers_() { USERS_MEM_ = null; cacheDelBig_('users_rows'); bumpData_(); }
 
 function login_(req) {
   var pin = str_(req.pin);

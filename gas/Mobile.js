@@ -144,7 +144,15 @@ function mOut_(req, user) {
 // ---------- phone: everything the three screens need in ONE call (Attendance of the date · Output · PMS) ----------
 // The phone keeps the reply, switches tabs without loading, and calls this again every 5 min / after a save.
 function mAll_(req, user) {
-  var factory = str_(req.factory), date = str_(req.date) || todayStr_(), t = Date.now();
+  var factory = str_(req.factory), date = str_(req.date) || todayStr_();
+  // same user + factory + date and nothing changed since (data version): the reply made last time, at once
+  var rk = 'mall:' + [str_(user.user_id), factory, date, dataVer_()].join('|');
+  var hit = cacheGetBig_(rk); if (hit) { hit.cached = true; return hit; }
+  var res = mAllBuild_(factory, date, user);
+  if (res.att && res.att.ok !== false && res.out && res.out.ok !== false && res.pms && res.pms.ok !== false) cachePutBig_(rk, res, 300);
+  return res;
+}
+function mAllBuild_(factory, date, user) {
   var safe = function(fn) { try { return fn(); } catch (e) { return { ok: false, message: String(e && e.message || e) }; } };
   LEDGER_MEMO_ON_ = true;
   try {
@@ -415,7 +423,7 @@ function mOutQty_(type, p) { return type === 'ENDLINE' ? num_(p.pass) : num_(p.o
 function mReview_(req, user) {
   if (!isAdmin_(user)) return { ok: true, items: [] };
   var factory = str_(req.factory), since = fmtDate_(new Date(new Date().getTime() - 30 * 86400000));
-  var items = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
+  var items = readDaily_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
     return str_(r.status) === 'Submitted' && str_(r.type) !== 'ATT' && (!factory || str_(r.factory) === factory) && str_(r.date) >= since;
   }).map(function(r) {
     var p = parseJsonObj_(r.payload), t = str_(r.type);
@@ -565,4 +573,21 @@ function mReviewReport_(req, user) {
     list = list.slice(list.length - (PAGE - 1));
   }
   return { ok: true, head: head, carry: carry, rows: list, id: id };
+}
+
+// { date, factory, dept, shift, slot, srn, qty (the shift's total), other (already in other slots), floor, allowOver }
+// Phone output save in ONE call (sent from the phone's background outbox with a rid): output still waiting for
+// approval is reopened, the pieces are saved, and the line's day goes to the admin (Submitted).
+function mOutSave_(req, user) {
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), shift = str_(req.shift) || 'Final';
+  var re = mOutReopen_({ date: date, factory: factory, dept: dept, shift: shift }, user);
+  if (!re.ok) return re;
+  var h = hourSave_({ lite: true, date: date, factory: factory, slot: str_(req.slot),
+                      items: [{ type: 'STITCH', dept: dept, srn: str_(req.srn), qty: num_(req.qty) - num_(req.other), floor: str_(req.floor), allowOver: !!req.allowOver }] }, user);
+  if (!h.ok) return h;
+  var f = (h.results || []).filter(function(r) { return !r.ok; })[0];
+  if (f) return fail_(f.error || 'VAL', f.message);
+  var s = daySubmit_({ lite: true, date: date, factory: factory, dept: dept }, user);
+  if (!s.ok) return s;
+  return { ok: true, submitted: s.submitted, alerts: (s.blocks || []).length };
 }

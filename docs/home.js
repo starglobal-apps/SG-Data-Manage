@@ -162,7 +162,7 @@
   var PA = { items: [], lines: [], wa: null, incoming: [], allLines: [] };
   // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
   function applyAtt(d) {
-    PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
+    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
     trBadge(PA.incoming.length);
     renderPhoneAtt();
   }
@@ -209,7 +209,8 @@
         '<div class="tr-acts"><button class="btn small danger" data-trno="' + esc(t.id) + '">Reject</button><button class="btn small ok" data-trok="' + esc(t.id) + '">Accept</button></div></div>';
     });
     var shown = withPending(PA.items);
-    if (!shown.length) html += '<div class="empty">' + (past ? 'No attendance on this date' : 'No attendance filled today yet') + '</div>';
+    if (PA.loading) html += '<div class="ob-line" style="margin:4px 4px 10px"><span class="ob-spin"></span>Updating ' + esc(S.fmtDay(state.date)) + '…</div>';
+    else if (!shown.length) html += '<div class="empty">' + (past ? 'No attendance on this date' : 'No attendance filled today yet') + '</div>';
     shown.forEach(function (x) {
       var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent', ev = evText(x);
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, x.count) : null;

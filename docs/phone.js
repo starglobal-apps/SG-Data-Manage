@@ -19,7 +19,9 @@
     if (PD.data && PD.key === key() && PD.date === state.date) return PD.data;
     var o = read_(key()); if (!o) return null;
     if (o.date === state.date) { PD.data = o.d; PD.key = key(); PD.date = o.date; PD.at = o.t; return PD.data; }
-    return { out: o.d.out, pms: o.d.pms, partial: true };
+    var a = o.d.att || {};
+    return { out: o.d.out, pms: o.d.pms, rev: o.d.rev, partial: true,
+             att: { ok: true, loading: true, items: [], lines: a.lines || [], allLines: a.allLines || [], incoming: a.incoming || [], sam: a.sam || {}, wa: null } };
   };
   PD.stale = function () { var d = PD.get(); return PD.dirty || !d || d.partial || Date.now() - PD.at > EVERY; };
   // fetch fresh data; silent = no progress bar. Re-renders the open tab when it arrives.
@@ -67,12 +69,13 @@
   PD.send = function (action, payload, meta) {
     var it = Object.assign({ id: uid(), action: action, payload: payload, state: 'sending', error: '', at: Date.now() }, meta);
     var list = PD.outbox().filter(function (x) {
-      return !(x.id !== sending && it.kind === 'att' && x.kind === 'att' && x.dept === it.dept && x.date === it.date && x.shift === it.shift);
+      return !(x.id !== sending && (it.kind === 'att' || it.kind === 'out') && x.kind === it.kind && x.dept === it.dept && x.date === it.date && x.shift === it.shift);
     });
     list.push(it); obSave(list); PD.render(); pump();
     return it;
   };
   PD.pending = function (date) { return PD.outbox().filter(function (x) { return x.date === date; }); };
+  PD.drop = function (id) { obSave(PD.outbox().filter(function (x) { return x.id !== id || x.id === sending; })); PD.render(); };
   PD.resend = function (id) {
     var list = PD.outbox(); list.forEach(function (x) { if (x.id === id) { x.state = 'sending'; x.error = ''; } }); obSave(list); PD.render(); pump();
   };

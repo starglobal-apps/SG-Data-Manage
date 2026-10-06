@@ -156,6 +156,7 @@ function cachePutBig_(key, obj, ttl) {
     map[key + '#n'] = String(parts.length);
     map[key + '#t'] = String(Date.now() + (ttl || 600) * 1000);   // soft expiry
     c.putAll(map, SWR_KEYS_[key] ? 21600 : (ttl || 600));
+    if (SWR_KEYS_[key]) bumpData_();   // sheet data rebuilt: phone replies are made again
   } catch (e) {}
 }
 function cacheGetBig_(key) {
@@ -199,20 +200,25 @@ function readDaily_(name) {
   DAILY_MEM_[name] = rows;
   return rows;
 }
-function invalidateDaily_(name) { delete DAILY_MEM_[name]; cacheDelBig_('daily:' + name); }
+function invalidateDaily_(name) { delete DAILY_MEM_[name]; cacheDelBig_('daily:' + name); bumpData_(); }
+// version of the app's data: changes on every write / rebuild, so a ready-made phone reply (m.all) is never stale
+function bumpData_() { try { CacheService.getScriptCache().put('data_ver', String(Date.now()) + Math.random(), 21600); } catch (e) {} }
+function dataVer_() { try { return CacheService.getScriptCache().get('data_ver') || '0'; } catch (e) { return '0'; } }
 function clearAllCaches_() {
   ['loading_agg', 'hist_agg', 'hist_agg2', 'app_agg', 'masters_rows', 'users_rows', 'hist_qc', 'defects_master', 'sheet_att', 'sheet_att2', 'orders_agg', 'unload_agg', 'bulletin_sam'].forEach(cacheDelBig_);
   Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); });
 }
 
 // MASTERS rows, cached 10 min (invalidated by setup/reseed)
+var MASTERS_MEM_ = null;
 function mastersRows_() {
+  if (MASTERS_MEM_) return MASTERS_MEM_;
   var hit = cacheGetBig_('masters_rows');
-  if (hit) return hit;
+  if (hit) return (MASTERS_MEM_ = hit);
   var rows = readTab_(CFG.TABS.MASTERS);
   cachePutBig_('masters_rows', rows, 600);
   return rows;
 }
-function invalidateMasters_() { cacheDelBig_('masters_rows'); }
+function invalidateMasters_() { MASTERS_MEM_ = null; cacheDelBig_('masters_rows'); bumpData_(); }
 
 function userName_(u) { return u ? (str_(u.name) || str_(u.user_id)) : ''; }

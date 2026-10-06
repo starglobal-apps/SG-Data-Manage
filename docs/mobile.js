@@ -17,7 +17,19 @@
   function statusText(st) { return st === 'Submitted' ? '⏳ Pending approval' : st === 'Approved' ? 'Approved' : st === 'Sent' ? '✓ In main sheet' : st === 'Rejected' ? 'Sent back by admin — fill again' : st; }
 
   // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
-  function apply(r) { O.loaded = true; O.groups = r.groups || []; O.done = r.done || []; O.waiting = r.waiting || []; O.today = r.today || S.todayStr(); render(); }
+  function apply(r) {
+    O.loaded = true; O.today = r.today || S.todayStr();
+    var groups = (r.groups || []).map(function (g) { return { date: g.date, lines: g.lines.slice() }; }), waiting = (r.waiting || []).slice();
+    S.pd.outbox().filter(function (it) { return it.kind === 'out'; }).forEach(function (it) {
+      var same = function (l) { return l.date === it.date && l.dept === it.dept && l.shift === it.shift; };
+      groups.forEach(function (g) { g.lines = g.lines.filter(function (l) { return !same(l); }); });
+      waiting = waiting.filter(function (l) { return !same(l); });
+      var m = it.line || {};
+      waiting.unshift({ date: it.date, dept: it.dept, shift: it.shift, mp: m.mp || 0, mpBase: m.mpBase || 0, hours: m.hours || 0, entries: [{ srn: m.srn || it.payload.srn, total: m.qty || 0, other: 0 }], status: 'Outbox', ob: it });
+    });
+    O.groups = groups.filter(function (g) { return g.lines.length; }); O.waiting = waiting; O.done = r.done || [];
+    render();
+  }
   function fail(e) { $('#mout-body').innerHTML = '<div class="empty">' + esc(e.message) + '<br><button class="btn primary" data-reload="1" style="margin-top:10px">Try again</button></div>'; }
   S.tabs.mout = function () {
     var d = S.pd.need();
@@ -49,9 +61,10 @@
     if (!n) html += '<div class="empty">✓ No output pending<br><span class="muted" style="font-size:13px">Lines with attendance show up here for output</span></div>';
     if (O.waiting.length) {
       html += '<h2 class="mo-date">Waiting for approval <span>' + O.waiting.length + '</span></h2>' + O.waiting.map(function (l, i) {
-        var edit = l.status === 'Submitted';
+        var edit = l.status === 'Submitted', ob = l.ob;
         return '<' + (edit ? 'button type="button" data-wopen="' + i + '"' : 'div') + ' class="mo-card wait' + (edit ? '' : ' lock') + '"><span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + '</span><span class="s">' + esc(S.fmtDay(l.date)) + ' · ' + l.entries.map(function (e) { return esc(e.srn); }).join(', ') + ' · ' + l.mp + ' people</span>' +
-          '<span class="st" style="color:var(--warn)">' + (l.status === 'Approved' ? 'Approved — going to main sheet' : '⏳ Pending approval · tap to edit') + '</span></span><span class="v">' + total(l) + '<small>pcs</small></span></' + (edit ? 'button' : 'div') + '>';
+          (ob ? (ob.state === 'failed' ? '<span class="ob-line bad"><span>⚠ Not saved' + (ob.error ? ' — ' + esc(ob.error) : '') + '</span><span class="btn small" data-resend="' + esc(ob.id) + '">Resend</span> <span class="btn small ghost" data-drop="' + esc(ob.id) + '">Remove</span></span>' : '<span class="ob-line"><span class="ob-spin"></span>Saving…</span>')
+             : '<span class="st" style="color:var(--warn)">' + (l.status === 'Approved' ? 'Approved — going to main sheet' : '⏳ Pending approval · tap to edit') + '</span>') + '</span><span class="v">' + total(l) + '<small>pcs</small></span></' + (edit ? 'button' : 'div') + '>';
       }).join('');
     }
     if (O.done.length) {
@@ -137,22 +150,13 @@
   }
   function evLabel(k) { return { HALF_DAY: 'half day', LEFT_AT: 'left early', LATE_JOIN: 'came late', ABSENT: 'absent', EXTRA: 'extra', TRANSFER_OUT: 'transferred out', TRANSFER_IN: 'transferred in', LINE_CLOSED: 'line closed' }[k] || k; }
 
+  // shown at once as "waiting for approval", sent in the background in one call (phone.js outbox, m.outSave);
+  // a failed one stays there with Resend
   function saveLine(l, x) {
-    if (O.saving) return; O.saving = true; S.busy(true);
-    var reopen = l.status === 'Submitted' ? api('m.outReopen', { date: l.date, factory: state.factory, dept: l.dept, shift: l.shift }) : Promise.resolve();
-    reopen.then(function () { return api('hour.save', { lite: true, date: l.date, factory: state.factory, slot: l.slot, items: [{ type: 'STITCH', dept: l.dept, srn: x.srn, qty: x.qty - x.other, floor: l.floor, allowOver: x.allowOver }] }); })
-      .then(function (d) {
-        var f = d.results.filter(function (r) { return !r.ok; })[0];
-        if (f) throw new Error(f.message);
-        // straight to the admin's review (that line's day: attendance + output)
-        return api('day.submit', { lite: true, date: l.date, factory: state.factory, dept: l.dept });
-      })
-      .then(function (s) {
-        O.saving = false; S.busy(false); S.sheet.close();
-        toast('Saved · ' + S.shortLine(l.dept) + ' sent to admin review ✓' + (s.blocks && s.blocks.length ? ' (with alert)' : ''), 'ok', 5000);
-        S.tabs.mout();
-      })
-      .catch(function (e) { O.saving = false; S.busy(false); toast(e.message, 'bad', 7000); });
+    S.pd.send('m.outSave', { date: l.date, factory: state.factory, dept: l.dept, shift: l.shift, slot: l.slot, srn: x.srn, qty: x.qty, other: x.other, floor: l.floor, allowOver: x.allowOver },
+              { kind: 'out', dept: l.dept, date: l.date, shift: l.shift, label: 'Output ' + x.qty + ' pcs', line: { mp: l.mp, mpBase: l.mpBase, hours: l.hours, srn: x.srn, qty: x.qty } });
+    S.sheet.close();
+    toast('Saved · ' + S.shortLine(l.dept) + ' sent for approval ✓', 'ok');
   }
 
   // ---- WhatsApp text for today's output (same plain style as the attendance message)
@@ -185,6 +189,8 @@
     if (ev.target.id === 'mo-day') { var v = ev.target.value; if (v && v <= S.todayStr()) { O.day = v; loadDay(); } else ev.target.value = O.day; }
   });
   $('#mout-body').addEventListener('click', function (ev) {
+    var rs = ev.target.closest('[data-resend]'); if (rs) { S.pd.resend(rs.dataset.resend); toast('Sending again…', ''); return; }
+    var dr = ev.target.closest('[data-drop]'); if (dr) { S.ask('Remove this unsaved output? The line goes back to pending.', { ok: 'Remove', cancel: 'Cancel', danger: true }).then(function (ok) { if (ok) S.pd.drop(dr.dataset.drop); }); return; }
     var b = ev.target.closest('button'); if (!b) return;
     if (b.dataset.view) { O.view = b.dataset.view; if (O.view === 'day') loadDay(); else render(); return; }
     if (b.dataset.open) { var p = b.dataset.open.split('|'); openLine(O.groups[+p[0]] && O.groups[+p[0]].lines[+p[1]]); return; }
