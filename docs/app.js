@@ -118,10 +118,27 @@
 
   // ---------- api + offline queue ----------
 
-  function rawPost(body) {
-    return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(isMobile() ? Object.assign({ lang: 'en' }, body) : body), redirect: 'follow' })
-      .then(function (r) { return r.json(); });
+  // Google sometimes answers with an HTML page instead of JSON (just after a new version is published, or when too many
+  // requests run at once). Phone: calls that are safe to repeat (login, reading, background saves with an id) are tried
+  // again up to 3 times; otherwise a clear "server busy" message instead of a JSON error.
+  var SAFE_AGAIN = /^(login|me|masters|m\.all|m\.outDay|m\.reviewReport|m\.warm|users\.list|staff\.list|orders\.active|att\.get)$/;
+  function rawPost(body, attempt) {
+    attempt = attempt || 0;
+    var mob = isMobile();
+    return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(mob ? Object.assign({ lang: 'en' }, body) : body), redirect: 'follow' })
+      .then(function (r) {
+        if (!mob) return r.json();
+        return r.text().then(function (t) {
+          try { return JSON.parse(t); } catch (e) {
+            if (attempt < 3 && (SAFE_AGAIN.test(String(body.action)) || body.rid)) {
+              return new Promise(function (res) { setTimeout(res, [1000, 2500, 4000][attempt]); }).then(function () { return rawPost(body, attempt + 1); });
+            }
+            return { ok: false, error: 'BUSY', message: 'Server is busy — please try again' };
+          }
+        });
+      });
   }
+
   var inflight = 0;
   var progTimer;
   function prog(on) {
