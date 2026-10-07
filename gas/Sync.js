@@ -6,16 +6,17 @@
 
 var AFTER_SEND_FN = 'afterSendJob';
 
+// No triggers (the web app's account has no trigger permission): the import + cleanup is marked as due and runs in the
+// next quiet background call from a phone (m.warm, at most every 3 min while anyone has the app open) — or at once
+// when the admin taps "Import data".
 function scheduleAfterSend_() {
-  try {
-    var pending = ScriptApp.getProjectTriggers().some(function(t) { return t.getHandlerFunction() === AFTER_SEND_FN; });
-    if (!pending) ScriptApp.newTrigger(AFTER_SEND_FN).timeBased().after(20 * 1000).create();
-    return true;
-  } catch (e) {
-    // no trigger permission yet (owner must run afterSendJob once from the editor) -> the admin can use Main > "Import + cleanup"
-    try { appendRows_(CFG.TABS.AUDIT_LOG, [{ at: nowStr_(), user: '', action: 'sync.schedule.fail', ref: '', detail: String(e && e.message || e) }]); } catch (e2) {}
-    return false;
-  }
+  try { PropertiesService.getScriptProperties().setProperty('IMPORT_DUE', String(Date.now())); return true; } catch (e) { return false; }
+}
+function runDueImport_() {
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('IMPORT_DUE')) return '';
+  props.deleteProperty('IMPORT_DUE');
+  return afterSendJob();
 }
 
 // Trigger entry point (also run once by hand from the editor to grant the trigger permission)
@@ -26,7 +27,6 @@ function afterSendJob() {
   props.setProperty('SYNC_RUNNING', String(Date.now()));
   var log = [];
   try {
-    try { ScriptApp.getProjectTriggers().forEach(function(t) { if (t.getHandlerFunction() === AFTER_SEND_FN) ScriptApp.deleteTrigger(t); }); } catch (e) {}
     var t0 = new Date().getTime();
     var imp = runAllImport();
     log.push('import ' + Math.round((new Date().getTime() - t0) / 1000) + 's' + (/FAIL/.test(String(imp)) ? ' (with FAIL lines)' : ''));
@@ -44,9 +44,10 @@ function adminImportNow_(req, user) {
   if (!isAdmin_(user)) return fail_('PERM', 'Sirf admin');
   var running = Number(PropertiesService.getScriptProperties().getProperty('SYNC_RUNNING') || 0);
   if (running && Date.now() - running < 10 * 60000) return { ok: true, scheduled: false, running: true };
-  var ok = scheduleAfterSend_();
-  if (!ok) return fail_('TRIGGER', 'Trigger permission nahi — Apps Script editor me Sync.gs > afterSendJob ek baar Run karo');
-  return { ok: true, scheduled: true };
+  // runs now (about 10 s): main sheets -> MASTER DATA, then the app copies of sent data are cleaned
+  var log = afterSendJob();
+  if (log === 'busy') return { ok: true, running: true };
+  return { ok: true, done: true, log: log };
 }
 
 // Delete the app copies of every DAY_SUMMARY row that is Sent and not yet cleaned.

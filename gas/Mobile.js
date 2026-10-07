@@ -177,7 +177,9 @@ function mWarm_(req, user) {
     SWR_REFRESH_ = true;
     [mastersRows_, loadingAgg_, summaryAgg_, bulletinSam_].forEach(function(fn) { fn(); });   // the phone reads only these (loading: new challans show within minutes)
   } finally { SWR_REFRESH_ = false; c.remove('warm_running'); }
-  return { ok: true, ms: Date.now() - t };
+  // data sent to the main sheets: bring it into MASTER DATA and clean the app copies (was a trigger)
+  var imp = ''; try { imp = runDueImport_(); } catch (e) { imp = 'import error ' + e; }
+  return { ok: true, ms: Date.now() - t, imported: !!imp };
 }
 
 // ---------- phone PMS tab: every unshipped order with the numbers the recorder needs to fill data right ----------

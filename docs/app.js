@@ -755,7 +755,7 @@
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
     else if (m === 'prefresh') phoneRefresh();
-    else if (m === 'import') ask(tx('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', 'Run import in the background? It takes 1–2 minutes.'), { ok: tx('Chalao', 'Run') }).then(function (ok) { if (!ok) return; api('admin.importNow', {}).then(function (d) { toast(d.running ? tx('Import pehle se chal raha hai — 2 min baad Refresh karo', 'Import is already running — tap Fresh data after 2 min') : tx('Background me shuru · 2 min baad "Refresh sab data" dabao', 'Started in background · tap Fresh data after 2 min'), 'ok', 8000); }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
+    else if (m === 'import') ask(tx('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', 'Run import in the background? It takes 1–2 minutes.'), { ok: tx('Chalao', 'Run') }).then(function (ok) { if (!ok) return; toast(tx('Import chal raha hai… (lagbhag 30 sec)', 'Import running… (about 30 sec)'), '', 6000); api('admin.importNow', {}, { quiet: true }).then(function (d) { toast(d.running ? tx('Import pehle se chal raha hai — 2 min baad Refresh karo', 'Import is already running — try again in 2 min') : tx('Import ho gaya ✓', 'Import done ✓ — loading the new data'), 'ok', 8000); if (d.done && SG.pd) { SG.pd.dirty = true; SG.pd.load(true).catch(function () {}); } }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
     else if (m === 'print') SG.printSrn();
     else if (m === 'staff') screens.staff();
     else if (m === 'endline') { remember('show_endline', recall('show_endline') === '1' ? '0' : '1'); tabs.main(); }

@@ -26,7 +26,6 @@ var IMPORT_JOBS = [
   { srcKey: 'LOADING', srcSheet: 'loading_chalaan', srcRow: 10, srcCol: 1, cols: 12, tgt: 'Loading Data', tgtCol: 1 },
   { srcKey: 'ALLORDER', srcSheet: 'All Orders', srcRow: 700, srcCol: 1, cols: 27, tgt: 'All order', tgtCol: 1 },
   { srcKey: 'LOADING', srcSheet: 'Unloading_chalaan', srcRow: 2, srcCol: 1, cols: 18, tgt: 'Unloading Data', tgtCol: 1 },
-  { srcKey: 'COST', srcSheet: 'COST', srcRow: 2, srcCol: 1, cols: 6, pick: [1, 4, 5, 6], sheetOnly: { sheet: 'VALIDATION', row: 3, col: 15 } }
 ];
 
 function colLetter_(n) {
