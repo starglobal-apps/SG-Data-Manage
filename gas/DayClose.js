@@ -90,7 +90,8 @@ function dayBuild_(req, user) {
     };
     // plan output = hourly target (manpower × 60 ÷ SAM of the SRN) × working hours — i.e. worked man-minutes ÷ SAM
     // (half-day people count only for the hours they worked). Blank when the SRN has no SAM yet.
-    var samP = samOf_(srn), manHrs = effAtt.reduce(function(t, r) { return t + num_(r.count) * Math.min(num_(r.hours), payload.hours || num_(r.hours)); }, 0);
+    // only the production roles (CFG.TARGET_ROLES) count, like the phone's hourly target
+    var samP = samOf_(srn), manHrs = effAtt.reduce(function(t, r) { return CFG.TARGET_ROLES.indexOf(r.role) < 0 ? t : t + num_(r.count) * Math.min(num_(r.hours), payload.hours || num_(r.hours)); }, 0);
     payload.sam = samP ? samP.sam : 0;
     payload.plan = samP && samP.sam > 0 && manHrs > 0 ? Math.round(manHrs * 60 / samP.sam) : '';
     CFG.STITCH_ROLE_COLS.forEach(function(role, i) { payload['r' + (i + 1)] = byRole[role] || 0; });

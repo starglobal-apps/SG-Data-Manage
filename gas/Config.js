@@ -124,6 +124,10 @@ CFG.STORE = {
   AUDIT_LOG:       { sheet: 'OUTPUT', label: 'Log' }
 };
 
+// Manpower that makes the pieces: only these roles count for the hourly target and the Plan Output
+// (supervisor, incharge, feeder, data collector do not).
+CFG.TARGET_ROLES = ['Operator', 'Helper', 'Thread cutter', 'End Line Checker', 'Hand needle', 'Paster'];
+
 CFG.MP_EVENTS = [
   { key: 'HALF_DAY',  label: 'Half day (4 hrs)',       eff: 4,    needsTime: false },
   { key: 'LEFT_AT',   label: 'Beech me chala gaya',    eff: null, needsTime: true,  from: 9 },

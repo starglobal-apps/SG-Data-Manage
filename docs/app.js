@@ -505,16 +505,19 @@
   }
   function collectAttRows() { return $$('#att-rows tr').map(function (tr) { return { role: tr.dataset.role, hours: Number($('.att-hrs', tr).value), count: Number($('.att-count', tr).value || 0) }; }); }
   // hourly target = total manpower × 60 ÷ SAM of the SRN (display only, nothing is saved)
+  // people who make the pieces: only these roles count for the hourly target (same list as the server's CFG.TARGET_ROLES)
+  var TARGET_ROLES = ['Operator', 'Helper', 'Thread cutter', 'End Line Checker', 'Hand needle', 'Paster'];
+  function targetMp(roles) { var n = 0; Object.keys(roles || {}).forEach(function (r) { if (TARGET_ROLES.indexOf(r) >= 0) n += Number(roles[r]) || 0; }); return n; }
   function hourlyTarget(srn, mp) {
     var sam = srn ? Number((SG.samMap || {})[String(srn).toUpperCase()]) || 0 : 0;
     if (!sam) return { v: 0, html: 'Hourly target: <span class="muted">' + tx(esc(srn || 'SRN') + ' ka SAM set nahi', 'no SAM set for ' + esc(srn || 'SRN')) + '</span>' + (srn ? ' <button type="button" class="lnk" data-setsam="' + esc(srn) + '">' + tx('SAM daalo', 'Enter SAM') + '</button>' : '') };
     var v = mp > 0 ? Math.round(mp * 60 / sam) : 0;
-    return { v: v, html: 'Hourly target <b>' + v + ' pcs</b> <small>(' + mp + tx(' log', ' people') + ' × 60 ÷ ' + sam + ' SAM)</small>' };
+    return { v: v, html: 'Hourly target <b>' + v + ' pcs</b> <small>(' + mp + tx(' log', ' production people') + ' × 60 ÷ ' + sam + ' SAM)</small>' };
   }
   function updateAttTarget(c) {
     var el = $('#att-target'); if (!el) return;
     el.hidden = !isMobile() || attType() === 'PACKING' || att.shift !== 'Final';
-    if (!el.hidden) el.innerHTML = hourlyTarget(att.srn, c).html;
+    if (!el.hidden) { var roles = {}; collectAttRows().forEach(function (r) { roles[r.role] = (roles[r.role] || 0) + r.count; }); el.innerHTML = hourlyTarget(att.srn, targetMp(roles)).html; }
   }
   function updateAttTotals() {
     var c = 0, h = 0;
@@ -804,7 +807,7 @@
     $: $, $$: $$, esc: esc, api: api, toast: toast, busy: busy, pill: pill, icon: icon,
     M: M, isManager: isManager, deptsFor: deptsFor, deptOptions: deptOptions, deptCategory: deptCategory, rolesForDept: rolesForDept, catLabel: catLabel,
     todayStr: todayStr, fmtDay: fmtDay, nowHour: nowHour, isToday: isToday, slots: slots, slotDef: slotDef, slotStart: slotStart,
-    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, tx: tx, warm: warm, curTab: function () { return nav.sub ? '' : nav.tab; }, hourlyTarget: hourlyTarget,
+    lineCat: lineCat, hourlyType: hourlyType, lockedType: lockedType, remember: remember, recall: recall, isRecorder: isRecorder, isMobile: isMobile, tx: tx, warm: warm, curTab: function () { return nav.sub ? '' : nav.tab; }, hourlyTarget: hourlyTarget, targetMp: targetMp,
     tab: tab, push: push, back: back, refresh: refresh, home: home, invalidate: invalidate, invalidateAll: invalidateAll, loadToday: loadToday, today: today,
     loadFactory: loadFactory, factoryData: factoryData, shortLine: shortLine, swr: swr, hardRefresh: hardRefresh, clearLocalCaches: clearLocalCaches,
     skipPop: function () { skipPop = true; }, isAdmin: isAdmin, sendToGroup: sendToGroup, waAttendanceText: waAttendanceText, offerGroup: offerGroup,
