@@ -434,8 +434,8 @@
     if (isMobile()) {
       box.className = '';
       if (!list.length) { box.innerHTML = '<span class="muted" style="font-size:12px">No loading found on this line</span>'; return; }
-      if (!att.srn) att.srn = list[0].srn;
-      box.innerHTML = '<select id="att-srn-sel" class="al-srn">' + (list.some(function (x) { return x.srn === att.srn; }) ? '' : '<option value="' + esc(att.srn) + '">' + esc(att.srn) + '</option>') + list.map(function (x) { return '<option value="' + esc(x.srn) + '"' + (x.srn === att.srn ? ' selected' : '') + '>' + esc(x.srn) + (x.balance !== '' ? ' · ' + x.balance + ' left' : '') + '</option>'; }).join('') + '</select>';
+      // the recorder picks the SRN every time (never pre-selected, even when the line has only one)
+      box.innerHTML = '<select id="att-srn-sel" class="al-srn' + (att.srn ? '' : ' need') + '"><option value="">— select SRN —</option>' + (!att.srn || list.some(function (x) { return x.srn === att.srn; }) ? '' : '<option value="' + esc(att.srn) + '">' + esc(att.srn) + '</option>') + list.map(function (x) { return '<option value="' + esc(x.srn) + '"' + (x.srn === att.srn ? ' selected' : '') + '>' + esc(x.srn) + (x.balance !== '' ? ' · ' + x.balance + ' left' : '') + '</option>'; }).join('') + '</select>';
       return;
     }
     box.className = 'chips';
@@ -446,10 +446,10 @@
   function loadAttSrns() {
     att.srns = null; renderAttSrns();
     api('orders.active', { factory: state.factory, dept: att.dept, type: attType(), lite: isMobile() }, { quiet: true })
-      .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all) att.srn = d.srns[0].srn; renderAttSrns(); updateAttTotals(); })
+      .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all && !isMobile()) att.srn = d.srns[0].srn; renderAttSrns(); updateAttTotals(); })
       .catch(function () { att.srns = []; renderAttSrns(); });
   }
-  $('#att-srn').addEventListener('change', function (e) { if (e.target.id === 'att-srn-sel') { att.srn = e.target.value; updateAttTotals(); } });
+  $('#att-srn').addEventListener('change', function (e) { if (e.target.id === 'att-srn-sel') { att.srn = e.target.value; e.target.classList.toggle('need', !att.srn); updateAttTotals(); } });
   $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('.chips button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
   function openAttendance(shift, dept, opts) {
     opts = opts || {};
@@ -474,7 +474,8 @@
     var banner = $('#att-banner'); banner.hidden = true;
     api('att.get', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift })
       .then(function (d) {
-        att.srn = d.srn || ''; loadAttSrns();
+        // phone: a new day's attendance (copied from the last day) has no SRN until the recorder picks it
+        att.srn = isMobile() && (d.prefill || d.fromSheet) ? '' : (d.srn || ''); loadAttSrns();
         $('#att-sup').value = d.supervisor || ''; $('#att-inc').value = d.incharge || '';
         att.qc = d.qc_names || [];
         renderAttRows(d.rows); renderQc();
@@ -539,7 +540,7 @@
     saveAttendance2(rows);
   }
   function saveAttendance2(rows) {
-    if (!att.srn && (att.srns || []).length) { toast(tx('Pehle SRN chuno', 'Select SRN first'), 'bad'); return; }
+    if (!att.srn && (att.srns || []).length) { toast(tx('Pehle SRN chuno', 'Select the SRN running on this line'), 'bad', 5000); var ss = $('#att-srn-sel'); if (ss) { ss.classList.add('need'); ss.focus(); } return; }
     var sup = $('#att-sup').value.trim(), inc = $('#att-inc').value.trim(), need = qcNeed(), qc = att.qc || [];
     if (rows.length && att.shift === 'Final') {
       if (!sup) { toast(tx('Supervisor ka naam likho', 'Enter supervisor name'), 'bad'); $('#att-sup').focus(); return; }

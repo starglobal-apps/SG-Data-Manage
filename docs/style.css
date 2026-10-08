@@ -564,3 +564,4 @@ h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; 
 .mor-t tr.mor-cf td { font-weight: 700; background: var(--bg); } .mor-t tr.mor-pend td { background: #fff4d6; font-weight: 700; } .mor-t tr.mor-app td { background: #f3f7ff; }
 .mor-t td.bad { color: var(--bad); } .mor-why { width: 100%; min-width: 150px; font-size: 13px; padding: 6px; border: 1px solid var(--warn); border-radius: 6px; }
 #mo-why { width: 100%; font-size: 15px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); margin: 0 0 10px; font-family: inherit; }
+.al-srn.need { border: 2px solid var(--bad) !important; background: var(--bad-soft); }
