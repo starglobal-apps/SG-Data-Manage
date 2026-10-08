@@ -107,8 +107,12 @@ function mOut_(req, user) {
   var keys = {};
   att.forEach(function(r) { if (M_SLOT[str_(r.shift)]) keys[str_(r.date) + '|' + str_(r.dept) + '|' + str_(r.shift)] = 'app'; });
   Object.keys(sheet).forEach(function(k) { var p = k.split('|'); if (p[0] >= from && p[0] <= today && mine[p[1]] && !keys[k] && sheet[k].factory === factory) keys[k] = 'sheet'; });
-  var groups = {}, done = [], waiting = [], rejRemark = {};
-  readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { if (str_(r.status) === 'Rejected' && str_(r.type) === 'STITCH') rejRemark[str_(r.date) + '|' + str_(r.dept)] = str_(r.remark); });
+  var groups = {}, done = [], waiting = [], rejRemark = {}, reasonOf = {};
+  readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.type) !== 'STITCH') return;
+    if (str_(r.status) === 'Rejected') rejRemark[str_(r.date) + '|' + str_(r.dept)] = str_(r.remark);
+    var rs = str_(parseJsonObj_(r.payload).reason); if (rs) reasonOf[str_(r.date) + '|' + str_(r.dept) + '|' + (str_(r.shift) || 'Final')] = rs;
+  });
   Object.keys(keys).sort().forEach(function(k) {
     var p = k.split('|'), d = p[0], dept = p[1], sh = p[2], src = keys[k];
     var outRows = hourly.filter(function(r) { return str_(r.date) === d && str_(r.dept) === dept && (str_(r.shift) || 'Final') === sh; });
@@ -125,7 +129,7 @@ function mOut_(req, user) {
       mp = sh === 'Final' ? mpAtSlot_(rows, dayEv, dept, M_SLOT.Final) : base;
       attSrn = str_(rows[0].srn);
     } else { base = sheet[k].count; mp = base; hours = sheet[k].hours || (sh === 'OT' ? 2 : 8); }
-    var line = { date: d, dept: dept, shift: sh, slot: M_SLOT[sh], fromSheet: src === 'sheet', mp: mp, mpBase: base, hours: hours, attSrn: attSrn,
+    var line = { reason: reasonOf[d + '|' + dept + '|' + sh] || '', date: d, dept: dept, shift: sh, slot: M_SLOT[sh], fromSheet: src === 'sheet', mp: mp, mpBase: base, hours: hours, attSrn: attSrn,
                  floor: lineFloor[dept] ? lineFloor[dept].value : '', events: sh === 'Final' ? mEvents_(dayEv, dept) : [], entries: entries, status: status };
     var hasOut = outRows.length > 0 || sheetDays[dept + '|' + d + '|' + sh];
     if (d === today && outRows.length) done.push(line);
@@ -430,7 +434,7 @@ function mReview_(req, user) {
   }).map(function(r) {
     var p = parseJsonObj_(r.payload), t = str_(r.type);
     return { id: str_(r.id), date: str_(r.date), dept: str_(r.dept), type: t, srn: str_(r.srn), shift: str_(r.shift), qty: mOutQty_(t, p),
-             manpower: num_(p.manpower), hours: num_(p.hours), plan: p.plan === undefined ? '' : p.plan, by: str_(r.submitted_by), at: str_(r.submitted_at),
+             manpower: num_(p.manpower), hours: num_(p.hours), plan: p.plan === undefined ? '' : p.plan, reason: str_(p.reason), by: str_(r.submitted_by), at: str_(r.submitted_at),
              flags: parseJsonArr_(r.flags).filter(function(f) { return f.level === 'block' || f.level === 'warn'; }).map(function(f) { return { level: f.level, msg: enMsg_(f.msg) }; }) };
   });
   items.sort(function(a, b) { return (b.date + a.dept).localeCompare(a.date + b.dept); });
@@ -591,5 +595,16 @@ function mOutSave_(req, user) {
   if (f) return fail_(f.error || 'VAL', f.message);
   var s = daySubmit_({ lite: true, date: date, factory: factory, dept: dept }, user);
   if (!s.ok) return s;
+  // optional reason (why output is below plan) -> the review row -> the main sheet's Reason column (O) on approval
+  var why = str_(req.reason).slice(0, 300);
+  withLock_(function() {
+    readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+      if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept || str_(r.type) !== 'STITCH' || (str_(r.shift) || 'Final') !== shift) return;
+      if (str_(r.status) !== 'Submitted') return;
+      var p = parseJsonObj_(r.payload); if (str_(p.reason) === why) return;
+      p.reason = why; setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
+    });
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+  });
   return { ok: true, submitted: s.submitted, alerts: (s.blocks || []).length };
 }

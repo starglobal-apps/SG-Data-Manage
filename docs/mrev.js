@@ -34,6 +34,7 @@
       html += '<div class="card rv-card">' +
         '<div class="rv-h"><b>' + esc(S.shortLine(it.dept)) + '</b> <em class="ot">' + shLabel(it.shift) + ' ' + esc(it.type === 'STITCH' ? 'output' : it.type.toLowerCase()) + '</em><span class="rv-q">' + it.qty + ' <small>pcs</small></span></div>' +
         '<div class="m">' + esc(it.srn) + (it.manpower ? ' · ' + it.manpower + ' people' : '') + (it.hours ? ' · ' + it.hours + ' hrs' : '') + (it.plan !== '' ? ' · plan ' + it.plan : '') + '</div>' +
+        (it.reason ? '<div class="m" style="color:var(--text)">Reason: ' + esc(it.reason) + '</div>' : '') +
         '<div class="m">by ' + esc(it.by) + (it.at ? ' · ' + esc(String(it.at).slice(0, 16)) : '') + '</div>' +
         it.flags.map(function (f) { return '<div class="m rv-flag ' + f.level + '">⚠ ' + esc(f.msg) + '</div>'; }).join('') +
         '<div class="rv-acts"><button class="btn small ghost" data-rv="' + esc(it.id) + '">Review</button><button class="btn small danger" data-rej="' + esc(it.id) + '">Reject</button><button class="btn small ok" data-ok="' + esc(it.id) + '"' + (block ? ' data-block="1"' : '') + '>Approve</button></div></div>';

@@ -121,6 +121,7 @@
       '<label>Pieces made (' + shLabel(l.shift) + ' output)</label><input id="mo-qty" class="mo-big" type="number" inputmode="numeric" min="0" placeholder="0" value="' + (cur.total || '') + '">' +
       (cur.other ? '<div class="hint">' + cur.other + ' already filled hour-wise (from computer) — total cannot be less than this</div>' : '') +
       '<div id="mo-chk" class="mo-chk"></div>' +
+      '<label>Reason <small class="muted">(optional — e.g. why output is low)</small></label><textarea id="mo-why" rows="2" maxlength="300" placeholder="e.g. machine breakdown 2 hrs, new style learning">' + esc(l.reason || '') + '</textarea>' +
       '<button class="btn primary big" id="mo-save">Save · send to admin</button>';
     S.sheet.open(S.shortLine(l.dept) + ' · ' + shLabel(l.shift) + ' output', html);
     var box = $('#sheet-content');
@@ -142,7 +143,8 @@
       if (!v || !/^\d+$/.test(v)) { toast('Pieces made — enter a whole number', 'bad'); return; }
       if (q > 0 && !srn) { toast('Select SRN', 'bad'); return; }
       if (q < num(cur.other)) { toast(cur.other + ' already filled hour-wise from computer — total cannot be less than ' + cur.other, 'bad', 6000); return; }
-      var c = check(), go = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0 }); };
+      var why = ($('#mo-why') || {}).value || '';
+      var c = check(), go = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0, reason: why.trim() }); };
       if (q === 0) { S.ask('Save 0 pieces for ' + S.shortLine(l.dept) + ' (' + shLabel(l.shift) + ')? It goes to the admin as no output.', { ok: 'Yes, 0 output', cancel: 'Cancel' }).then(function (ok) { if (ok) go(); }); return; }
       if (c.over > 0) S.ask(c.over + ' pcs more than loading. Save anyway? Admin gets an alert.', { ok: 'Yes, save', cancel: 'Let me fix it' }).then(function (ok) { if (ok) go(); });
       else go();
@@ -153,7 +155,7 @@
   // shown at once as "waiting for approval", sent in the background in one call (phone.js outbox, m.outSave);
   // a failed one stays there with Resend
   function saveLine(l, x) {
-    S.pd.send('m.outSave', { date: l.date, factory: state.factory, dept: l.dept, shift: l.shift, slot: l.slot, srn: x.srn, qty: x.qty, other: x.other, floor: l.floor, allowOver: x.allowOver },
+    S.pd.send('m.outSave', { date: l.date, factory: state.factory, dept: l.dept, shift: l.shift, slot: l.slot, srn: x.srn, qty: x.qty, other: x.other, floor: l.floor, allowOver: x.allowOver, reason: x.reason || '' },
               { kind: 'out', dept: l.dept, date: l.date, shift: l.shift, label: 'Output ' + x.qty + ' pcs', line: { mp: l.mp, mpBase: l.mpBase, hours: l.hours, srn: x.srn, qty: x.qty } });
     S.sheet.close();
     toast('Saved · ' + S.shortLine(l.dept) + ' sent for approval ✓', 'ok');
