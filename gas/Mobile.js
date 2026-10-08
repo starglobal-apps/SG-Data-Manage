@@ -180,7 +180,8 @@ function mWarm_(req, user) {
     // all: everything counts as old (others keep getting the old copy until the new one is built) + the small caches go
     if (req.all) { Object.keys(SWR_KEYS_).forEach(function(k) { c.put(k + '#t', '0', 21600); }); ['app_agg', 'hist_agg', 'hist_qc', 'defects_master', 'users_rows'].forEach(cacheDelBig_); Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); }); }
     SWR_REFRESH_ = true;
-    [mastersRows_, loadingAgg_, summaryAgg_, bulletinSam_, planAgg_].forEach(function(fn) { fn(); });   // the phone reads only these (loading: new challans show within minutes)
+    [mastersRows_, loadingAgg_, summaryAgg_, bulletinSam_, planAgg_].forEach(function(fn) { fn(); });
+    try { syncLines_(); } catch (e) {}   // new line codes from loading / plan -> SETTINGS   // the phone reads only these (loading: new challans show within minutes)
   } finally { SWR_REFRESH_ = false; c.remove('warm_running'); }
   // data sent to the main sheets: bring it into MASTER DATA and clean the app copies (was a trigger)
   var imp = ''; try { imp = runDueImport_(); } catch (e) { imp = 'import error ' + e; }

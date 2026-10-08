@@ -41,3 +41,32 @@ function planOfDay_(date, depts) {
   Object.keys(all).forEach(function(k) { var p = k.split('|'); if (p[2] === date && want[p[0]]) out[p[0] + '|' + p[1]] = all[k]; });
   return out;
 }
+
+// New line codes reach SETTINGS by themselves: every line / floor in the loading sheet or the production plan that is
+// not a DEPT row yet is added (factory from the loading row or the code "FAC666-…"; category from the name: "Line" ->
+// STITCH, "Packing" -> PACKING; contractors are not added). Runs in the background refresh (m.warm) and on Fresh data.
+function syncLines_() {
+  var known = {}, add = [], wake = [];
+  readTab_(CFG.TABS.MASTERS).forEach(function(r) { if (str_(r.type) === 'DEPT') known[str_(r.key).toUpperCase()] = r; });
+  var ld = loadingAgg_(), plan = {}, cand = {};
+  try { plan = planAgg_(); } catch (e) {}
+  // only lines in use: a loading challan in the last 30 days, or a production plan row (-45 … +15 days)
+  var since = fmtDate_(new Date(new Date().getTime() - 30 * 86400000));
+  Object.keys(ld.lastLoad || {}).forEach(function(k) { var d = k.slice(0, k.lastIndexOf('|')); if (ld.lastLoad[k] >= since) cand[d] = (ld.partyFac || {})[d] || ''; });
+  Object.keys(plan).forEach(function(k) { var d = k.split('|')[0]; if (!(d in cand)) cand[d] = ''; });
+  Object.keys(cand).forEach(function(d) {
+    d = str_(d); if (!d) return;
+    var had = known[d.toUpperCase()];
+    if (had) { if (had !== 1 && !isTrue_(had.active) && CFG.ACTIVE_CATS.indexOf(str_(had.extra)) >= 0) { wake.push(had); known[d.toUpperCase()] = 1; } return; }   // in use again: active
+    var cat = deptCategory_(d); if (CFG.ACTIVE_CATS.indexOf(cat) < 0) return;
+    var fac = cand[d] || ((d.match(/FAC\s*(\d+)/i) || [])[1] || '');
+    if (!fac || CFG.FACTORIES.indexOf(fac) < 0) return;
+    known[d.toUpperCase()] = 1;
+    add.push({ type: 'DEPT', key: d, value: d, factory: fac, extra: cat, active: 'TRUE' });
+  });
+  if (add.length || wake.length) {
+    withLock_(function() { wake.forEach(function(r) { setField_(CFG.TABS.MASTERS, r._row, 'active', 'TRUE'); }); if (add.length) appendRows_(CFG.TABS.MASTERS, add); });
+    invalidateMasters_();
+  }
+  return add.map(function(a) { return 'added ' + a.key + ' (FAC' + a.factory + ', ' + a.extra + ')'; }).concat(wake.map(function(r) { return 'active again ' + str_(r.key); }));
+}

@@ -14,7 +14,7 @@ function loadingAgg_() {
   var hit = cacheGetBig_('loading_agg');
   if (hit) return hit;
 
-  var out = { loaded: {}, loadedSrn: {}, srnInfo: {}, deptSrns: {}, lastLoad: {} };
+  var out = { loaded: {}, loadedSrn: {}, srnInfo: {}, deptSrns: {}, lastLoad: {}, partyFac: {} };
   var res = Sheets.Spreadsheets.Values.get(srcId_(LOADING_JOB.srcKey),
     a1_(LOADING_JOB.srcSheet, LOADING_JOB.srcRow, LOADING_JOB.srcCol, LOADING_JOB.cols),
     { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' });
@@ -25,6 +25,7 @@ function loadingAgg_() {
     addTo_(out.loaded, k2_(party, srn), qty);
     addTo_(out.loadedSrn, srn, qty);
     var ld = dateKey_(r[1]); if (ld !== '9999-12-31' && (!out.lastLoad[k2_(party, srn)] || out.lastLoad[k2_(party, srn)] < ld)) out.lastLoad[k2_(party, srn)] = ld;
+    if (party && str_(r[3])) out.partyFac[party] = str_(r[3]).replace(/^FAC/i, '');   // the line's factory (new line codes are added from here)
     if (!out.deptSrns[party]) out.deptSrns[party] = {};
     out.deptSrns[party][srn] = true;
     if (!out.srnInfo[srn]) {
