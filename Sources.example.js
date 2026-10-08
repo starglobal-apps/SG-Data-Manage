@@ -9,4 +9,5 @@ var SOURCE_IDS = {
   'LOADING':  '<spreadsheet id>',
   'ALLORDER': '<spreadsheet id>',
   'COST':     '<spreadsheet id>',
+  'PLAN':     '<spreadsheet id>',   // Production Management System (making plan)
 };

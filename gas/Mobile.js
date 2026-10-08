@@ -82,7 +82,8 @@ function mAtt_(req, user) {
   items.forEach(function(x) { x.transfers = tr.byLine[x.dept] || []; });
   var allLines = mastersRows_().filter(function(r) { return str_(r.type) === 'DEPT' && str_(r.factory) === factory && isTrue_(r.active) && CFG.ACTIVE_CATS.indexOf(str_(r.extra)) >= 0; })
     .map(function(r) { return { dept: str_(r.key), cat: str_(r.extra) }; });
-  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: sam, incoming: tr.incoming, allLines: allLines };
+  var plan = {}; try { plan = planOfDay_(date, depts.map(function(d) { return d.dept; })); } catch (e) {}   // production plan of the date (learning curve)
+  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: sam, plan: plan, incoming: tr.incoming, allLines: allLines };
 }
 
 // Phone Output tab: every line / shift (from PHONE_FROM up to today) that has attendance — in the app or typed in the
@@ -179,7 +180,7 @@ function mWarm_(req, user) {
     // all: everything counts as old (others keep getting the old copy until the new one is built) + the small caches go
     if (req.all) { Object.keys(SWR_KEYS_).forEach(function(k) { c.put(k + '#t', '0', 21600); }); ['app_agg', 'hist_agg', 'hist_qc', 'defects_master', 'users_rows'].forEach(cacheDelBig_); Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); }); }
     SWR_REFRESH_ = true;
-    [mastersRows_, loadingAgg_, summaryAgg_, bulletinSam_].forEach(function(fn) { fn(); });   // the phone reads only these (loading: new challans show within minutes)
+    [mastersRows_, loadingAgg_, summaryAgg_, bulletinSam_, planAgg_].forEach(function(fn) { fn(); });   // the phone reads only these (loading: new challans show within minutes)
   } finally { SWR_REFRESH_ = false; c.remove('warm_running'); }
   // data sent to the main sheets: bring it into MASTER DATA and clean the app copies (was a trigger)
   var imp = ''; try { imp = runDueImport_(); } catch (e) { imp = 'import error ' + e; }

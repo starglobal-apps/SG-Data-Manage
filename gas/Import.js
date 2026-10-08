@@ -12,7 +12,8 @@ var MASTER_PUSH = [
   { col: 7, sheet: 'END LINE DATA',                 width: 12, dataRow: 2 },
   { col: 8, sheet: 'Loading Data',                  width: 12, dataRow: 2 },
   { col: 9, sheet: 'All order',                     width: 27, dataRow: 2 },
-  { col: 10, sheet: 'Unloading Data',               width: 18, dataRow: 2 }
+  { col: 10, sheet: 'Unloading Data',               width: 18, dataRow: 2 },
+  { col: 11, sheet: 'Making Plan',                  width: 14, dataRow: 2 }
 ];
 
 var IMPORT_JOBS = [
@@ -26,6 +27,8 @@ var IMPORT_JOBS = [
   { srcKey: 'LOADING', srcSheet: 'loading_chalaan', srcRow: 10, srcCol: 1, cols: 12, tgt: 'Loading Data', tgtCol: 1 },
   { srcKey: 'ALLORDER', srcSheet: 'All Orders', srcRow: 700, srcCol: 1, cols: 27, tgt: 'All order', tgtCol: 1 },
   { srcKey: 'LOADING', srcSheet: 'Unloading_chalaan', srcRow: 2, srcCol: 1, cols: 18, tgt: 'Unloading Data', tgtCol: 1 },
+  // production plan with the learning curve: [ts, SRN, style, line, plan date dd/mm/yyyy, day, day plan qty, balance, efficiency, operators, other manpower {json}, total manpower, working hours, daily target]
+  { srcKey: 'PLAN', srcSheet: 'Making Plan Response for Production', srcRow: 2, srcCol: 1, cols: 14, tgt: 'Making Plan', tgtCol: 1 },
 ];
 
 function colLetter_(n) {

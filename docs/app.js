@@ -504,11 +504,18 @@
     updateAttTotals();
   }
   function collectAttRows() { return $$('#att-rows tr').map(function (tr) { return { role: tr.dataset.role, hours: Number($('.att-hrs', tr).value), count: Number($('.att-count', tr).value || 0) }; }); }
-  // hourly target = total manpower × 60 ÷ SAM of the SRN (display only, nothing is saved)
+  // hourly target = production people × 60 ÷ SAM of the SRN, or from the production plan (display only, nothing is saved)
   // people who make the pieces: only these roles count for the hourly target (same list as the server's CFG.TARGET_ROLES)
   var TARGET_ROLES = ['Operator', 'Helper', 'Thread cutter', 'End Line Checker', 'Hand needle', 'Paster'];
   function targetMp(roles) { var n = 0; Object.keys(roles || {}).forEach(function (r) { if (TARGET_ROLES.indexOf(r) >= 0) n += Number(roles[r]) || 0; }); return n; }
-  function hourlyTarget(srn, mp) {
+  // with a production plan for that line + SRN + date (SG.planMap from m.att): the plan scaled to today's people
+  //   (day plan qty ÷ (planned people × planned hours) × people today); otherwise SAM
+  function hourlyTarget(srn, mp, dept, hours) {
+    var pl = srn && dept ? (SG.planMap || {})[dept + '|' + String(srn).toUpperCase()] : null;
+    if (pl) {
+      var wh = hours || 8, hv = mp > 0 ? Math.round(pl.rate * mp) : 0, dayPlan = Math.round(pl.rate * mp * wh);
+      return { v: hv, html: 'Hourly target <b>' + hv + ' pcs</b> · day plan <b>' + dayPlan + '</b> <small>(' + wh + ' hrs · plan ' + pl.qty + ' pcs with ' + pl.mp + ' people in ' + pl.hours + ' hrs → ' + mp + tx(' log', ' people') + ' today)</small>' };
+    }
     var sam = srn ? Number((SG.samMap || {})[String(srn).toUpperCase()]) || 0 : 0;
     if (!sam) return { v: 0, html: 'Hourly target: <span class="muted">' + tx(esc(srn || 'SRN') + ' ka SAM set nahi', 'no SAM set for ' + esc(srn || 'SRN')) + '</span>' + (srn ? ' <button type="button" class="lnk" data-setsam="' + esc(srn) + '">' + tx('SAM daalo', 'Enter SAM') + '</button>' : '') };
     var v = mp > 0 ? Math.round(mp * 60 / sam) : 0;
@@ -517,7 +524,7 @@
   function updateAttTarget(c) {
     var el = $('#att-target'); if (!el) return;
     el.hidden = !isMobile() || attType() === 'PACKING' || att.shift !== 'Final';
-    if (!el.hidden) { var roles = {}; collectAttRows().forEach(function (r) { roles[r.role] = (roles[r.role] || 0) + r.count; }); el.innerHTML = hourlyTarget(att.srn, targetMp(roles)).html; }
+    if (!el.hidden) { var roles = {}; collectAttRows().forEach(function (r) { roles[r.role] = (roles[r.role] || 0) + r.count; }); el.innerHTML = hourlyTarget(att.srn, targetMp(roles), att.dept, shiftWorkHours(collectAttRows())).html; }
   }
   function updateAttTotals() {
     var c = 0, h = 0;

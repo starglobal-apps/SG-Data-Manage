@@ -162,7 +162,7 @@
   var PA = { items: [], lines: [], wa: null, incoming: [], allLines: [] };
   // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
   function applyAtt(d) {
-    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
+    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; S.planMap = d.plan || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
     trBadge(PA.incoming.length);
     renderPhoneAtt();
   }
@@ -213,7 +213,7 @@
     else if (!shown.length) html += '<div class="empty">' + (past ? 'No attendance on this date' : 'No attendance filled today yet') + '</div>';
     shown.forEach(function (x) {
       var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent', ev = evText(x);
-      var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.roles)) : null;
+      var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.roles), x.dept) : null;
       html += '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + (x.fromSheet ? ' <em class="ot">from sheet</em>' : '') + '</div>' +
         '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' people' + (!x.fromSheet && x.mpNow !== x.count ? ' · now <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot : '') + (x.night ? ' · Night ' + x.night : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
         (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + x.ob.map(obLine).join('') + trText(x) + (st === 'Synced' && !x.ob.length ? '<div class="m" style="color:var(--ok)">In main sheet ✓</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
