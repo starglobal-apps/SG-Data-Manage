@@ -22,7 +22,7 @@ var CFG = {
   HEADERS: {
     USERS:           ['user_id', 'name', 'pin', 'role', 'factory', 'depts', 'active', 'created_at'],
     MASTERS:         ['type', 'key', 'value', 'factory', 'extra', 'active'],
-    ATT_DAILY:       ['id', 'date', 'factory', 'dept', 'shift', 'role', 'hours', 'count', 'entered_by', 'entered_at', 'srn', 'supervisor', 'incharge', 'qc_names', 'keep_status'],
+    ATT_DAILY:       ['id', 'date', 'factory', 'dept', 'shift', 'role', 'hours', 'count', 'entered_by', 'entered_at', 'srn', 'supervisor', 'incharge', 'qc_names', 'keep_status', 'floor'],
     HOURLY_LOG:      ['id', 'date', 'factory', 'line', 'dept', 'srn', 'floor', 'type', 'shift', 'slot', 'qty', 'checked', 'pass', 'reject', 'cartons', 'pcs_per_ctn', 'checker', 'entered_by', 'entered_at', 'defects'],
     MANPOWER_EVENTS: ['id', 'date', 'factory', 'dept', 'role', 'event', 'count', 'time', 'eff_hours', 'note', 'entered_by', 'entered_at'],
     DAY_SUMMARY:     ['id', 'date', 'factory', 'line', 'dept', 'type', 'srn', 'shift', 'payload', 'status', 'flags', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'remark', 'cleaned_at'],

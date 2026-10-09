@@ -449,6 +449,7 @@
       .then(function (d) { att.srns = d.srns; if (!att.srn && d.srns[0] && !d.all && !isMobile()) att.srn = d.srns[0].srn; renderAttSrns(); updateAttTotals(); })
       .catch(function () { att.srns = []; renderAttSrns(); });
   }
+  $('#att-floor').addEventListener('change', function () { $('#att-floor').classList.toggle('need', !$('#att-floor').value); });
   $('#att-srn').addEventListener('change', function (e) { if (e.target.id === 'att-srn-sel') { att.srn = e.target.value; e.target.classList.toggle('need', !att.srn); updateAttTotals(); } });
   $('#att-srn').addEventListener('click', function (e) { var b = e.target.closest('.chips button[data-srn]'); if (!b) return; att.srn = b.dataset.srn; renderAttSrns(); });
   function openAttendance(shift, dept, opts) {
@@ -466,6 +467,8 @@
     $('#att-shift').innerHTML = state.masters.shifts.map(function (s) { return '<option value="' + esc(s.key) + '"' + (s.key === att.shift ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('');
     push('att', (att.moveFrom ? 'Change attendance' : att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
     $('#att-inc-wrap').hidden = attType() === 'PACKING';
+    $('#att-floor-wrap').hidden = !isMobile() || attType() === 'PACKING' || att.shift !== 'Final';
+    $('#att-floor').value = ''; $('#att-floor').classList.remove('need');
     $('#att-cancel').hidden = true;
     att.srn = ''; loadStaff(); loadAttendance();
   }
@@ -476,6 +479,8 @@
       .then(function (d) {
         // phone: a new day's attendance (copied from the last day) has no SRN until the recorder picks it
         att.srn = isMobile() && (d.prefill || d.fromSheet) ? '' : (d.srn || ''); loadAttSrns();
+        // floor: only a saved attendance of this date shows its floor; a new entry is picked every time
+        var fl = $('#att-floor'); fl.value = !d.prefill && !d.fromSheet && d.floor ? String(d.floor).replace(/^.*Stitching\s+/, '') : ''; if (fl.value && !/^(Ground|First|Second)$/.test(fl.value)) fl.value = '';
         $('#att-sup').value = d.supervisor || ''; $('#att-inc').value = d.incharge || '';
         att.qc = d.qc_names || [];
         renderAttRows(d.rows); renderQc();
@@ -547,6 +552,8 @@
       if (attType() !== 'PACKING' && !inc) { toast(tx('Incharge ka naam likho', 'Enter incharge name'), 'bad'); $('#att-inc').focus(); return; }
       if (attType() !== 'PACKING' && need && qc.length !== need && !isMobile()) { toast('Endline QC ke ' + need + ' naam chuno (abhi ' + qc.length + ')', 'bad'); return; }
     }
+    var floorEl = $('#att-floor'), floor = floorEl && !$('#att-floor-wrap').hidden ? floorEl.value : '';
+    if (rows.length && isMobile() && attType() !== 'PACKING' && att.shift === 'Final' && !floor) { toast('Select the floor of this line', 'bad', 5000); floorEl.classList.add('need'); floorEl.focus(); return; }
     var from = att.moveFrom && att.moveFrom !== att.dept ? att.moveFrom : '';
     if (from && !att.moveOk && SG.phoneLineFilled && SG.phoneLineFilled(att.dept)) {
       ask(shortLine(att.dept) + ' already has attendance — it will be replaced by this one. OK?', { ok: 'Yes, replace', cancel: 'Wait' }).then(function (ok) { if (ok) { att.moveOk = true; saveAttendance2(rows); } });
@@ -556,7 +563,7 @@
     // phone: shown as saved at once, sent in the background (phone.js outbox); a failed save shows Resend on its line
     if (isMobile()) {
       var label = att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance';
-      SG.pd.send('att.save', { date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, supervisor: sup, incharge: inc, qc_names: qc, rows: rows },
+      SG.pd.send('att.save', { phone: true, date: state.date, factory: state.factory, dept: att.dept, shift: att.shift, srn: att.srn, floor: floor, supervisor: sup, incharge: inc, qc_names: qc, rows: rows },
                  { dept: att.dept, date: state.date, shift: att.shift, kind: 'att', label: label });
       if (from) SG.pd.send('att.save', { date: state.date, factory: state.factory, dept: from, shift: att.shift, rows: [] }, { dept: from, date: state.date, shift: att.shift, kind: 'att', label: 'Line change' });
       toast(from ? 'Line changed · ' + shortLine(from) + ' → ' + shortLine(att.dept) + ' ✓' : label + ' saved ✓', 'ok');

@@ -131,7 +131,7 @@ function mOut_(req, user) {
       attSrn = str_(rows[0].srn);
     } else { base = sheet[k].count; mp = base; hours = sheet[k].hours || (sh === 'OT' ? 2 : 8); }
     var line = { reason: reasonOf[d + '|' + dept + '|' + sh] || '', date: d, dept: dept, shift: sh, slot: M_SLOT[sh], fromSheet: src === 'sheet', mp: mp, mpBase: base, hours: hours, attSrn: attSrn,
-                 floor: lineFloor[dept] ? lineFloor[dept].value : '', events: sh === 'Final' ? mEvents_(dayEv, dept) : [], entries: entries, status: status };
+                 floor: (src === 'app' && attFloor_(rows, dept)) || (lineFloor[dept] ? lineFloor[dept].value : ''), events: sh === 'Final' ? mEvents_(dayEv, dept) : [], entries: entries, status: status };
     var hasOut = outRows.length > 0 || sheetDays[dept + '|' + d + '|' + sh];
     if (d === today && outRows.length) done.push(line);
     // saved in the app and with the admin: listed as waiting until approved / rejected (a rejected one is pending again)
@@ -437,6 +437,7 @@ function mReview_(req, user) {
     var p = parseJsonObj_(r.payload), t = str_(r.type);
     return { id: str_(r.id), date: str_(r.date), dept: str_(r.dept), type: t, srn: str_(r.srn), shift: str_(r.shift), qty: mOutQty_(t, p),
              manpower: num_(p.manpower), hours: num_(p.hours), plan: p.plan === undefined ? '' : p.plan, reason: str_(p.reason), by: str_(r.submitted_by), at: str_(r.submitted_at),
+             noFloor: !parseJsonObj_(r.payload).floor,
              flags: parseJsonArr_(r.flags).filter(function(f) { return f.level === 'block' || f.level === 'warn'; }).map(function(f) { return { level: f.level, msg: enMsg_(f.msg) }; }) };
   });
   items.sort(function(a, b) { return (b.date + a.dept).localeCompare(a.date + b.dept); });
@@ -623,4 +624,29 @@ function mOutSave_(req, user) {
     invalidateDaily_(CFG.TABS.DAY_SUMMARY);
   });
   return { ok: true, submitted: s.submitted, alerts: (s.blocks || []).length };
+}
+
+// { dept, floor: 'Ground' | 'First' | 'Second' } (admin) -> the line's floor (SETTINGS LINE_FLOOR, value "FAC666-Stitching Ground"),
+// also put on that line's output rows still waiting (Draft / Submitted) so the sheet row gets it on approval
+function mSetFloor_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  var dept = str_(req.dept), floor = str_(req.floor);
+  if (!dept || CFG.FLOORS.indexOf(floor) < 0) return fail_('VAL', 'Select the floor');
+  var fac = ''; mastersRows_().forEach(function(r) { if (str_(r.type) === 'DEPT' && str_(r.key) === dept) fac = str_(r.factory); });
+  var value = 'FAC' + (fac || '666') + '-Stitching ' + floor, n = 0;
+  withLock_(function() {
+    var hit = readTab_(CFG.TABS.MASTERS).filter(function(r) { return str_(r.type) === 'LINE_FLOOR' && str_(r.key) === dept; })[0];
+    if (hit) { setField_(CFG.TABS.MASTERS, hit._row, 'value', value); setField_(CFG.TABS.MASTERS, hit._row, 'active', 'TRUE'); }
+    else appendRows_(CFG.TABS.MASTERS, [{ type: 'LINE_FLOOR', key: dept, value: value, factory: fac, extra: '', active: 'TRUE' }]);
+    readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+      if (str_(r.dept) !== dept || str_(r.type) !== 'STITCH' || ['Draft', 'Submitted', 'Rejected'].indexOf(str_(r.status)) < 0) return;
+      var p = parseJsonObj_(r.payload); if (p.floor) return;
+      p.floor = value; setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
+      setField_(CFG.TABS.DAY_SUMMARY, r._row, 'flags', JSON.stringify(parseJsonArr_(r.flags).filter(function(f) { return !/Floor nahi mila/.test(str_(f.msg)); }))); n++;
+    });
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+  });
+  invalidateMasters_();
+  audit_(user, 'm.setFloor', dept, { floor: value, rows: n });
+  return { ok: true, floor: value, rows: n };
 }

@@ -2,6 +2,8 @@
 //
 // DAY_SUMMARY.status: Draft -> Submitted -> Approved -> Sent   (or Rejected -> back to Draft on re-entry)
 
+// the floor saved with the day's attendance of a line (phone picks it every time)
+function attFloor_(attRows, dept) { var f = ''; attRows.forEach(function(r) { if (str_(r.dept) === dept && str_(r.floor) && (!f || str_(r.shift) === 'Final')) f = str_(r.floor); }); return f; }
 function masterMap_(type) {
   var m = {};
   mastersRows_().forEach(function(r) { if (str_(r.type) === type && isTrue_(r.active)) m[str_(r.key)] = { value: str_(r.value), extra: str_(r.extra) }; });
@@ -84,7 +86,7 @@ function dayBuild_(req, user) {
     var attHrs = attHours_(effAtt, shift);
     var payload = {
       date: date, line: lineOf_(dept), dept: dept, srn: srn,
-      floor: str_(g[0].floor) || (lineFloor[dept] ? lineFloor[dept].value : ''),
+      floor: str_(g[0].floor) || attFloor_(att, dept) || (lineFloor[dept] ? lineFloor[dept].value : ''),
       shift: shift, manpower: sum_(effAtt, 'count'), operators: byRole.Operator || 0, hours: closeS ? Math.min(attHrs, closeS.eff) : attHrs, output: sum_(g, 'qty'),
       supervisor: names.supervisor, incharge: names.incharge, slots: g.length, splits: splits
     };

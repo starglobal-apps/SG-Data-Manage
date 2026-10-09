@@ -14,7 +14,7 @@ function attGet_(req, user) {
 
   var staff = lineStaffOf_(dept);
   var today = all.filter(function(r) { return str_(r.date) === date; });
-  if (today.length) return { ok: true, rows: today.map(attRowOut_), srn: str_(today[0].srn), supervisor: str_(today[0].supervisor) || staff.supervisor, incharge: str_(today[0].incharge) || staff.incharge, qc_names: csv_(today[0].qc_names), prefill: false, prefillDate: '' };
+  if (today.length) return { ok: true, rows: today.map(attRowOut_), srn: str_(today[0].srn), floor: str_(today[0].floor), supervisor: str_(today[0].supervisor) || staff.supervisor, incharge: str_(today[0].incharge) || staff.incharge, qc_names: csv_(today[0].qc_names), prefill: false, prefillDate: '' };
 
   // attendance typed straight into the main sheet for this date: open it for editing (approval then replaces those sheet rows)
   var sa = sheetAttAgg_()[date + '|' + dept + '|' + shift];
@@ -60,11 +60,14 @@ function attSave_(req, user) {
   }
 
   var srn = str_(req.srn), supervisor = str_(req.supervisor), incharge = str_(req.incharge), stamp = nowStr_();
+  // floor: the phone picks it every time (Ground / First / Second); stored as the sheet writes it, "FAC666-Stitching Ground"
+  var floorName = str_(req.floor), floor = floorName ? (/^FAC/i.test(floorName) ? floorName : 'FAC' + factory + '-Stitching ' + floorName) : '';
   var qcNames = (Array.isArray(req.qc_names) ? req.qc_names.map(str_) : csv_(req.qc_names)).filter(String).join(',');
   var cat = deptCategory_(dept);
   if (clean.length && shift === 'Final') {
     if (!supervisor) return fail_('VAL', 'Supervisor ka naam zaroori hai');
     if (cat === 'STITCH' && !incharge) return fail_('VAL', 'Incharge ka naam zaroori hai');
+    if (cat === 'STITCH' && req.phone && !floor) return fail_('VAL', 'Select the floor of this line');
   }
   var result = withLock_(function() {
     var existing = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) {
@@ -78,11 +81,12 @@ function attSave_(req, user) {
     }
     appendRows_(CFG.TABS.ATT_DAILY, clean.map(function(c) {
       return { id: uuid_(), date: date, factory: factory, dept: dept, shift: shift, role: c.role,
-               hours: c.hours, count: c.count, entered_by: userName_(user), entered_at: stamp, srn: srn, supervisor: supervisor, incharge: incharge, qc_names: qcNames };
+               hours: c.hours, count: c.count, entered_by: userName_(user), entered_at: stamp, srn: srn, supervisor: supervisor, incharge: incharge, qc_names: qcNames, floor: floor };
     }));
     return { replaced: existing.length, saved: clean.length };
   });
 
+  if (floor && clean.length) try { lineFloorSet_(dept, factory, floor); } catch (e) {}   // the line's floor for everything else (output rows, reports)
   audit_(user, 'att.save', date + '|' + factory + '|' + dept + '|' + shift, result);
   // straight into the main attendance sheet (entered / changed: HR status blank; OT already there: kept)
   var sync = attSync_(date, factory, dept, shift, user, false);
@@ -193,4 +197,15 @@ function staffRemove_(req, user) {
   if (!n) appendRows_(CFG.TABS.MASTERS, [{ type: 'STAFF', key: name, value: kind, factory: '', extra: 'hidden by ' + userName_(user), active: 'FALSE' }]); // hide a sheet-derived name too
   invalidateMasters_();
   return { ok: true };
+}
+
+// SETTINGS LINE_FLOOR of a line = value like "FAC666-Stitching Ground" (only written when it changes)
+function lineFloorSet_(dept, factory, value) {
+  var hit = readTab_(CFG.TABS.MASTERS).filter(function(r) { return str_(r.type) === 'LINE_FLOOR' && str_(r.key) === dept; })[0];
+  if (hit && str_(hit.value) === value && isTrue_(hit.active)) return;
+  withLock_(function() {
+    if (hit) { setField_(CFG.TABS.MASTERS, hit._row, 'value', value); setField_(CFG.TABS.MASTERS, hit._row, 'active', 'TRUE'); }
+    else appendRows_(CFG.TABS.MASTERS, [{ type: 'LINE_FLOOR', key: dept, value: value, factory: factory, extra: '', active: 'TRUE' }]);
+  });
+  invalidateMasters_();
 }

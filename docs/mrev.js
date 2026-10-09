@@ -37,6 +37,7 @@
         (it.reason ? '<div class="m" style="color:var(--text)">Reason: ' + esc(it.reason) + '</div>' : '') +
         '<div class="m">by ' + esc(it.by) + (it.at ? ' · ' + esc(String(it.at).slice(0, 16)) : '') + '</div>' +
         it.flags.map(function (f) { return '<div class="m rv-flag ' + f.level + '">⚠ ' + esc(f.msg) + '</div>'; }).join('') +
+        (it.noFloor ? '<div class="rv-floor"><select data-floorsel="' + esc(it.dept) + '"><option value="">— floor of ' + esc(S.shortLine(it.dept)) + ' —</option>' + ['Ground', 'First', 'Second'].map(function (f) { return '<option>' + f + '</option>'; }).join('') + '</select><button class="btn small" data-setfloor="' + esc(it.dept) + '">Set floor</button></div>' : '') +
         '<div class="rv-acts"><button class="btn small ghost" data-rv="' + esc(it.id) + '">Review</button><button class="btn small danger" data-rej="' + esc(it.id) + '">Reject</button><button class="btn small ok" data-ok="' + esc(it.id) + '"' + (block ? ' data-block="1"' : '') + '>Approve</button></div></div>';
     });
     $('#mrev-body').innerHTML = html;
@@ -107,6 +108,15 @@
     if (b.dataset.ok) {
       if (b.dataset.block) { S.askText('This has a loading alert. Why approve it?', { ok: 'Approve' }).then(function (v) { if (v) decide([b.dataset.ok], 'approve', v); }); return; }
       decide([b.dataset.ok], 'approve'); return;
+    }
+    if (b.dataset.setfloor) {
+      var dept = b.dataset.setfloor, sel = $('#mrev-body select[data-floorsel="' + dept + '"]'), floor = sel ? sel.value : '';
+      if (!floor) { toast('Select the floor first', 'bad'); return; }
+      api('m.setFloor', { dept: dept, floor: floor }, { busy: true }).then(function (r) {
+        R.items.forEach(function (x) { if (x.dept === dept) { x.noFloor = false; x.flags = x.flags.filter(function (f) { return !/Floor of this line/.test(f.msg); }); } });
+        render(); toast(S.shortLine(dept) + ' → ' + r.floor + ' ✓ (saved for every day)', 'ok', 5000); S.pd.dirty = true; S.pd.load(true).catch(function () {});
+      }).catch(function (e) { toast(e.message, 'bad', 7000); });
+      return;
     }
     if (b.dataset.rv) { report(b.dataset.rv); return; }
     if (b.dataset.rej) { S.askText('Reject reason (the recorder sees it):', { ok: 'Reject' }).then(function (v) { if (v) decide([b.dataset.rej], 'reject', v); }); }
