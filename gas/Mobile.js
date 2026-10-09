@@ -431,13 +431,16 @@ function mOutQty_(type, p) { return type === 'ENDLINE' ? num_(p.pass) : num_(p.o
 function mReview_(req, user) {
   if (!isAdmin_(user)) return { ok: true, items: [] };
   var factory = str_(req.factory), since = fmtDate_(new Date(new Date().getTime() - 30 * 86400000));
+  var L = null, srnsBy = {};
   var items = readDaily_(CFG.TABS.DAY_SUMMARY).filter(function(r) {
     return str_(r.status) === 'Submitted' && str_(r.type) !== 'ATT' && (!factory || str_(r.factory) === factory) && str_(r.date) >= since;
   }).map(function(r) {
     var p = parseJsonObj_(r.payload), t = str_(r.type);
     return { id: str_(r.id), date: str_(r.date), dept: str_(r.dept), type: t, srn: str_(r.srn), shift: str_(r.shift), qty: mOutQty_(t, p),
              manpower: num_(p.manpower), hours: num_(p.hours), plan: p.plan === undefined ? '' : p.plan, reason: str_(p.reason), by: str_(r.submitted_by), at: str_(r.submitted_at),
-             noFloor: !parseJsonObj_(r.payload).floor,
+             noFloor: !p.floor, floor: str_(p.floor).replace(/^.*Stitching\s+/, ''),
+             edit: t === 'STITCH' ? { output: num_(p.output), hours: num_(p.hours), roles: { Operator: p.operators !== undefined ? num_(p.operators) : num_(p.manpower), Helper: num_(p.r1), Paster: num_(p.r2), 'Thread cutter': num_(p.r3), 'End Line Checker': num_(p.r4), 'Hand needle': num_(p.r5) },
+                                     srns: (function() { try { if (!L) L = ledgerLite_(); return srnsBy[str_(r.dept)] = srnsBy[str_(r.dept)] || mSrns_(L, str_(r.dept)).map(function(s) { return s.srn; }); } catch (e) { return []; } })() } : null,
              flags: parseJsonArr_(r.flags).filter(function(f) { return f.level === 'block' || f.level === 'warn'; }).map(function(f) { return { level: f.level, msg: enMsg_(f.msg) }; }) };
   });
   items.sort(function(a, b) { return (b.date + a.dept).localeCompare(a.date + b.dept); });
@@ -649,4 +652,51 @@ function mSetFloor_(req, user) {
   invalidateMasters_();
   audit_(user, 'm.setFloor', dept, { floor: value, rows: n });
   return { ok: true, floor: value, rows: n };
+}
+
+// Admin edits an output entry waiting for approval and (optionally) approves it in the same go.
+// { id, srn, floor, output, hours, roles: {Operator, Helper, Paster, 'Thread cutter', 'End Line Checker', 'Hand needle'}, reason, approve }
+// The review row's payload is rewritten (one manpower group), the app's output rows of that line / SRN / shift are set to
+// the new pieces, the floor is kept as the line's floor, and the plan is recomputed for the new people and hours.
+function mReviewEdit_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  var id = str_(req.id), r = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(x) { return str_(x.id) === id; })[0];
+  if (!r) return fail_('NF', 'Not found');
+  if (str_(r.type) !== 'STITCH') return fail_('VAL', 'Only stitching output can be edited here');
+  if (['Submitted', 'Draft', 'Rejected'].indexOf(str_(r.status)) < 0) return fail_('LOCKED', 'Already ' + str_(r.status));
+  var p = parseJsonObj_(r.payload), date = str_(r.date), factory = str_(r.factory), dept = str_(r.dept), shift = str_(r.shift) || 'Final';
+  var srn = str_(req.srn).toUpperCase() || str_(p.srn), output = num_(req.output), hours = num_(req.hours) || num_(p.hours), floorName = str_(req.floor);
+  if (!/^SRN/.test(srn)) return fail_('VAL', 'Select the SRN');
+  if (output < 0 || Math.floor(output) !== output) return fail_('VAL', 'Pieces — whole number');
+  if (!(hours > 0 && hours <= 14)) return fail_('VAL', 'Working hours 1–14');
+  var roles = req.roles && typeof req.roles === 'object' ? req.roles : {}, counts = {}, total = 0;
+  Object.keys(roles).forEach(function(k) { var n = num_(roles[k]); if (n < 0 || Math.floor(n) !== n) return; counts[str_(k)] = n; total += n; });
+  if (!total) return fail_('VAL', 'Enter the manpower');
+  var floor = floorName ? (/^FAC/i.test(floorName) ? floorName : 'FAC' + factory + '-Stitching ' + floorName) : str_(p.floor);
+  // payload: one manpower group, role columns, plan for the new people / hours
+  var prod = 0; Object.keys(counts).forEach(function(k) { if (CFG.TARGET_ROLES.indexOf(k) >= 0) prod += counts[k]; });
+  var planP = null; try { planP = planOf_(date, dept, srn); } catch (e) {}
+  var samP = samOf_(srn);
+  var plan = planP ? Math.round(planP.rate * prod * hours) : (samP && samP.sam > 0 && prod > 0 ? Math.round(prod * hours * 60 / samP.sam) : (p.plan === undefined ? '' : p.plan));
+  var g = { hours: hours, manpower: total, operators: counts.Operator || 0, remark: '' };
+  CFG.STITCH_ROLE_COLS.forEach(function(role, i) { g['r' + (i + 1)] = counts[role] || 0; p['r' + (i + 1)] = counts[role] || 0; });
+  Object.assign(p, { srn: srn, floor: floor, output: output, hours: hours, manpower: total, operators: counts.Operator || 0, plan: plan, splits: [g], reason: str_(req.reason).slice(0, 300), editedBy: userName_(user) });
+  var flags = parseJsonArr_(r.flags).filter(function(f) { return !/Floor nahi mila|zyada|more than loading|loading nahi mili/i.test(str_(f.msg)); });
+  withLock_(function() {
+    setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
+    setField_(CFG.TABS.DAY_SUMMARY, r._row, 'flags', JSON.stringify(flags));
+    setField_(CFG.TABS.DAY_SUMMARY, r._row, 'srn', srn);
+    // the app's own output rows of that line / shift: one row with the new pieces (so PMS and reports match until the import)
+    var old = readTab_(CFG.TABS.HOURLY_LOG).filter(function(h) { return str_(h.date) === date && str_(h.factory) === factory && str_(h.dept) === dept && str_(h.type) === 'STITCH' && (str_(h.shift) || 'Final') === shift; });
+    deleteRows_(CFG.TABS.HOURLY_LOG, old.map(function(h) { return h._row; }));
+    appendRows_(CFG.TABS.HOURLY_LOG, [{ id: uuid_(), date: date, factory: factory, line: lineOf_(dept), dept: dept, srn: srn, floor: floor, type: 'STITCH', shift: shift, slot: M_SLOT[shift] || '17-18',
+      qty: output, checked: 0, pass: 0, reject: 0, cartons: 0, pcs_per_ctn: 0, checker: '', entered_by: (old[0] && str_(old[0].entered_by)) || userName_(user), entered_at: nowStr_(), defects: '' }]);
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY); invalidateDaily_(CFG.TABS.HOURLY_LOG);
+  });
+  invalidateAppAgg_();
+  if (floor) try { lineFloorSet_(dept, factory, floor); } catch (e) {}
+  audit_(user, 'm.reviewEdit', id, { srn: srn, output: output, hours: hours, manpower: total, floor: floor });
+  if (!req.approve) return { ok: true, edited: true };
+  var hasBlock = flags.some(function(f) { return f.level === 'block'; });
+  return mReviewDecide_({ ids: [id], decision: 'approve', remark: hasBlock ? ('Approved after edit by ' + userName_(user)) : '' }, user);
 }

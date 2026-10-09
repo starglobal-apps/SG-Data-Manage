@@ -566,3 +566,6 @@ h2.mo-date { display: flex; justify-content: space-between; margin: 12px 0 6px; 
 #mo-why { width: 100%; font-size: 15px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); margin: 0 0 10px; font-family: inherit; }
 .al-srn.need { border: 2px solid var(--bad) !important; background: var(--bad-soft); }
 .rv-floor { display: flex; gap: 8px; margin-top: 8px; } .rv-floor select { flex: 1; font-size: 15px; padding: 8px 10px; border: 1.5px solid var(--warn); border-radius: 10px; background: var(--card); } .rv-floor .btn { margin: 0; min-height: 40px; }
+.rv-acts.four { grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; } .rv-acts.four .btn { padding: 6px 4px; font-size: 13px; }
+.e-roles { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 0 0 10px; } .e-roles label { font-size: 11px; } .e-roles input { text-align: center; }
+#e-why { width: 100%; font-size: 15px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); margin: 0 0 10px; font-family: inherit; }

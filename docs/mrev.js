@@ -38,7 +38,7 @@
         '<div class="m">by ' + esc(it.by) + (it.at ? ' · ' + esc(String(it.at).slice(0, 16)) : '') + '</div>' +
         it.flags.map(function (f) { return '<div class="m rv-flag ' + f.level + '">⚠ ' + esc(f.msg) + '</div>'; }).join('') +
         (it.noFloor ? '<div class="rv-floor"><select data-floorsel="' + esc(it.dept) + '"><option value="">— floor of ' + esc(S.shortLine(it.dept)) + ' —</option>' + ['Ground', 'First', 'Second'].map(function (f) { return '<option>' + f + '</option>'; }).join('') + '</select><button class="btn small" data-setfloor="' + esc(it.dept) + '">Set floor</button></div>' : '') +
-        '<div class="rv-acts"><button class="btn small ghost" data-rv="' + esc(it.id) + '">Review</button><button class="btn small danger" data-rej="' + esc(it.id) + '">Reject</button><button class="btn small ok" data-ok="' + esc(it.id) + '"' + (block ? ' data-block="1"' : '') + '>Approve</button></div></div>';
+        '<div class="rv-acts four">' + (it.edit ? '<button class="btn small ghost" data-edit="' + esc(it.id) + '">Edit</button>' : '') + '<button class="btn small ghost" data-rv="' + esc(it.id) + '">Review</button><button class="btn small danger" data-rej="' + esc(it.id) + '">Reject</button><button class="btn small ok" data-ok="' + esc(it.id) + '"' + (block ? ' data-block="1"' : '') + '>Approve</button></div></div>';
     });
     $('#mrev-body').innerHTML = html;
   }
@@ -97,6 +97,34 @@
     };
   }
 
+  // ---- Edit: the admin changes anything (SRN, floor, pieces, hours, manpower per role, reason) and approves in one go
+  var ROLES = ['Operator', 'Helper', 'Paster', 'Thread cutter', 'End Line Checker', 'Hand needle'];
+  function editSheet(it) {
+    var ed = it.edit || {}, roles = ed.roles || {}, srns = (ed.srns || []).slice(); if (it.srn && srns.indexOf(it.srn) < 0) srns.unshift(it.srn);
+    var html = '<div class="m" style="margin:0 0 8px">' + esc(S.shortLine(it.dept)) + ' · ' + esc(S.fmtDay(it.date)) + ' · ' + esc(shLabel(it.shift)) + ' · by ' + esc(it.by) + '</div>' +
+      '<div class="row"><div class="field"><label>SRN</label><select id="e-srn">' + srns.map(function (s) { return '<option' + (s === it.srn ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field small"><label>Floor</label><select id="e-floor"><option value="">—</option>' + ['Ground', 'First', 'Second'].map(function (f) { return '<option' + (f === it.floor ? ' selected' : '') + '>' + f + '</option>'; }).join('') + '</select></div></div>' +
+      '<div class="row"><div class="field"><label>Pieces (output)</label><input id="e-out" type="number" inputmode="numeric" min="0" value="' + (ed.output || 0) + '"></div>' +
+      '<div class="field small"><label>Working hours</label><input id="e-hrs" type="number" inputmode="decimal" min="1" max="14" step="0.5" value="' + (ed.hours || 8) + '"></div></div>' +
+      '<label>Manpower</label><div class="e-roles">' + ROLES.map(function (r) { return '<div class="field"><label>' + esc(r) + '</label><input type="number" inputmode="numeric" min="0" data-erole="' + esc(r) + '" value="' + (roles[r] || 0) + '"></div>'; }).join('') + '</div>' +
+      '<label>Reason <small class="muted">(optional)</small></label><textarea id="e-why" rows="2" maxlength="300">' + esc(it.reason || '') + '</textarea>' +
+      '<button class="btn ok big" id="e-approve">Save & approve</button><button class="btn ghost big" id="e-save" style="margin-top:8px">Save only</button>';
+    S.sheet.open('Edit · ' + S.shortLine(it.dept), html);
+    $('#sheet-content').onclick = function (e) {
+      var b = e.target.closest('button'); if (!b || (b.id !== 'e-approve' && b.id !== 'e-save')) return;
+      var rolesOut = {}; S.$$('[data-erole]', $('#sheet-content')).forEach(function (i) { rolesOut[i.dataset.erole] = Number(i.value) || 0; });
+      var payload = { id: it.id, srn: $('#e-srn').value, floor: $('#e-floor').value, output: Number($('#e-out').value), hours: Number($('#e-hrs').value), roles: rolesOut, reason: $('#e-why').value.trim(), approve: b.id === 'e-approve' };
+      if (!payload.floor) { toast('Select the floor', 'bad'); return; }
+      if (R.busy) return; R.busy = true;
+      api('m.reviewEdit', payload, { busy: true }).then(function (r) {
+        R.busy = false; S.sheet.close();
+        if (payload.approve) { R.items = R.items.filter(function (x) { return x.id !== it.id; }); badge(); render(); toast(r.skipped && r.skipped.length ? 'Saved · not approved: ' + r.skipped.join('; ') : (r.sendError ? 'Approved, but main sheet not written: ' + r.sendError : 'Saved & approved · in main sheet ✓'), r.skipped && r.skipped.length || r.sendError ? 'bad' : 'ok', 7000); }
+        else toast('Saved ✓', 'ok');
+        S.pd.dirty = true; S.pd.load(true).catch(function () {});
+      }).catch(function (e2) { R.busy = false; toast(e2.message, 'bad', 7000); });
+    };
+  }
+
   $('#mrev-body').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
     if (b.dataset.all) {
@@ -118,6 +146,7 @@
       }).catch(function (e) { toast(e.message, 'bad', 7000); });
       return;
     }
+    if (b.dataset.edit) { var ei = R.items.filter(function (x) { return x.id === b.dataset.edit; })[0]; if (ei) editSheet(ei); return; }
     if (b.dataset.rv) { report(b.dataset.rv); return; }
     if (b.dataset.rej) { S.askText('Reject reason (the recorder sees it):', { ok: 'Reject' }).then(function (v) { if (v) decide([b.dataset.rej], 'reject', v); }); }
   });

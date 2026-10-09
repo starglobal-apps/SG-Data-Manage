@@ -80,6 +80,7 @@ function routes_() {
     'm.outSave':      mOutSave_,
     'm.reviewDecide': mReviewDecide_,
     'm.setFloor':     mSetFloor_,
+    'm.reviewEdit':   mReviewEdit_,
     'm.outDay':       mOutDay_,
     'm.outReopen':    mOutReopen_,
     'm.reviewReport': mReviewReport_,
