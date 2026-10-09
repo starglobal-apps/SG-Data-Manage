@@ -111,6 +111,6 @@ function attRestore_(from, to) {
 function attRestoreUndo_() {
   var a = readTab_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.entered_by) === 'restored'; }).map(function(r) { return r._row; });
   var e = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.note) === 'restored'; }).map(function(r) { return r._row; });
-  withLock_(function() { deleteRows_(CFG.TABS.ATT_DAILY, a); deleteRows_(CFG.TABS.MANPOWER_EVENTS, e); });
+  withLock_(function() { deleteRowsMany_([{ table: CFG.TABS.ATT_DAILY, rows: a }, { table: CFG.TABS.MANPOWER_EVENTS, rows: e }]); });
   return { att: a.length, events: e.length };
 }

@@ -381,14 +381,15 @@ function transferDecide_(req, user) {
         return { id: uuid_(), date: date, factory: factory, dept: a.dept, role: a.role, event: 'TRANSFER_IN', count: a.count, time: str_(t.time),
                  eff_hours: effHours_('TRANSFER_IN', str_(t.time)), note: 'transfer:' + id + ' ← ' + from, entered_by: userName_(user), entered_at: stamp };
       }));
-    } else {
-      var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
-      deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
     }
     sh.getRange(t._row, head.indexOf('status') + 1).setValue(action === 'accept' ? 'Accepted' : 'Rejected');
     sh.getRange(t._row, head.indexOf('allocations') + 1).setValue(JSON.stringify(allocs));
     sh.getRange(t._row, head.indexOf('decided_by') + 1).setValue(userName_(user));
     sh.getRange(t._row, head.indexOf('decided_at') + 1).setValue(stamp);
+    if (action !== 'accept') {   // last: event rows share this sheet
+      var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
+      deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
+    }
   });
   invalidateDaily_(CFG.TABS.TRANSFERS);
   audit_(user, 'transfer.' + action, id, { allocations: allocs });

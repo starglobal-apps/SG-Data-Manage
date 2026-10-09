@@ -76,11 +76,10 @@ function cleanupSent_() {
   });
   var toNums = function(m) { return Object.keys(m).map(Number); };
   withLock_(function() {
-    deleteRows_(CFG.TABS.HOURLY_LOG, toNums(delH));
-    deleteRows_(CFG.TABS.ATT_DAILY, toNums(delA));
-    deleteRows_(CFG.TABS.MANPOWER_EVENTS, toNums(delE));
+    // stamp first: the review rows share the sheet with the output rows deleted below (row numbers shift)
     var cc = head.indexOf('cleaned_at') + 1;
     done.forEach(function(r) { sh.getRange(r._row, cc).setValue(stamp); });
+    deleteRowsMany_([{ table: CFG.TABS.HOURLY_LOG, rows: toNums(delH) }, { table: CFG.TABS.ATT_DAILY, rows: toNums(delA) }, { table: CFG.TABS.MANPOWER_EVENTS, rows: toNums(delE) }]);
   });
   invalidateDaily_(CFG.TABS.DAY_SUMMARY); invalidateAppAgg_();
   // the log (OUTPUT sheet, table 'Log') keeps the last 30 days only

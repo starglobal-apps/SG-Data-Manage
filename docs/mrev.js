@@ -120,7 +120,7 @@
         R.busy = false; S.sheet.close();
         var att = r.attError ? ' · attendance NOT updated: ' + r.attError : (r.attChanged ? ' · attendance updated too' : '');
         if (payload.approve) { R.items = R.items.filter(function (x) { return x.id !== it.id; }); badge(); render(); toast((r.skipped && r.skipped.length ? 'Saved · not approved: ' + r.skipped.join('; ') : (r.sendError ? 'Approved, but main sheet not written: ' + r.sendError : 'Saved & approved · in main sheet ✓')) + att, r.skipped && r.skipped.length || r.sendError || r.attError ? 'bad' : 'ok', 8000); }
-        else toast('Saved ✓' + att, r.attError ? 'bad' : 'ok', 6000);
+        else { if (r.id) { it.id = r.id; R.items.forEach(function (x) { if (x.dept === it.dept && x.date === it.date && x.shift === it.shift) x.id = r.id; }); } toast('Saved ✓' + att, r.attError ? 'bad' : 'ok', 6000); }
         S.pd.dirty = true; S.pd.load(true).catch(function () {});
       }).catch(function (e2) { R.busy = false; toast(e2.message, 'bad', 7000); });
     };

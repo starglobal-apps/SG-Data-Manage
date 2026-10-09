@@ -394,14 +394,15 @@ function mTrDecide_(req, user) {
         return { id: uuid_(), date: date, factory: factory, dept: to, role: str_(x.role), event: 'TRANSFER_IN', count: num_(x.count), time: str_(t.time),
                  eff_hours: after, note: 'transfer:' + id + ' ← ' + from, entered_by: by, entered_at: stamp };
       })));
-    } else {
-      var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
-      deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
     }
     var sh = tab_(CFG.TABS.TRANSFERS, true), head = physHeadOf_(CFG.TABS.TRANSFERS);
     sh.getRange(t._row, head.indexOf('status') + 1).setValue(action === 'accept' ? 'Accepted' : 'Rejected');
     sh.getRange(t._row, head.indexOf('decided_by') + 1).setValue(by);
     sh.getRange(t._row, head.indexOf('decided_at') + 1).setValue(stamp);
+    if (action !== 'accept') {   // last: deleting event rows shifts the rows of this sheet
+      var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
+      deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
+    }
   });
   invalidateDaily_(CFG.TABS.TRANSFERS);
   audit_(user, 'transfer.' + action, id, { to: to });
@@ -656,8 +657,9 @@ function mSetFloor_(req, user) {
 
 // Admin edits an output entry waiting for approval and (optionally) approves it in the same go.
 // { id, srn, floor, output, hours, roles: {Operator, Helper, Paster, 'Thread cutter', 'End Line Checker', 'Hand needle'}, reason, approve }
-// The review row's payload is rewritten (one manpower group), the app's output rows of that line / SRN / shift are set to
-// the new pieces, the floor is kept as the line's floor, and the plan is recomputed for the new people and hours.
+// The pieces / SRN / floor go into the app's output row and the manpower / SRN / floor / hours into that day's attendance
+// (app + HR sheet, status kept); then the day is rebuilt and submitted again exactly like a recorder's save, so the sheet
+// row keeps its half-day / absent splits, remarks, role columns and plan. The review row gets a new id (returned).
 function mReviewEdit_(req, user) {
   if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
   var id = str_(req.id), r = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(x) { return str_(x.id) === id; })[0];
@@ -665,7 +667,7 @@ function mReviewEdit_(req, user) {
   if (str_(r.type) !== 'STITCH') return fail_('VAL', 'Only stitching output can be edited here');
   if (['Submitted', 'Draft', 'Rejected'].indexOf(str_(r.status)) < 0) return fail_('LOCKED', 'Already ' + str_(r.status));
   var p = parseJsonObj_(r.payload), date = str_(r.date), factory = str_(r.factory), dept = str_(r.dept), shift = str_(r.shift) || 'Final';
-  var srn = str_(req.srn).toUpperCase() || str_(p.srn), output = num_(req.output), hours = num_(req.hours) || num_(p.hours), floorName = str_(req.floor);
+  var srn = str_(req.srn).toUpperCase() || str_(p.srn).toUpperCase(), output = num_(req.output), hours = num_(req.hours) || num_(p.hours), floorName = str_(req.floor);
   if (!/^SRN/.test(srn)) return fail_('VAL', 'Select the SRN');
   if (output < 0 || Math.floor(output) !== output) return fail_('VAL', 'Pieces — whole number');
   if (!(hours > 0 && hours <= 14)) return fail_('VAL', 'Working hours 1–14');
@@ -673,55 +675,47 @@ function mReviewEdit_(req, user) {
   Object.keys(roles).forEach(function(k) { var n = num_(roles[k]); if (n < 0 || Math.floor(n) !== n) return; counts[str_(k)] = n; total += n; });
   if (!total) return fail_('VAL', 'Enter the manpower');
   var floor = floorName ? (/^FAC/i.test(floorName) ? floorName : 'FAC' + factory + '-Stitching ' + floorName) : str_(p.floor);
-  // payload: one manpower group, role columns, plan for the new people / hours
-  var prod = 0; Object.keys(counts).forEach(function(k) { if (CFG.TARGET_ROLES.indexOf(k) >= 0) prod += counts[k]; });
-  var planP = null; try { planP = planOf_(date, dept, srn); } catch (e) {}
-  var samP = samOf_(srn);
-  var plan = planP ? Math.round(planP.rate * prod * hours) : (samP && samP.sam > 0 && prod > 0 ? Math.round(prod * hours * 60 / samP.sam) : (p.plan === undefined ? '' : p.plan));
-  var g = { hours: hours, manpower: total, operators: counts.Operator || 0, remark: '' };
-  CFG.STITCH_ROLE_COLS.forEach(function(role, i) { g['r' + (i + 1)] = counts[role] || 0; p['r' + (i + 1)] = counts[role] || 0; });
-  Object.assign(p, { srn: srn, floor: floor, output: output, hours: hours, manpower: total, operators: counts.Operator || 0, plan: plan, splits: [g], reason: str_(req.reason).slice(0, 300), editedBy: userName_(user) });
-  var flags = parseJsonArr_(r.flags).filter(function(f) { return !/Floor nahi mila|zyada|more than loading|loading nahi mili/i.test(str_(f.msg)); });
+  var reason = str_(req.reason).slice(0, 300), attShift = shift, attChanged = 0, attErr = '';
   withLock_(function() {
-    setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
-    setField_(CFG.TABS.DAY_SUMMARY, r._row, 'flags', JSON.stringify(flags));
-    setField_(CFG.TABS.DAY_SUMMARY, r._row, 'srn', srn);
-    // the app's own output rows of that line / shift: one row with the new pieces (so PMS and reports match until the import)
+    // 0. the review row goes back to Draft FIRST (output rows below live on the same sheet: deleting them shifts row numbers)
+    setField_(CFG.TABS.DAY_SUMMARY, r._row, 'status', 'Draft');
+    // 1. the app's output rows of that line / shift -> one row with the new pieces / SRN / floor
     var old = readTab_(CFG.TABS.HOURLY_LOG).filter(function(h) { return str_(h.date) === date && str_(h.factory) === factory && str_(h.dept) === dept && str_(h.type) === 'STITCH' && (str_(h.shift) || 'Final') === shift; });
     deleteRows_(CFG.TABS.HOURLY_LOG, old.map(function(h) { return h._row; }));
     appendRows_(CFG.TABS.HOURLY_LOG, [{ id: uuid_(), date: date, factory: factory, line: lineOf_(dept), dept: dept, srn: srn, floor: floor, type: 'STITCH', shift: shift, slot: M_SLOT[shift] || '17-18',
       qty: output, checked: 0, pass: 0, reject: 0, cartons: 0, pcs_per_ctn: 0, checker: '', entered_by: (old[0] && str_(old[0].entered_by)) || userName_(user), entered_at: nowStr_(), defects: '' }]);
-    invalidateDaily_(CFG.TABS.DAY_SUMMARY); invalidateDaily_(CFG.TABS.HOURLY_LOG);
+    // 2. that day's attendance: role counts, SRN, floor, working hours (the output row and the attendance never disagree)
+    var rows = readTab_(CFG.TABS.ATT_DAILY).filter(function(a) { return str_(a.date) === date && str_(a.factory) === factory && str_(a.dept) === dept && str_(a.shift) === attShift; });
+    var byRole = {}; rows.forEach(function(a) { byRole[str_(a.role)] = a; });
+    var maxH = rows.length ? Math.max.apply(null, rows.map(function(a) { return num_(a.hours); })) : hours, ref = rows[0] || {}, add = [], del = [];
+    Object.keys(counts).forEach(function(role) {
+      var a = byRole[role], n = counts[role];
+      if (a) { if (num_(a.count) !== n) { if (n > 0) setField_(CFG.TABS.ATT_DAILY, a._row, 'count', n); else del.push(a._row); attChanged++; } }
+      else if (n > 0) { add.push({ id: uuid_(), date: date, factory: factory, dept: dept, shift: attShift, role: role, hours: hours, count: n, entered_by: userName_(user), entered_at: nowStr_(),
+                                   srn: srn, supervisor: str_(ref.supervisor), incharge: str_(ref.incharge), qc_names: '', keep_status: '1', floor: floor }); attChanged++; }
+    });
+    rows.forEach(function(a) {
+      if (str_(a.srn) !== srn) { setField_(CFG.TABS.ATT_DAILY, a._row, 'srn', srn); attChanged++; }
+      if (floor && str_(a.floor) !== floor) { setField_(CFG.TABS.ATT_DAILY, a._row, 'floor', floor); attChanged++; }
+      if (hours !== maxH && num_(a.hours) === maxH) { setField_(CFG.TABS.ATT_DAILY, a._row, 'hours', hours); attChanged++; }   // full-day rows follow the new working hours
+    });
+    if (del.length) deleteRows_(CFG.TABS.ATT_DAILY, del);
+    if (add.length) appendRows_(CFG.TABS.ATT_DAILY, add);
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY); invalidateDaily_(CFG.TABS.HOURLY_LOG); invalidateDaily_(CFG.TABS.ATT_DAILY);
   });
   invalidateAppAgg_();
   if (floor) try { lineFloorSet_(dept, factory, floor); } catch (e) {}
-  // the same manpower / SRN / floor go into that day's attendance (app + HR sheet, HR status kept): the output row and the
-  // attendance must never disagree
-  var attChanged = 0, attErr = '';
-  try {
-    var attShift = shift === 'Final' ? 'Final' : shift;
-    withLock_(function() {
-      var rows = readTab_(CFG.TABS.ATT_DAILY).filter(function(a) { return str_(a.date) === date && str_(a.factory) === factory && str_(a.dept) === dept && str_(a.shift) === attShift; });
-      var byRole = {}; rows.forEach(function(a) { byRole[str_(a.role)] = a; });
-      var baseHours = rows.length ? Math.max.apply(null, rows.map(function(a) { return num_(a.hours); })) : hours;
-      var ref = rows[0] || {}, add = [], del = [];
-      Object.keys(counts).forEach(function(role) {
-        var a = byRole[role], n = counts[role];
-        if (a) { if (num_(a.count) !== n) { if (n > 0) setField_(CFG.TABS.ATT_DAILY, a._row, 'count', n); else del.push(a._row); attChanged++; } }
-        else if (n > 0) { add.push({ id: uuid_(), date: date, factory: factory, dept: dept, shift: attShift, role: role, hours: baseHours, count: n, entered_by: userName_(user), entered_at: nowStr_(),
-                                     srn: srn, supervisor: str_(ref.supervisor), incharge: str_(ref.incharge), qc_names: '', keep_status: '1', floor: floor }); attChanged++; }
-      });
-      rows.forEach(function(a) { if (str_(a.srn) !== srn) { setField_(CFG.TABS.ATT_DAILY, a._row, 'srn', srn); attChanged++; } if (floor && str_(a.floor) !== floor) { setField_(CFG.TABS.ATT_DAILY, a._row, 'floor', floor); attChanged++; } });
-      if (del.length) deleteRows_(CFG.TABS.ATT_DAILY, del);
-      if (add.length) appendRows_(CFG.TABS.ATT_DAILY, add);
-      invalidateDaily_(CFG.TABS.ATT_DAILY);
-    });
-    if (attChanged) { var sy = attSync_(date, factory, dept, attShift, user, true); if (!sy.ok) attErr = sy.message; }
-  } catch (e) { attErr = String(e && e.message || e); }
-  audit_(user, 'm.reviewEdit', id, { srn: srn, output: output, hours: hours, manpower: total, floor: floor, attChanged: attChanged, attErr: attErr });
-  if (!req.approve) return { ok: true, edited: true, attChanged: attChanged, attError: attErr };
-  var hasBlock = flags.some(function(f) { return f.level === 'block'; });
-  var dec = mReviewDecide_({ ids: [id], decision: 'approve', remark: hasBlock ? ('Approved after edit by ' + userName_(user)) : '' }, user);
-  if (dec && dec.ok) { dec.attChanged = attChanged; dec.attError = attErr; }
+  if (attChanged) try { var sy = attSync_(date, factory, dept, attShift, user, true); if (!sy.ok) attErr = sy.message; } catch (e) { attErr = String(e && e.message || e); }
+  var s = daySubmit_({ lite: true, date: date, factory: factory, dept: dept, onlyType: 'STITCH' }, user);
+  if (!s.ok) return s;
+  var nr = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(x) { return str_(x.date) === date && str_(x.factory) === factory && str_(x.dept) === dept && str_(x.type) === 'STITCH' && str_(x.srn).toUpperCase() === srn && (str_(x.shift) || 'Final') === shift && str_(x.status) === 'Submitted'; })[0];
+  if (!nr) return fail_('ERR', 'Rebuilt row not found');
+  var np = parseJsonObj_(nr.payload); np.reason = reason; np.editedBy = userName_(user);
+  withLock_(function() { setField_(CFG.TABS.DAY_SUMMARY, nr._row, 'payload', JSON.stringify(np)); invalidateDaily_(CFG.TABS.DAY_SUMMARY); });
+  audit_(user, 'm.reviewEdit', id, { newId: str_(nr.id), srn: srn, output: output, hours: hours, manpower: total, floor: floor, attChanged: attChanged, attErr: attErr });
+  if (!req.approve) return { ok: true, edited: true, id: str_(nr.id), attChanged: attChanged, attError: attErr };
+  var hasBlock = parseJsonArr_(nr.flags).some(function(f) { return f.level === 'block'; });
+  var dec = mReviewDecide_({ ids: [str_(nr.id)], decision: 'approve', remark: hasBlock ? ('Approved after edit by ' + userName_(user)) : '' }, user);
+  if (dec && dec.ok) { dec.attChanged = attChanged; dec.attError = attErr; dec.id = str_(nr.id); }
   return dec;
 }

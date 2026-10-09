@@ -110,6 +110,13 @@ function deleteRows_(name, rowNums) {
   siblings_(name).forEach(invalidateDaily_);
 }
 
+// Rows of several tables at once ([{ table, rows }]): tables on the same sheet are deleted in one pass, because deleting
+// one table's rows shifts the other tables' row numbers. Always use this (or delete last) when a sheet holds several tables.
+function deleteRowsMany_(list) {
+  var bySheet = {};
+  list.forEach(function(x) { if (!x.rows || !x.rows.length) return; var s = sheetOf_(x.table); (bySheet[s] = bySheet[s] || { table: x.table, rows: [] }).rows = bySheet[s].rows.concat(x.rows); });
+  Object.keys(bySheet).forEach(function(s) { deleteRows_(bySheet[s].table, bySheet[s].rows); });
+}
 // one field of one row (row from readTab_ / readDaily_)
 function setField_(name, row, field, value) {
   var c = physHeadOf_(name).indexOf(field) + 1;
