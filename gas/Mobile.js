@@ -486,6 +486,20 @@ function mOutDay_(req, user) {
     o.qty += t === 'ENDLINE' ? num_(r.pass) : num_(r.qty);
   });
   Object.keys(loose).forEach(function(k) { rows.push(loose[k]); });
+  // lines with attendance that date (app) but no output anywhere (app / main sheet): still pending
+  var done = {}, sheetDays = {};
+  rows.forEach(function(r) { done[r.dept + '|' + r.shift] = 1; });
+  try { (ledgerLite_().recent || []).forEach(function(x) { if (x[0] === date) sheetDays[x[1] + '|' + x[2]] = 1; }); } catch (e) {}
+  var attBy = {};
+  readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || !M_SLOT[str_(r.shift)]) return;
+    var k = str_(r.dept) + '|' + str_(r.shift); if (!attBy[k]) attBy[k] = { dept: str_(r.dept), shift: str_(r.shift), srn: str_(r.srn), by: str_(r.entered_by) };
+  });
+  var cat = {}; mastersRows_().forEach(function(r) { if (str_(r.type) === 'DEPT') cat[str_(r.key)] = str_(r.extra); });
+  Object.keys(attBy).forEach(function(k) {
+    if (done[k] || sheetDays[k] || cat[attBy[k].dept] !== 'STITCH') return;
+    var a = attBy[k]; rows.push({ dept: a.dept, type: 'STITCH', srn: a.srn, shift: a.shift, qty: null, by: a.by, status: 'Pending', remark: '' });
+  });
   rows.sort(function(a, b) { return a.by.localeCompare(b.by) || a.dept.localeCompare(b.dept); });
   return { ok: true, date: date, rows: rows };
 }

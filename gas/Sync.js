@@ -55,7 +55,7 @@ function adminImportNow_(req, user) {
 //   ATT (only for days before today, the app still needs today's attendance) -> ATT_DAILY rows (date, factory, dept, shift)
 //        + MANPOWER_EVENTS of that dept/date when the Final shift goes
 function cleanupSent_() {
-  var today = todayStr_(), head = physHeadOf_(CFG.TABS.DAY_SUMMARY), sh = tab_(CFG.TABS.DAY_SUMMARY, true);
+  var today = todayStr_(), keepFrom = fmtDate_(new Date(new Date().getTime() - 60 * 86400000)), head = physHeadOf_(CFG.TABS.DAY_SUMMARY), sh = tab_(CFG.TABS.DAY_SUMMARY, true);
   if (head.indexOf('cleaned_at') < 0) return { error: 'cleaned_at column missing in CFG' };
   if (sh.getLastColumn() < head.length) ensureHeaders_(CFG.TABS.DAY_SUMMARY);
   var ds = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return (str_(r.status) === 'Sent' || str_(r.status) === 'Synced') && !str_(r.cleaned_at); });
@@ -65,7 +65,8 @@ function cleanupSent_() {
   ds.forEach(function(r) {
     var date = str_(r.date), factory = str_(r.factory), dept = str_(r.dept), type = str_(r.type), srn = str_(r.srn), shift = str_(r.shift);
     if (type === 'ATT') {
-      if (date >= today) return;   // today's attendance stays until tomorrow
+      // the app's attendance is the phone's only attendance source now (the main sheets are not read): keep 60 days
+      if (date >= keepFrom) return;
       att.forEach(function(a) { if (str_(a.date) === date && str_(a.factory) === factory && str_(a.dept) === dept && str_(a.shift) === shift) delA[a._row] = 1; });
       if (shift === 'Final') ev.forEach(function(e) { if (str_(e.date) === date && str_(e.factory) === factory && str_(e.dept) === dept) delE[e._row] = 1; });
     } else {

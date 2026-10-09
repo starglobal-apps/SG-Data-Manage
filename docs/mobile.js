@@ -86,14 +86,14 @@
     else if (!O.dayRows.length) html += '<div class="empty">No output entered on this date</div>';
     else {
       var by = {}, grand = 0;
-      O.dayRows.forEach(function (r) { (by[r.by || '—'] = by[r.by || '—'] || []).push(r); grand += r.qty; });
+      O.dayRows.forEach(function (r) { (by[r.by || '—'] = by[r.by || '—'] || []).push(r); grand += r.qty || 0; });
       html += '<div class="mo-sum">' + O.dayRows.length + ' entries · <b>' + grand + ' pcs</b></div>';
       Object.keys(by).forEach(function (who) {
-        var list = by[who], t = 0; list.forEach(function (r) { t += r.qty; });
+        var list = by[who], t = 0; list.forEach(function (r) { t += r.qty || 0; });
         html += '<h2 class="mo-date">' + esc(who) + ' <span>' + t + ' pcs</span></h2>' + list.map(function (r) {
-          var st = r.status === 'Submitted' ? '⏳ Pending approval' : r.status === 'Sent' ? '✓ In main sheet' : r.status === 'Approved' ? 'Approved' : r.status === 'Rejected' ? 'Sent back' + (r.remark ? ': ' + r.remark : '') : r.status;
-          var col = r.status === 'Rejected' ? 'var(--bad)' : r.status === 'Submitted' || r.status === 'Not submitted' ? 'var(--warn)' : 'var(--ok)';
-          return '<div class="mo-card lock"><span class="b"><span class="nm">' + esc(S.shortLine(r.dept)) + ' ' + shBadge(r.shift) + (r.type !== 'STITCH' ? ' <em class="ot">' + esc(r.type.toLowerCase()) + '</em>' : '') + '</span><span class="s">' + esc(r.srn) + '</span><span class="st" style="color:' + col + '">' + esc(st) + '</span></span><span class="v">' + r.qty + '<small>pcs</small></span></div>';
+          var st = r.status === 'Pending' ? '⚠ Output not entered' : r.status === 'Submitted' ? '⏳ Pending approval' : r.status === 'Sent' ? '✓ In main sheet' : r.status === 'Approved' ? 'Approved' : r.status === 'Rejected' ? 'Sent back' + (r.remark ? ': ' + r.remark : '') : r.status;
+          var col = r.status === 'Rejected' || r.status === 'Pending' ? 'var(--bad)' : r.status === 'Submitted' || r.status === 'Not submitted' ? 'var(--warn)' : 'var(--ok)';
+          return '<div class="mo-card lock"><span class="b"><span class="nm">' + esc(S.shortLine(r.dept)) + ' ' + shBadge(r.shift) + (r.type !== 'STITCH' ? ' <em class="ot">' + esc(r.type.toLowerCase()) + '</em>' : '') + '</span><span class="s">' + esc(r.srn) + '</span><span class="st" style="color:' + col + '">' + esc(st) + '</span></span><span class="v">' + (r.qty === null ? '—' : r.qty) + '<small>pcs</small></span></div>';
         }).join('');
       });
     }
