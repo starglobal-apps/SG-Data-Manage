@@ -106,7 +106,7 @@
       '<div class="field small"><label>Floor</label><select id="e-floor"><option value="">—</option>' + ['Ground', 'First', 'Second'].map(function (f) { return '<option' + (f === it.floor ? ' selected' : '') + '>' + f + '</option>'; }).join('') + '</select></div></div>' +
       '<div class="row"><div class="field"><label>Pieces (output)</label><input id="e-out" type="number" inputmode="numeric" min="0" value="' + (ed.output || 0) + '"></div>' +
       '<div class="field small"><label>Working hours</label><input id="e-hrs" type="number" inputmode="decimal" min="1" max="14" step="0.5" value="' + (ed.hours || 8) + '"></div></div>' +
-      '<label>Manpower</label><div class="e-roles">' + ROLES.map(function (r) { return '<div class="field"><label>' + esc(r) + '</label><input type="number" inputmode="numeric" min="0" data-erole="' + esc(r) + '" value="' + (roles[r] || 0) + '"></div>'; }).join('') + '</div>' +
+      '<label>Manpower <small class="muted">(changes go into the attendance too)</small></label><div class="e-roles">' + ROLES.map(function (r) { return '<div class="field"><label>' + esc(r) + '</label><input type="number" inputmode="numeric" min="0" data-erole="' + esc(r) + '" value="' + (roles[r] || 0) + '"></div>'; }).join('') + '</div>' +
       '<label>Reason <small class="muted">(optional)</small></label><textarea id="e-why" rows="2" maxlength="300">' + esc(it.reason || '') + '</textarea>' +
       '<button class="btn ok big" id="e-approve">Save & approve</button><button class="btn ghost big" id="e-save" style="margin-top:8px">Save only</button>';
     S.sheet.open('Edit · ' + S.shortLine(it.dept), html);
@@ -118,8 +118,9 @@
       if (R.busy) return; R.busy = true;
       api('m.reviewEdit', payload, { busy: true }).then(function (r) {
         R.busy = false; S.sheet.close();
-        if (payload.approve) { R.items = R.items.filter(function (x) { return x.id !== it.id; }); badge(); render(); toast(r.skipped && r.skipped.length ? 'Saved · not approved: ' + r.skipped.join('; ') : (r.sendError ? 'Approved, but main sheet not written: ' + r.sendError : 'Saved & approved · in main sheet ✓'), r.skipped && r.skipped.length || r.sendError ? 'bad' : 'ok', 7000); }
-        else toast('Saved ✓', 'ok');
+        var att = r.attError ? ' · attendance NOT updated: ' + r.attError : (r.attChanged ? ' · attendance updated too' : '');
+        if (payload.approve) { R.items = R.items.filter(function (x) { return x.id !== it.id; }); badge(); render(); toast((r.skipped && r.skipped.length ? 'Saved · not approved: ' + r.skipped.join('; ') : (r.sendError ? 'Approved, but main sheet not written: ' + r.sendError : 'Saved & approved · in main sheet ✓')) + att, r.skipped && r.skipped.length || r.sendError || r.attError ? 'bad' : 'ok', 8000); }
+        else toast('Saved ✓' + att, r.attError ? 'bad' : 'ok', 6000);
         S.pd.dirty = true; S.pd.load(true).catch(function () {});
       }).catch(function (e2) { R.busy = false; toast(e2.message, 'bad', 7000); });
     };

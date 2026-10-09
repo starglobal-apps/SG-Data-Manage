@@ -695,8 +695,33 @@ function mReviewEdit_(req, user) {
   });
   invalidateAppAgg_();
   if (floor) try { lineFloorSet_(dept, factory, floor); } catch (e) {}
-  audit_(user, 'm.reviewEdit', id, { srn: srn, output: output, hours: hours, manpower: total, floor: floor });
-  if (!req.approve) return { ok: true, edited: true };
+  // the same manpower / SRN / floor go into that day's attendance (app + HR sheet, HR status kept): the output row and the
+  // attendance must never disagree
+  var attChanged = 0, attErr = '';
+  try {
+    var attShift = shift === 'Final' ? 'Final' : shift;
+    withLock_(function() {
+      var rows = readTab_(CFG.TABS.ATT_DAILY).filter(function(a) { return str_(a.date) === date && str_(a.factory) === factory && str_(a.dept) === dept && str_(a.shift) === attShift; });
+      var byRole = {}; rows.forEach(function(a) { byRole[str_(a.role)] = a; });
+      var baseHours = rows.length ? Math.max.apply(null, rows.map(function(a) { return num_(a.hours); })) : hours;
+      var ref = rows[0] || {}, add = [], del = [];
+      Object.keys(counts).forEach(function(role) {
+        var a = byRole[role], n = counts[role];
+        if (a) { if (num_(a.count) !== n) { if (n > 0) setField_(CFG.TABS.ATT_DAILY, a._row, 'count', n); else del.push(a._row); attChanged++; } }
+        else if (n > 0) { add.push({ id: uuid_(), date: date, factory: factory, dept: dept, shift: attShift, role: role, hours: baseHours, count: n, entered_by: userName_(user), entered_at: nowStr_(),
+                                     srn: srn, supervisor: str_(ref.supervisor), incharge: str_(ref.incharge), qc_names: '', keep_status: '1', floor: floor }); attChanged++; }
+      });
+      rows.forEach(function(a) { if (str_(a.srn) !== srn) { setField_(CFG.TABS.ATT_DAILY, a._row, 'srn', srn); attChanged++; } if (floor && str_(a.floor) !== floor) { setField_(CFG.TABS.ATT_DAILY, a._row, 'floor', floor); attChanged++; } });
+      if (del.length) deleteRows_(CFG.TABS.ATT_DAILY, del);
+      if (add.length) appendRows_(CFG.TABS.ATT_DAILY, add);
+      invalidateDaily_(CFG.TABS.ATT_DAILY);
+    });
+    if (attChanged) { var sy = attSync_(date, factory, dept, attShift, user, true); if (!sy.ok) attErr = sy.message; }
+  } catch (e) { attErr = String(e && e.message || e); }
+  audit_(user, 'm.reviewEdit', id, { srn: srn, output: output, hours: hours, manpower: total, floor: floor, attChanged: attChanged, attErr: attErr });
+  if (!req.approve) return { ok: true, edited: true, attChanged: attChanged, attError: attErr };
   var hasBlock = flags.some(function(f) { return f.level === 'block'; });
-  return mReviewDecide_({ ids: [id], decision: 'approve', remark: hasBlock ? ('Approved after edit by ' + userName_(user)) : '' }, user);
+  var dec = mReviewDecide_({ ids: [id], decision: 'approve', remark: hasBlock ? ('Approved after edit by ' + userName_(user)) : '' }, user);
+  if (dec && dec.ok) { dec.attChanged = attChanged; dec.attError = attErr; }
+  return dec;
 }
