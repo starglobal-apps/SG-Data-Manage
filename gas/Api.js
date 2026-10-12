@@ -41,7 +41,7 @@ function doPost(e) {
   }
 }
 
-var ONCE_ACTIONS_ = { 'att.save': 1, 'm.attUpd': 1, 'm.attSync': 1, 'm.outSave': 1 };
+var ONCE_ACTIONS_ = { 'att.save': 1, 'm.attUpd': 1, 'm.attSync': 1, 'm.outSave': 1, 'm.trCreate': 1, 'm.trDecide': 1 };
 // phone notifications for this save (gas/Notify.js) ride on the reply; a failure there never fails the save
 function withNotify_(action, req, user, res) {
   try { var n = notifyFor_(action, req, user, res); if (n) res.notify = n; } catch (e) {}

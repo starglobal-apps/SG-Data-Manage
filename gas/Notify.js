@@ -7,9 +7,9 @@
 //   attendance saved / changed / cancelled (phone)  -> admins
 //   half day / absent update                         -> admins
 //   output sent for approval                         -> admins
-//   transfer request                                 -> recorders of the receiving line (no one there: admins)
+//   transfer request                                 -> the recorder named on the receiving line's attendance (else its line users, else admins)
 //   transfer accepted / rejected                     -> who made the request
-//   output approved / sent back / edited by admin    -> recorders of that line + who submitted it
+//   output approved / sent back / edited by admin    -> who submitted it + the recorder named on that line's attendance
 
 function notifyFor_(action, req, user, res) {
   if (!res || !res.ok || !user) return null;
@@ -41,8 +41,8 @@ function notifyFor_(action, req, user, res) {
   else if (action === 'm.trCreate') {
     var to = str_(req.to_dept), from = str_(req.from_dept), hour = num_(req.hour);
     var items = Array.isArray(req.items) ? req.items : [], total = items.reduce(function(t, x) { return t + num_(x.count); }, 0);
-    var who = notifyLineUsers_(to, factory, me);
-    add(who.length ? who : notifyAdmins_(factory), 'Transfer request · ' + L(from) + ' → ' + L(to),
+    var who = notifyRecorders_(date, factory, to, me);
+    add(who.length || who.named ? who : notifyAdmins_(factory), 'Transfer request · ' + L(from) + ' → ' + L(to),
       total + (total === 1 ? ' person' : ' people') + ' from ' + notifyHour_(hour) + ' · by ' + by + ' · accept or reject', 'tr|' + str_(res.id), '#matt');
   }
   else if (action === 'm.trDecide') {
@@ -65,8 +65,9 @@ function notifyFor_(action, req, user, res) {
       byLine[k].subs.push(str_(r.submitted_by));
     });
     Object.keys(byLine).forEach(function(k) {
-      var g = byLine[k], to = notifyLineUsers_(g.dept, g.factory, me);
+      var g = byLine[k], to = [];
       g.subs.forEach(function(nm) { to = to.concat(notifyUsersByName_(nm, true)); });
+      to = to.concat(notifyRecorders_(g.date, g.factory, g.dept, me));
       var title = decision === 'approve' ? 'Output approved · ' + L(g.dept) : decision === 'reject' ? 'Output sent back · ' + L(g.dept) : 'Output edited by admin · ' + L(g.dept);
       var body = (g.qty ? g.qty + ' pcs · ' : '') + notifyDay_(g.date) + (decision === 'reject' && str_(req.remark) ? ' · ' + str_(req.remark).slice(0, 120) : '') + ' · by ' + by;
       add(to, title, body, 'out|' + g.date + '|' + g.dept + '|' + g.shift, '#mout');
@@ -85,6 +86,20 @@ function notifyAdmins_(factory) {
 // users who have this line in their lines (recorders / supervisors), not admins (they get their own alerts)
 function notifyLineUsers_(dept, factory, exceptId) {
   return notifyUsers_(function(u) { return str_(u.role) !== 'Admin' && str_(u.user_id) !== exceptId && csv_(u.depts).indexOf(dept) >= 0 && (!factory || !str_(u.factory) || str_(u.factory) === factory); });
+}
+// the data recorder(s) named on that day's attendance of the line (ATT_DAILY entered_by); a line filled only in the
+// main sheet has none there -> the users who have the line in their lines
+function notifyRecorders_(date, factory, dept, exceptId) {
+  var names = {};
+  readDaily_(CFG.TABS.ATT_DAILY).forEach(function(r) {
+    if (str_(r.date) === date && str_(r.dept) === dept && (!factory || str_(r.factory) === factory) && (str_(r.shift) || 'Final') === 'Final' && str_(r.entered_by)) names[str_(r.entered_by)] = 1;
+  });
+  var ids = [];
+  Object.keys(names).forEach(function(n) { ids = ids.concat(notifyUsersByName_(n)); });
+  if (!ids.length) return notifyLineUsers_(dept, factory, exceptId);
+  var out = ids.filter(function(id) { return id !== exceptId; });
+  out.named = true;   // the line has its recorder (maybe the one saving now: then nobody else needs telling)
+  return out;
 }
 // users stamped by name (entered_by / by / submitted_by hold the user's name); nonAdmin: skip admins
 function notifyUsersByName_(name, nonAdmin) {

@@ -180,6 +180,7 @@
   function withPending(items) {
     var list = items.map(function (x) { return Object.assign({}, x, { ob: [] }); });
     S.pd.pending(state.date).forEach(function (it) {
+      if (it.kind === 'trd') return;
       var x = list.filter(function (i) { return i.dept === it.dept; })[0];
       if (it.kind === 'att' && it.shift === 'Final' && it.payload.rows && it.payload.rows.length) {
         var roles = {}, n = 0; it.payload.rows.forEach(function (r) { roles[r.role] = (roles[r.role] || 0) + r.count; n += r.count; });
@@ -192,7 +193,7 @@
   }
   function obLine(it) {
     var what = it.kind === 'att' && it.payload.rows && !it.payload.rows.length ? (it.label === 'Line change' ? 'Line change' : 'Cancel') : it.label || 'Attendance';
-    if (it.state === 'failed') return '<div class="ob-line bad"><span>⚠ ' + esc(what) + ' not saved' + (it.error ? ' — ' + esc(it.error) : '') + '</span><button class="btn small" data-resend="' + esc(it.id) + '">Resend</button></div>';
+    if (it.state === 'failed') return '<div class="ob-line bad"><span>⚠ ' + esc(what) + ' not saved' + (it.error ? ' — ' + esc(it.error) : '') + '</span><span class="ob-btns">' + (it.kind === 'tr' || it.kind === 'trd' ? '<button class="btn small ghost" data-drop="' + esc(it.id) + '">Remove</button>' : '') + '<button class="btn small" data-resend="' + esc(it.id) + '">Resend</button></span></div>';
     return '<div class="ob-line"><span class="ob-spin"></span>' + esc(what) + ' — saving…</div>';
   }
   // a person's name without the staff code in front ("SG02483-Jeetu Goswami" -> "Jeetu Goswami")
@@ -207,7 +208,8 @@
     PA.incoming.forEach(function (t) {
       html += '<div class="card tr-in"><div class="tr-top"><div class="tr-b"><span class="tr-h">Transfer request</span><b>' + esc(S.shortLine(t.from)) + ' → ' + esc(S.shortLine(t.to)) + '</b> · ' + t.total + (t.total > 1 ? ' people' : ' person') + '</div>' +
         '<div class="m">' + t.items.map(function (i) { return i.count + ' ' + esc(i.role); }).join(', ') + ' · from <b>' + hourLabel(t.hour) + '</b>' + (t.date !== S.todayStr() ? ' · ' + esc(S.fmtDay(t.date)) : '') + ' · by ' + esc(t.by) + '</div></div>' +
-        '<div class="tr-acts"><button class="btn small danger" data-trno="' + esc(t.id) + '">Reject</button><button class="btn small ok" data-trok="' + esc(t.id) + '">Accept</button></div></div>';
+        (S.pd.outbox().filter(function (o) { return o.kind === 'trd' && o.trId === t.id; }).map(obLine).join('') ||
+        '<div class="tr-acts"><button class="btn small danger" data-trno="' + esc(t.id) + '">Reject</button><button class="btn small ok" data-trok="' + esc(t.id) + '">Accept</button></div>') + '</div>';
     });
     var shown = PA.shown = withPending(PA.items);
     if (shown.length) html += '<h2 class="pl-sec">Filled · ' + shown.length + (shown.length > 1 ? ' lines' : ' line') + ' <span>' + shown.reduce(function (a, x) { return a + (+x.count || 0); }, 0) + ' people</span></h2>';
@@ -290,9 +292,10 @@
       var total = items.reduce(function (t, i) { return t + i.count; }, 0);
       S.ask('Transfer ' + total + (total > 1 ? ' people' : ' person') + ' from ' + S.shortLine(x.dept) + ' to ' + S.shortLine(to) + ' from ' + hourLabel(hour) + '?', { ok: 'Send transfer', cancel: 'Cancel' }).then(function (ok) {
         if (!ok) return;
-        S.api('m.trCreate', { date: state.date, factory: state.factory, from_dept: x.dept, to_dept: to, hour: hour, items: items }, { busy: true })
-          .then(function (r) { S.sheet.close(); if (r.sheetError) S.toast(r.sheetError, 'bad', 9000); else S.toast('Transfer sent — waiting for ' + S.shortLine(to) + ' to accept', 'ok', 6000); loadAttList(); })
-          .catch(function (er) { S.toast(er.message, 'bad', 7000); });
+        // saved in the background like attendance (no waiting); the line card shows "saving…" / Resend until it is in
+        S.pd.send('m.trCreate', { date: state.date, factory: state.factory, from_dept: x.dept, to_dept: to, hour: hour, items: items },
+          { dept: x.dept, date: state.date, shift: 'Final', kind: 'tr', label: 'Transfer ' + total + ' → ' + S.shortLine(to) });
+        S.sheet.close(); S.toast('Transfer sending — ' + S.shortLine(to) + ' gets a request', 'ok', 4000);
       });
     };
   }
@@ -301,9 +304,9 @@
     var msg = action === 'accept' ? 'Accept ' + t.total + (t.total > 1 ? ' people' : ' person') + ' from ' + S.shortLine(t.from) + ' on ' + S.shortLine(t.to) + ' from ' + hourLabel(t.hour) + '?' : 'Reject this transfer? The people stay on ' + S.shortLine(t.from) + '.';
     S.ask(msg, { ok: action === 'accept' ? 'Accept' : 'Reject', cancel: 'Cancel', danger: action !== 'accept' }).then(function (ok) {
       if (!ok) return;
-      S.api('m.trDecide', { id: id, decision: action }, { busy: true })
-        .then(function (r) { if (r.sheetError) S.toast(r.sheetError, 'bad', 9000); else S.toast(action === 'accept' ? 'Accepted · added to ' + S.shortLine(t.to) + ' from ' + hourLabel(t.hour) : 'Transfer rejected', 'ok', 6000); loadAttList(); })
-        .catch(function (er) { S.toast(er.message, 'bad', 7000); loadAttList(); });
+      S.pd.send('m.trDecide', { id: id, decision: action, factory: state.factory },
+        { dept: t.to, date: state.date, shift: 'Final', kind: 'trd', trId: id, label: (action === 'accept' ? 'Accept' : 'Reject') + ' transfer from ' + S.shortLine(t.from) });
+      S.toast(action === 'accept' ? 'Accepting — ' + S.shortLine(t.to) + ' gets them from ' + hourLabel(t.hour) : 'Rejecting the transfer', 'ok', 4000);
     });
   }
 
@@ -377,6 +380,7 @@
     if (b.dataset.trok) { trDecide(b.dataset.trok, 'accept'); return; }
     if (b.dataset.trno) { trDecide(b.dataset.trno, 'reject'); return; }
     if (b.dataset.resend) { S.pd.resend(b.dataset.resend); S.toast('Sending again…', ''); return; }
+    if (b.dataset.drop) { S.pd.drop(b.dataset.drop); return; }
     if (b.dataset.day) { S.setDate(b.dataset.day); return; }
     if (b.dataset.mp) {
       var all = PA.items.filter(function (x) { return !x.fromSheet; }).map(function (x) { return { dept: x.dept }; });

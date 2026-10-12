@@ -254,6 +254,7 @@
     var pin = $('#in-pin').value.trim();
     $('#login-msg').textContent = '';
     if (!pin) { $('#login-msg').textContent = tx('PIN daalo', 'Enter PIN'); return; }
+    try { if (isMobile() && window.Notification && Notification.permission === 'default' && SG.notify && SG.notify.supported()) Notification.requestPermission(); } catch (e) {}
     api('login', { pin: pin })
       .then(function (d) {
         state.token = d.token; state.user = d.user;
