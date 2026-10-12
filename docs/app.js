@@ -425,8 +425,24 @@
       $('#staff-sup').innerHTML = d.supervisors.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
       $('#staff-inc').innerHTML = d.incharges.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
       $('#staff-qc').innerHTML = (d.qcs || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+      staffPick('#att-sup', $('#att-sup').value); staffPick('#att-inc', $('#att-inc').value);
       renderQc();
     }).catch(function () {});
+  }
+  // phone: Supervisor / Incharge come only from the admin's list (a select instead of a text box). A saved name that is
+  // no longer in the list stays selectable, so an old attendance can still be saved unchanged. Web: text box as before.
+  function staffPick(sel, value) {
+    var el = $(sel); if (!el) return;
+    value = String(value || '').trim();
+    if (!isMobile()) {   // web: the text box with name suggestions (put back if the phone view had replaced it)
+      if (el.tagName === 'SELECT') { var t = document.createElement('input'); t.id = el.id; t.type = 'text'; t.autocomplete = 'off'; t.setAttribute('list', sel === '#att-sup' ? 'staff-sup' : 'staff-inc'); t.placeholder = 'naam'; el.parentNode.replaceChild(t, el); el = t; }
+      el.value = value; return;
+    }
+    if (el.tagName !== 'SELECT') { var s2 = document.createElement('select'); s2.id = el.id; s2.className = 'staff-sel'; el.parentNode.replaceChild(s2, el); el = s2; }
+    var list = ((att.staff || {})[sel === '#att-sup' ? 'supervisors' : 'incharges'] || []).slice();
+    if (value && list.indexOf(value) < 0) list.unshift(value);
+    el.innerHTML = '<option value="">' + (att.staff ? '— select —' : 'Loading names…') + '</option>' + list.map(function (n) { return '<option value="' + esc(n) + '"' + (n === value ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
+    el.value = value;
   }
   var QC_ROLES = ['End Line Checker', 'Line Qc.', 'Final Checker'];
   function qcNeed() { var n = 0; collectAttRows().forEach(function (r) { if (QC_ROLES.indexOf(r.role) >= 0) n += r.count; }); return n; }
@@ -506,7 +522,7 @@
     $('#att-floor-wrap').hidden = !isMobile() || attType() === 'PACKING' || att.shift !== 'Final';
     $('#att-floor').value = ''; $('#att-floor').classList.remove('need');
     $('#att-cancel').hidden = true;
-    att.srn = ''; loadStaff(); loadAttendance();
+    att.srn = ''; staffPick('#att-sup', ''); staffPick('#att-inc', ''); loadStaff(); loadAttendance();
   }
   function shiftDef() { return state.masters.shifts.filter(function (s) { return s.key === att.shift; })[0] || state.masters.shifts[0]; }
   function loadAttendance() {
@@ -517,7 +533,7 @@
         att.srn = isMobile() && (d.prefill || d.fromSheet) ? '' : (d.srn || ''); loadAttSrns();
         // floor: only a saved attendance of this date shows its floor; a new entry is picked every time
         var fl = $('#att-floor'); fl.value = !d.prefill && !d.fromSheet && d.floor ? String(d.floor).replace(/^.*Stitching\s+/, '') : ''; if (fl.value && !/^(Ground|First|Second)$/.test(fl.value)) fl.value = '';
-        $('#att-sup').value = d.supervisor || ''; $('#att-inc').value = d.incharge || '';
+        staffPick('#att-sup', d.supervisor); staffPick('#att-inc', d.incharge);
         att.qc = d.qc_names || [];
         renderAttRows(d.rows); renderQc();
         $('#att-cancel').hidden = !(isMobile() && d.rows.length && !d.prefill);
@@ -584,8 +600,8 @@
     if (!att.srn && (att.srns || []).length) { toast(tx('Pehle SRN chuno', 'Select the SRN running on this line'), 'bad', 5000); var ss = $('#att-srn-sel'); if (ss) { ss.classList.add('need'); ss.focus(); } return; }
     var sup = $('#att-sup').value.trim(), inc = $('#att-inc').value.trim(), need = qcNeed(), qc = att.qc || [];
     if (rows.length && att.shift === 'Final') {
-      if (!sup) { toast(tx('Supervisor ka naam likho', 'Enter supervisor name'), 'bad'); $('#att-sup').focus(); return; }
-      if (attType() !== 'PACKING' && !inc) { toast(tx('Incharge ka naam likho', 'Enter incharge name'), 'bad'); $('#att-inc').focus(); return; }
+      if (!sup) { toast(tx('Supervisor ka naam likho', isMobile() ? 'Select the supervisor' : 'Enter supervisor name'), 'bad'); $('#att-sup').focus(); return; }
+      if (attType() !== 'PACKING' && !inc) { toast(tx('Incharge ka naam likho', isMobile() ? 'Select the incharge' : 'Enter incharge name'), 'bad'); $('#att-inc').focus(); return; }
       if (attType() !== 'PACKING' && need && qc.length !== need && !isMobile()) { toast('Endline QC ke ' + need + ' naam chuno (abhi ' + qc.length + ')', 'bad'); return; }
     }
     var floorEl = $('#att-floor'), floor = floorEl && !$('#att-floor-wrap').hidden ? floorEl.value : '';
@@ -775,7 +791,8 @@
     var lines = deptsFor(state.factory).length;
     var html = '<div class="card me"><div class="av">' + esc((u.name || '?').charAt(0).toUpperCase()) + '</div><div><div class="n">' + esc(u.name) + '</div><div class="s">' + esc(u.role) + (u.factory ? ' · FAC' + esc(u.factory) : '') + ' · ' + lines + ' lines / floors</div></div></div>';
     html += '<div class="menu">';
-    if (isAdmin()) html += '<div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users</div><div class="s">Add or remove users, PIN, lines</div></div>' + icon('chev') + '</div>';
+    if (isAdmin()) html += '<div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users</div><div class="s">Add or remove users, PIN, lines</div></div>' + icon('chev') + '</div>' +
+      '<div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Supervisor / Incharge</div><div class="s">Add or remove the names shown in attendance</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="prefresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Fresh data</div><div class="s">Load the latest loading, SRN, attendance, output, PMS from the sheets</div></div>' + icon('chev') + '</div>';
     if (isAdmin()) html += '<div class="task" data-m="import"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Import data</div><div class="s">Main sheets → MASTER DATA (runs in background, 1–2 min)</div></div>' + icon('chev') + '</div>';
     html += '</div>';

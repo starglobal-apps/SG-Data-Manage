@@ -182,20 +182,26 @@ function staffSave_(req, user) {
   var name = str_(req.name), kind = str_(req.kind);
   if (!name) return fail_('VAL', 'Naam likho');
   if (CFG.STAFF_KINDS.indexOf(kind) < 0) return fail_('VAL', 'Kind galat');
-  var sh = tab_(CFG.TABS.MASTERS, true), head = CFG.HEADERS.MASTERS;
-  var hit = readTab_(CFG.TABS.MASTERS).filter(function(r) { return str_(r.type) === 'STAFF' && str_(r.value) === kind && str_(r.key).toLowerCase() === name.toLowerCase(); })[0];
-  if (hit) sh.getRange(hit._row, head.indexOf('active') + 1).setValue('TRUE');
-  else appendRows_(CFG.TABS.MASTERS, [{ type: 'STAFF', key: name, value: kind, factory: str_(req.factory), extra: userName_(user), active: 'TRUE' }]);
+  // SETTINGS holds several tables: write the cell by field name (setField_), never by CFG.HEADERS index
+  withLock_(function() {
+    var hit = readTab_(CFG.TABS.MASTERS).filter(function(r) { return str_(r.type) === 'STAFF' && str_(r.value) === kind && str_(r.key).toLowerCase() === name.toLowerCase(); })[0];
+    if (hit) setField_(CFG.TABS.MASTERS, hit._row, 'active', 'TRUE');
+    else appendRows_(CFG.TABS.MASTERS, [{ type: 'STAFF', key: name, value: kind, factory: str_(req.factory), extra: userName_(user), active: 'TRUE' }]);
+  });
   invalidateMasters_();
   audit_(user, 'staff.save', name, { kind: kind });
   return { ok: true };
 }
 function staffRemove_(req, user) {
   var name = str_(req.name), kind = str_(req.kind);
-  var sh = tab_(CFG.TABS.MASTERS, true), head = CFG.HEADERS.MASTERS, n = 0;
-  readTab_(CFG.TABS.MASTERS).forEach(function(r) { if (str_(r.type) === 'STAFF' && str_(r.value) === kind && str_(r.key) === name) { sh.getRange(r._row, head.indexOf('active') + 1).setValue('FALSE'); n++; } });
-  if (!n) appendRows_(CFG.TABS.MASTERS, [{ type: 'STAFF', key: name, value: kind, factory: '', extra: 'hidden by ' + userName_(user), active: 'FALSE' }]); // hide a sheet-derived name too
+  if (!name || CFG.STAFF_KINDS.indexOf(kind) < 0) return fail_('VAL', 'Naam / kind galat');
+  withLock_(function() {
+    var n = 0;
+    readTab_(CFG.TABS.MASTERS).forEach(function(r) { if (str_(r.type) === 'STAFF' && str_(r.value) === kind && str_(r.key).toLowerCase() === name.toLowerCase()) { setField_(CFG.TABS.MASTERS, r._row, 'active', 'FALSE'); n++; } });
+    if (!n) appendRows_(CFG.TABS.MASTERS, [{ type: 'STAFF', key: name, value: kind, factory: '', extra: 'hidden by ' + userName_(user), active: 'FALSE' }]); // hide a sheet-derived name too
+  });
   invalidateMasters_();
+  audit_(user, 'staff.remove', name, { kind: kind });
   return { ok: true };
 }
 

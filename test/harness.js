@@ -206,4 +206,18 @@ check('cancel: sheet rows removed', cx.ok && attSheetRows(L3, TODAY).length === 
 // ========== 7. users ==========
 var us = call('admin', 'users.save', { user_id: '', name: 'New Rec', pin: '4444', role: 'Data Collector', factory: '666', depts: [L2], active: true });
 check('users.save + login', us.ok && post({ action: 'login', pin: '4444' }).ok, us);
+// ========== 8. staff names (Supervisor / Incharge list for the phone dropdowns) ==========
+var stA = call('admin', 'staff.save', { name: 'Test Sup One', kind: 'Supervisor' });
+var stL = call('rec1', 'staff.list', {});
+check('staff.save: name in the supervisor list', stA.ok && stL.supervisors.indexOf('Test Sup One') >= 0, stL.supervisors);
+var stR = call('admin', 'staff.remove', { name: 'Test Sup One', kind: 'Supervisor' });
+var stL2 = call('rec1', 'staff.list', {});
+var stRow = readTab_(CFG.TABS.MASTERS).filter(r => r.type === 'STAFF' && r.key === 'Test Sup One');
+check('staff.remove: hidden, active=FALSE in the right column', stR.ok && stL2.supervisors.indexOf('Test Sup One') < 0 && stRow.length === 1 && String(stRow[0].active).toUpperCase() === 'FALSE' && stRow[0].value === 'Supervisor' && /admin|Admin/.test(String(stRow[0].extra)), stRow);
+var stA2 = call('admin', 'staff.save', { name: 'test sup one', kind: 'Supervisor' });
+var stRow2 = readTab_(CFG.TABS.MASTERS).filter(r => r.type === 'STAFF' && r.key.toLowerCase() === 'test sup one');
+check('staff.save again: same row re-activated (no duplicate)', stA2.ok && stRow2.length === 1 && String(stRow2[0].active).toUpperCase() === 'TRUE' && call('rec1', 'staff.list', {}).supervisors.indexOf('Test Sup One') >= 0, stRow2);
+var hidden = call('admin', 'staff.remove', { name: 'Name From History', kind: 'Incharge' });
+check('staff.remove of a name not in SETTINGS: hidden by a new row', hidden.ok && readTab_(CFG.TABS.MASTERS).some(r => r.type === 'STAFF' && r.key === 'Name From History' && String(r.active).toUpperCase() === 'FALSE'));
+check('staff.remove: bad kind rejected', call('admin', 'staff.remove', { name: 'X', kind: 'Boss' }).ok === false);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

@@ -6,7 +6,7 @@
   var KINDS = [{ k: 'Supervisor', key: 'supervisors', hint: 'Line ka supervisor', en: 'Supervisor of the line' }, { k: 'Incharge', key: 'incharges', hint: 'Line / floor ka incharge', en: 'Incharge of the line / floor' }, { k: 'Endline QC', key: 'qcs', hint: 'Endline checker (QC)', en: 'Endline checker (QC)' }];
 
   S.screens.staff = function () {
-    S.push('staff', 'Staff names');
+    S.push('staff', S.isMobile() ? 'Supervisor / Incharge' : 'Staff names');
     $('#staff-body').innerHTML = '<div class="empty">Loading…</div>';
     load();
   };
@@ -14,8 +14,9 @@
     api('staff.list', {}, { quiet: true }).then(function (d) { D.data = d; render(); }).catch(function (e) { $('#staff-body').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
   function render() {
-    var d = D.data, html = '<p class="hint" style="margin:0 0 6px">' + S.tx('Ye naam attendance (Supervisor / Incharge / Endline QC) aur reports me aate hain. Ek naam kai lines par chal sakta hai.', 'These names are used in attendance (Supervisor / Incharge / Endline QC) and reports. One name can be on many lines.') + '</p>';
-    KINDS.forEach(function (kd) {
+    var d = D.data, html = S.isMobile() ? '<p class="hint" style="margin:0 0 6px">These names show in the Supervisor / Incharge dropdowns of attendance. Add a name, or tap ✕ to remove it.</p>' : '<p class="hint" style="margin:0 0 6px">' + S.tx('Ye naam attendance (Supervisor / Incharge / Endline QC) aur reports me aate hain. Ek naam kai lines par chal sakta hai.', 'These names are used in attendance (Supervisor / Incharge / Endline QC) and reports. One name can be on many lines.') + '</p>';
+    // phone (admin): only Supervisor / Incharge — the names the attendance dropdowns show
+    (S.isMobile() ? KINDS.slice(0, 2) : KINDS).forEach(function (kd) {
       var list = d[kd.key] || [];
       html += '<div class="card"><h2 style="margin:0 0 4px">' + esc(kd.k) + ' <span class="muted" style="font-weight:500;text-transform:none;letter-spacing:0">· ' + list.length + '</span></h2><div class="hint" style="margin:0 0 6px">' + esc(S.tx(kd.hint, kd.en)) + '</div>' +
         '<div class="chips" style="flex-wrap:wrap">' + list.map(function (n) { return '<button type="button" class="qc" data-rm="' + esc(kd.k) + '|' + esc(n) + '">' + esc(n) + '<span class="x">✕</span></button>'; }).join('') + (list.length ? '' : '<span class="muted" style="font-size:12px">' + S.tx('Koi naam nahi', 'No names') + '</span>') + '</div>' +
