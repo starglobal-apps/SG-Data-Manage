@@ -372,7 +372,7 @@ export default {
       // notifications of this save: sent after the reply (Apps Script decided who gets what)
       if (text.indexOf('"notify":[') > 0) {
         let n = null; try { n = JSON.parse(text).notify; } catch (e) {}
-        if (n) ctx.waitUntil(sendNotify(env, n).catch(() => {}));
+        if (n) ctx.waitUntil(sendNotify(env, n).catch((e) => pushLog(env, '', 'notification not sent', -1, String(e && e.message || e))));
       }
       // m.warm only reads, unless it ran the due import into MASTER DATA
       const wrote = !READ_ACTIONS.has(action) || (action === 'm.warm' && /"imported":true/.test(text));

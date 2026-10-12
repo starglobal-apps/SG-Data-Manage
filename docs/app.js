@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v82';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v83';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -796,6 +796,7 @@
     html += '<div class="menu">';
     if (isAdmin()) html += '<div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users</div><div class="s">Add or remove users, PIN, lines</div></div>' + icon('chev') + '</div>' +
       '<div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Supervisor / Incharge</div><div class="s">Add or remove the names shown in attendance</div></div>' + icon('chev') + '</div>';
+    html += '<div class="task" data-m="pclear"><div class="ic">' + icon('data') + '</div><div class="b"><div class="n">Clear cache</div><div class="s">Remove the data and app files saved on this phone and load everything new (login and unsent saves stay)</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="prefresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Fresh data</div><div class="s">Load the latest loading, SRN, attendance, output, PMS from the sheets</div></div>' + icon('chev') + '</div>';
     var ns = SG.notify ? SG.notify.state() : 'unsupported', non = ns === 'granted' && SG.notify.on();
     html += '<div class="task" data-m="notif"><div class="ic"' + (non ? ' style="background:var(--ok-soft);color:var(--ok)"' : '') + '>' + icon('bell') + '</div><div class="b"><div class="n">Notifications · ' + (non ? 'On' : ns === 'denied' ? 'Blocked' : ns === 'unsupported' ? 'Not available' : 'Off') + '</div><div class="s">' +
@@ -805,6 +806,18 @@
     if (q.length) html += queueHtml(q);
     html += '<div class="menu" style="margin-top:12px"><div class="task" data-m="logout"><div class="ic" style="background:var(--bad-soft);color:var(--bad)">' + icon('logout') + '</div><div class="b"><div class="n">Logout</div><div class="s">SG Data v' + VERSION + '</div></div></div></div>';
     $('#main-body').innerHTML = html;
+  }
+  // phone "Clear cache": everything kept on the phone except the login, unsent saves (outbox / queue) and the notification
+  // registration; the app files cache too; then a fresh start (the first data call asks the server for a new copy)
+  function clearPhoneCache() {
+    var keep = /^(sg_token|sg_user|sg_outbox|sg_queue|sg_push_|sg_full)/;
+    try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('sg_') === 0 && !keep.test(k)) localStorage.removeItem(k); }); } catch (e) {}
+    var jobs = [];
+    if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }).catch(function () {}));
+    if ('serviceWorker' in navigator) jobs.push(navigator.serviceWorker.getRegistration().then(function (r) { return r && r.update(); }).catch(function () {}));
+    try { localStorage.setItem('sg_pd_fresh', '1'); } catch (e) {}
+    busy(true);
+    Promise.all(jobs).then(function () { location.reload(); });
   }
   // phone refresh: new loading + masters + access, then only the current screen (no server-wide cache clear)
   function phoneRefresh() {
@@ -829,6 +842,7 @@
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
     else if (m === 'prefresh') phoneRefresh();
+    else if (m === 'pclear') ask(tx('Phone ka cache saaf karein?', 'Clear the cache on this phone? The app reloads with fresh data. Your login and unsent saves stay.'), { ok: tx('Saaf karo', 'Clear cache') }).then(function (ok) { if (ok) clearPhoneCache(); });
     else if (m === 'notif') { if (SG.notify) { SG.notify.screen(); SG.sheet.onClose = function () { tabs.main(); }; } }
     else if (m === 'import') ask(tx('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', 'Run import in the background? It takes 1–2 minutes.'), { ok: tx('Chalao', 'Run') }).then(function (ok) { if (!ok) return; toast(tx('Import chal raha hai… (lagbhag 30 sec)', 'Import running… (about 30 sec)'), '', 6000); api('admin.importNow', {}, { quiet: true }).then(function (d) { toast(d.running ? tx('Import pehle se chal raha hai — 2 min baad Refresh karo', 'Import is already running — try again in 2 min') : tx('Import ho gaya ✓', 'Import done ✓ — loading the new data'), 'ok', 8000); if (d.done && SG.pd) { SG.pd.dirty = true; SG.pd.load(true).catch(function () {}); } }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
     else if (m === 'print') SG.printSrn();

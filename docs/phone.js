@@ -1,15 +1,16 @@
 // phone.js — the phone app's data store and its background saves.
 //  · Store: one call (m.all) brings Attendance (of the chosen date), Output and PMS together. Kept in memory and on the
 //    phone (per factory), so switching tabs never loads and the next open shows the last data at once (on a new day
-//    Output / PMS show at once, attendance of the new date comes with the call). Refreshed silently every 5 min while
-//    the app is open, after a save, and on the header refresh button.
+//    Output / PMS show at once, attendance of the new date comes with the call). Refreshed silently every 2 min while
+//    the app is open, on every open / return to the app (copy older than 20 s), after a save, and on the refresh button.
 //  · Outbox: attendance saves (att.save, Update attendance) show as saved at once and go to the server in the background,
 //    one after the other. Each carries an id (rid), so the server never applies the same save twice. A failed one stays
 //    on its line marked "Not saved" with a Resend button.
 (function () {
   'use strict';
   var S = window.SG, state = S.state;
-  var EVERY = 5 * 60 * 1000;
+  var EVERY = 2 * 60 * 1000;     // silent refresh while the app is open
+  var REOPEN = 20 * 1000;        // opening / coming back to the app: fresh data if the copy is older than this
   var PD = S.pd = { data: null, key: '', at: 0, p: null, dirty: false };
 
   function key() { return 'sg_pd_' + state.factory; }
@@ -23,21 +24,24 @@
     return { out: o.d.out, pms: o.d.pms, rev: o.d.rev, partial: true,
              att: { ok: true, loading: true, items: [], lines: a.lines || [], allLines: a.allLines || [], incoming: a.incoming || [], sam: a.sam || {}, wa: null } };
   };
-  PD.stale = function () { var d = PD.get(); return PD.dirty || !d || d.partial || Date.now() - PD.at > EVERY; };
+  // stale: changed, missing, another date, older than EVERY — or only the copy saved on the phone (app just opened) and older than REOPEN
+  PD.stale = function () { var d = PD.get(); return PD.dirty || !d || d.partial || Date.now() - PD.at > (PD.live ? EVERY : REOPEN); };
   // fetch fresh data; silent = no progress bar. Re-renders the open tab when it arrives.
   // force = must not get an old copy from the Worker cache (after a save, or the user pressed refresh)
   PD.load = function (silent, force) {
     var k = key(), date = state.date, pk = k + '|' + date;
     if (PD.p && PD.pk === pk) return PD.p;
     PD.pk = pk;
-    var fresh = !!(force || PD.dirty);
+    var cleared = false; try { cleared = localStorage.getItem('sg_pd_fresh') === '1'; } catch (e) {}
+    var fresh = !!(force || PD.dirty || cleared);   // cleared: after Main -> Clear cache, the first copy comes new from the server
     PD.p = S.api('m.all', fresh ? { date: date, factory: state.factory, b: S.build, fresh: true } : { date: date, factory: state.factory, b: S.build }, { quiet: true, silent: !!silent })
       .then(function (d) {
         var cache = d && d._cache; if (d) delete d._cache;
         PD.p = null; if (k !== key() || date !== state.date) return d;   // the date / factory changed meanwhile
         // Worker answered with its old copy (someone saved since / older than 5 min): show it now, ask once more for the new one
         if (cache === 'STALE' && !PD.dirty) setTimeout(function () { PD.load(true, true).catch(function () {}); }, 3000);
-        PD.data = d; PD.key = k; PD.date = date; PD.at = Date.now(); PD.dirty = false;
+        PD.data = d; PD.key = k; PD.date = date; PD.at = Date.now(); PD.dirty = false; PD.live = true;
+        try { localStorage.removeItem('sg_pd_fresh'); } catch (e) {}
         try {
           Object.keys(localStorage).forEach(function (x) { if (x.indexOf('sg_pd_') === 0 && x !== k) localStorage.removeItem(x); });
           localStorage.setItem(k, JSON.stringify({ t: PD.at, date: date, d: d }));
@@ -111,7 +115,8 @@
     if (document.visibilityState === 'visible' && state.user && S.isMobile() && Date.now() - PD.at >= EVERY - 5000) PD.load(true).catch(function () {});
   }, 30000);
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible' && state.user && S.isMobile()) { if (PD.stale()) PD.load(true).catch(function () {}); pump(); }
+    // back to the app (it may have been in the background for long): fresh data unless it is under REOPEN old
+    if (document.visibilityState === 'visible' && state.user && S.isMobile()) { if (PD.stale() || Date.now() - PD.at > REOPEN) PD.load(true).catch(function () {}); pump(); }
   });
   S.pdRender = S.pdRender || {}; S.pdFail = S.pdFail || {};
 })();
