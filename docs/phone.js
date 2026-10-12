@@ -31,7 +31,7 @@
     if (PD.p && PD.pk === pk) return PD.p;
     PD.pk = pk;
     var fresh = !!(force || PD.dirty);
-    PD.p = S.api('m.all', fresh ? { date: date, factory: state.factory, fresh: true } : { date: date, factory: state.factory }, { quiet: true, silent: !!silent })
+    PD.p = S.api('m.all', fresh ? { date: date, factory: state.factory, b: S.build, fresh: true } : { date: date, factory: state.factory, b: S.build }, { quiet: true, silent: !!silent })
       .then(function (d) {
         var cache = d && d._cache; if (d) delete d._cache;
         PD.p = null; if (k !== key() || date !== state.date) return d;   // the date / factory changed meanwhile

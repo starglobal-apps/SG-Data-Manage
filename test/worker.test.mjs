@@ -225,6 +225,16 @@ const ver = () => env.DB.sql.prepare("SELECT v FROM meta WHERE k='ver'").get().v
   check('a save without notify sends nothing', PUSH.calls.length === 0);
 }
 
+
+// 9. app build in the cache key: a new build never gets a copy made for an older one
+{
+  const a = await post({ action: 'm.all', token: 'tokBld', date: '2026-10-12', factory: '666', lang: 'en', b: 'v80' }); await settle();
+  const b = await post({ action: 'm.all', token: 'tokBld', date: '2026-10-12', factory: '666', lang: 'en', b: 'v80' }); await settle();
+  const c = await post({ action: 'm.all', token: 'tokBld', date: '2026-10-12', factory: '666', lang: 'en', b: 'v81' }); await settle();
+  check('same build -> HIT, new build -> MISS (fresh from Apps Script)', a.cache === 'MISS' && b.cache === 'HIT' && c.cache === 'MISS', [a.cache, b.cache, c.cache]);
+  check('the build reaches Apps Script', GAS.calls.filter(x => x.action === 'm.all' && x.token === 'tokBld').map(x => x.b).join() === 'v80,v81');
+}
+
 // 7. big payload in parts, age limit, cron cleanup
 {
   GAS.big = true;

@@ -265,4 +265,17 @@ check('Ravi still sees his own line L1', a1.items.some(x => x.dept === L1));
 check('admin sees every filled line', attOf('admin').items.some(x => x.dept === L2) && attOf('admin').items.some(x => x.dept === L1));
 var tx3 = call('rec1', 'm.trCreate', { rid: 'tx3', date: TODAY, factory: '666', from_dept: L1, to_dept: L2, hour: 13, items: [{ role: 'Helper', count: 1 }] });
 check('transfer to L2: request shows for New Rec (L2 recorder), not for Ravi, and goes to New Rec', tx3.ok && attOf('newrec').incoming.some(t => t.id === tx3.id) && !attOf('rec1').incoming.some(t => t.id === tx3.id) && nTo(tx3, nrTok.user.user_id), [tx3.message, tx3.notify]);
+// ========== 12. phone: any recorder may fill any line; the line then belongs to the recorder named on it ==========
+var r1L3 = call('rec1', 'att.save', { phone: true, rid: 'r1L3', date: TODAY, factory: '666', dept: L3, shift: 'Final', srn: 'SRN0620A', floor: 'Second', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 8, count: 7 }] });
+var A1 = attOf('rec1'), A2 = attOf('rec2');
+check('Ravi (not assigned L3) can fill L3 on the phone', r1L3.ok, r1L3);
+check('picker lists every line of the factory for every recorder', [L1, L2, L3].every(d => A2.lines.some(l => l.dept === d)) && [L1, L2, L3].every(d => A1.lines.some(l => l.dept === d)), A2.lines.map(l => l.dept));
+check('L3 card: Ravi sees it, Mohan (assigned L3) does not; picker tells Mohan whose it is', A1.items.some(x => x.dept === L3) && !A2.items.some(x => x.dept === L3) && A2.lines.filter(l => l.dept === L3)[0].by === 'Ravi', [A2.items.map(x => x.dept), A2.lines]);
+var O1 = call('rec1', 'm.out', { factory: '666' }), O2 = call('rec2', 'm.out', { factory: '666' });
+var hasL3 = o => (o.groups || []).some(g => g.lines.some(l => l.dept === L3 && l.date === TODAY));
+check('Output pending of L3 today: Ravi has it, Mohan does not', hasL3(O1) && !hasL3(O2), [hasL3(O1), hasL3(O2)]);
+var txL3 = call('newrec', 'm.trCreate', { rid: 'txL3', date: TODAY, factory: '666', from_dept: L2, to_dept: L3, hour: 12, items: [{ role: 'Operator', count: 1 }] });
+var badDecide = call('rec2', 'm.trDecide', { rid: 'bd1', id: txL3.id, decision: 'accept' });
+var goodDecide = call('rec1', 'm.trDecide', { rid: 'gd1', id: txL3.id, decision: 'accept' });
+check('transfer to L3: only its recorder (Ravi) can accept', txL3.ok && nTo(txL3, 'rec1') && !nTo(txL3, 'rec2') && badDecide.ok === false && badDecide.error === 'PERM' && goodDecide.ok, [txL3.message, badDecide, goodDecide.message]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

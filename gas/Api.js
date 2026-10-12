@@ -16,6 +16,7 @@ function doPost(e) {
 
   try {
     var action = str_(req.action);
+    PHONE_REQ_ = str_(req.lang) === 'en';   // the phone app (it always sends lang=en; the web never does)
     var en = str_(req.lang) === 'en', out_ = function(o) { return json_(en ? enReply_(o) : o); };
     if (action === 'login') return out_(login_(req));
 
@@ -287,9 +288,13 @@ function isTrue_(v) {
 function isManager_(user) { return user.role === 'Manager' || user.role === 'Admin'; }
 
 // Data Collector / Supervisor can only write to their own factory/depts
+// Phone (user, 2026-10-12): any line of the user's factory may be filled; who sees a filled line is decided by the
+// recorder named on its attendance (Mobile.js lineVisible_). The web keeps the user's line list.
+var PHONE_REQ_ = false;
 function canWrite_(user, factory, dept) {
   if (isManager_(user)) return true;
   if (user.factory && user.factory !== str_(factory)) return false;
+  if (PHONE_REQ_) return true;
   if (user.depts.length && user.depts.indexOf(str_(dept)) < 0) return false;
   return true;
 }

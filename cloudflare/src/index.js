@@ -44,13 +44,15 @@ async function ensureSchema(db) {
     db.prepare('CREATE TABLE IF NOT EXISTS payload_cache (k TEXT NOT NULL, part INTEGER NOT NULL, n INTEGER NOT NULL, data TEXT NOT NULL, ver INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (k, part))'),
     db.prepare('CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL)'),
     // the last m.all date / factory of each token (hashed), so a save can refresh that user's copy. No token is stored.
-    db.prepare('CREATE TABLE IF NOT EXISTS last_view (tk TEXT PRIMARY KEY, date TEXT, factory TEXT, lang TEXT, at INTEGER NOT NULL)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS last_view (tk TEXT PRIMARY KEY, date TEXT, factory TEXT, lang TEXT, b TEXT, at INTEGER NOT NULL)'),
     // phone notification addresses (Web Push): one row per phone, linked to the user Apps Script confirmed
     db.prepare('CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, at INTEGER NOT NULL)'),
     db.prepare('CREATE INDEX IF NOT EXISTS push_subs_user ON push_subs (user_id)'),
     db.prepare('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)'),
     db.prepare("INSERT OR IGNORE INTO meta (k, v) VALUES ('ver', 1)"),
   ]);
+  // last_view made before the build column existed
+  await db.prepare('ALTER TABLE last_view ADD COLUMN b TEXT').run().catch(() => {});
   schemaReady = true;
 }
 
@@ -83,13 +85,14 @@ function cacheable(text) {
 function allBody(token, v) {
   const b = { action: CACHED_ACTION, token, date: v.date || '', factory: v.factory || '' };
   if (v.lang) b.lang = v.lang;
+  if (v.b) b.b = v.b;
   return JSON.stringify(b);
 }
 function viewOf(req) {
-  return { date: String(req.date || ''), factory: String(req.factory || ''), lang: String(req.lang || '') };
+  return { date: String(req.date || ''), factory: String(req.factory || ''), lang: String(req.lang || ''), b: String(req.b || '') };   // b: app build
 }
 async function keyOf(token, v) {
-  return sha(JSON.stringify([token, v.date, v.factory, v.lang]));
+  return sha(JSON.stringify([token, v.date, v.factory, v.lang, v.b || '']));
 }
 
 /** Takes the refresh lock for a key; false when another refresh started less than LOCK_MS ago. */
@@ -144,8 +147,8 @@ async function cachedAll(env, ctx, req) {
   const key = await keyOf(token, v);
   const db = env.DB;
   const tk = await sha(token);
-  ctx.waitUntil(db.prepare('INSERT INTO last_view (tk, date, factory, lang, at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(tk) DO UPDATE SET date = ?2, factory = ?3, lang = ?4, at = ?5')
-    .bind(tk, v.date, v.factory, v.lang, Date.now()).run().catch(() => {}));
+  ctx.waitUntil(db.prepare('INSERT INTO last_view (tk, date, factory, lang, b, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(tk) DO UPDATE SET date = ?2, factory = ?3, lang = ?4, b = ?5, at = ?6')
+    .bind(tk, v.date, v.factory, v.lang, v.b, Date.now()).run().catch(() => {}));
 
   let c = await readCache(db, key);
   const maxAge = Number(env.CACHE_MAX_AGE_SEC || 300);
@@ -190,7 +193,7 @@ async function cachedAll(env, ctx, req) {
 async function refreshSaver(env, token) {
   if (!token) return;
   const db = env.DB;
-  const v = await db.prepare('SELECT date, factory, lang FROM last_view WHERE tk = ?').bind(await sha(token)).first();
+  const v = await db.prepare('SELECT date, factory, lang, b FROM last_view WHERE tk = ?').bind(await sha(token)).first();
   if (!v) return;
   const key = await keyOf(token, v);
   if (!(await takeLock(db, key))) return;

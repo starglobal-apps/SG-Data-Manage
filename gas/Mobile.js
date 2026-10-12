@@ -44,15 +44,17 @@ function sheetAttAgg_() {
   return out;
 }
 
-// The data recorder(s) a line's attendance of a date belongs to: names on its Final rows (entered_by), leaving out admins /
-// managers (they fill or fix for others). A recorder sees only the lines they filled (user, 2026-10-12); a line filled only
-// by an admin / manager is seen by every user of that line; admins / managers see every line.
-function attOwners_(attRows, date, dept) {
-  var boss = {}; usersRows_().forEach(function(u) { if (str_(u.role) === 'Admin' || str_(u.role) === 'Manager') { boss[str_(u.name).toLowerCase()] = 1; boss[str_(u.user_id).toLowerCase()] = 1; } });
+// The data recorder(s) a line's attendance of a date belongs to: names on its rows of that shift (entered_by), leaving out
+// admins / managers (they fill or fix for others). Phone (user, 2026-10-12): any recorder may fill any line, and a filled
+// line is shown only to the recorder named on its attendance; a line filled only by an admin / manager is shown to the
+// users who have it in their lines (blank lines = all); admins / managers see every line.
+var BOSS_NAMES_ = null;
+function attOwners_(attRows, date, dept, shift) {
+  if (!BOSS_NAMES_) { BOSS_NAMES_ = {}; usersRows_().forEach(function(u) { if (str_(u.role) === 'Admin' || str_(u.role) === 'Manager') { BOSS_NAMES_[str_(u.name).toLowerCase()] = 1; BOSS_NAMES_[str_(u.user_id).toLowerCase()] = 1; } }); }
   var names = {};
   attRows.forEach(function(r) {
-    if (str_(r.date) !== date || str_(r.dept) !== dept || (str_(r.shift) || 'Final') !== 'Final') return;
-    var n = str_(r.entered_by); if (n && !boss[n.toLowerCase()]) names[n] = 1;
+    if (str_(r.date) !== date || str_(r.dept) !== dept || (str_(r.shift) || 'Final') !== (shift || 'Final')) return;
+    var n = str_(r.entered_by); if (n && !BOSS_NAMES_[n.toLowerCase()]) names[n] = 1;
   });
   return Object.keys(names);
 }
@@ -60,6 +62,12 @@ function attIsMine_(user, owners) {
   if (isManager_(user) || !owners.length) return true;
   var me = userName_(user).toLowerCase(), id = str_(user.user_id).toLowerCase();
   return owners.some(function(n) { n = n.toLowerCase(); return n === me || n === id; });
+}
+function lineVisible_(user, owners, dept) {
+  if (isManager_(user)) return true;
+  if (owners.length) return attIsMine_(user, owners);
+  var mineLines = Array.isArray(user.depts) ? user.depts : csv_(user.depts);
+  return !mineLines.length || mineLines.indexOf(dept) >= 0;
 }
 
 // { date, factory } -> the phone Attendance tab: only lines with attendance on that date (app, or typed in the sheet),
@@ -84,7 +92,7 @@ function mAtt_(req, user) {
       srn = str_(fin[0].srn); sup = str_(fin[0].supervisor); inc = str_(fin[0].incharge); by = str_(fin[0].entered_by);
     } else if (shF) { roles = shF.roles; count = shF.count; fromSheet = true; }
     var otCount = ot.length ? ot.reduce(function(t, r) { return t + num_(r.count); }, 0) : (shO ? shO.count : 0);
-    var owners = count ? attOwners_(fin, date, d.dept) : [], mineLine = attIsMine_(user, owners);
+    var owners = count ? attOwners_(fin, date, d.dept, 'Final') : [], mineLine = lineVisible_(user, owners, d.dept);
     pick.push({ dept: d.dept, cat: d.cat, filled: count > 0, by: count && !mineLine ? owners.join(', ') : '' });
     if (!count || !mineLine) return;   // filled by another recorder: not on this recorder's list
     var ev = mEvents_(events, d.dept), mpNow = fromSheet ? count : mpAtSlot_(attDay, events, d.dept, slot);
@@ -135,6 +143,7 @@ function mOut_(req, user) {
   });
   Object.keys(keys).sort().forEach(function(k) {
     var p = k.split('|'), d = p[0], dept = p[1], sh = p[2], src = keys[k];
+    if (!lineVisible_(user, attOwners_(att, d, dept, sh), dept)) return;   // another recorder's line
     var outRows = hourly.filter(function(r) { return str_(r.date) === d && str_(r.dept) === dept && (str_(r.shift) || 'Final') === sh; });
     var status = statusOf(d, dept);
     var by = {}; outRows.forEach(function(r) { var e = by[str_(r.srn)] = by[str_(r.srn)] || { srn: str_(r.srn), total: 0, other: 0 }; e.total += num_(r.qty); if (str_(r.slot) !== M_SLOT[sh]) e.other += num_(r.qty); });
@@ -170,7 +179,7 @@ function mOut_(req, user) {
 function mAll_(req, user) {
   var factory = str_(req.factory), date = str_(req.date) || todayStr_();
   // same user + factory + date and nothing changed since (data version): the reply made last time, at once
-  var rk = 'mall:' + [str_(user.user_id), factory, date, dataVer_()].join('|');
+  var rk = 'mall:' + [str_(user.user_id), factory, date, dataVer_(), str_(req.b)].join('|');
   var hit = cacheGetBig_(rk); if (hit) { hit.cached = true; return hit; }
   var res = mAllBuild_(factory, date, user);
   if (res.att && res.att.ok !== false && res.out && res.out.ok !== false && res.pms && res.pms.ok !== false) cachePutBig_(rk, res, 300);
@@ -403,6 +412,8 @@ function mTrDecide_(req, user) {
   if (str_(t.status) !== 'Pending') return fail_('VAL', 'This transfer is already ' + str_(t.status));
   var date = str_(t.date), factory = str_(t.factory), from = str_(t.from_dept), to = str_(t.to_dept);
   if (!canWrite_(user, factory, to) && !isManager_(user)) return fail_('PERM', 'This transfer is not for your line');
+  var toOwners = attOwners_(readDaily_(CFG.TABS.ATT_DAILY), date, to, 'Final');
+  if (!lineVisible_(user, toOwners, to)) return fail_('PERM', 'Only ' + toOwners.join(', ') + ' (recorder of ' + to.replace(/^FAC\d+-/, '') + ') can accept this transfer');
   var items = parseJsonArr_(t.items), stamp = nowStr_(), by = userName_(user), hour = trHourOf_(t.time);
   var after = shiftHours_('Final') - trHoursBefore_(hour);
   withLock_(function() {
@@ -438,7 +449,7 @@ function mTransfers_(date, factory, user, depts) {
     if (str_(r.factory) !== factory || !str_(r.to_dept)) return;
     var x = { id: str_(r.id), date: str_(r.date), from: str_(r.from_dept), to: str_(r.to_dept), time: str_(r.time), hour: trHourOf_(r.time),
               items: parseJsonArr_(r.items), total: num_(r.count), status: str_(r.status), by: str_(r.by) };
-    if (x.status === 'Pending' && mine[x.to] && x.date >= since && attIsMine_(user, attOwners_(att, x.date, x.to))) incoming.push(x);   // the receiving line's recorder decides
+    if (x.status === 'Pending' && mine[x.to] && x.date >= since && lineVisible_(user, attOwners_(att, x.date, x.to, 'Final'), x.to)) incoming.push(x);   // the receiving line's recorder decides
     if (x.date === date && mine[x.from]) (out[x.from] = out[x.from] || []).push(x);
     if (x.date === date && mine[x.to] && x.status === 'Accepted') (out[x.to] = out[x.to] || []).push(x);
   });
