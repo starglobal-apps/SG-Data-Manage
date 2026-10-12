@@ -203,7 +203,7 @@
     var html = (S.notify ? S.notify.askHtml() : '') + '<div class="card pa-top"><div class="row">' +
       '<div class="field small"><label>Date</label><input type="date" id="pa-date" value="' + esc(state.date) + '" max="' + today + '"></div>' +
       '<div class="field"><label>Fill attendance · line</label><select id="pa-line"><option value="">— select line —</option>' +
-        PA.lines.map(function (l) { return '<option value="' + esc(l.dept) + '">' + esc(S.shortLine(l.dept)) + (l.filled ? '  ✓' : '') + '</option>'; }).join('') + '</select></div></div>' +
+        PA.lines.map(function (l) { return '<option value="' + esc(l.dept) + '">' + esc(S.shortLine(l.dept)) + (l.by ? '  · ' + esc(nm(l.by)) : l.filled ? '  ✓' : '') + '</option>'; }).join('') + '</select></div></div>' +
       (past ? '<div class="hint"><b style="color:var(--warn)">' + esc(S.fmtDay(state.date)) + ' attendance</b> · <button class="lnk" data-day="' + today + '">back to today</button></div>' : '') + '</div>';
     PA.incoming.forEach(function (t) {
       html += '<div class="card tr-in"><div class="tr-top"><div class="tr-b"><span class="tr-h">Transfer request</span><b>' + esc(S.shortLine(t.from)) + ' → ' + esc(S.shortLine(t.to)) + '</b> · ' + t.total + (t.total > 1 ? ' people' : ' person') + '</div>' +
@@ -349,7 +349,12 @@
 
   $('#matt-body').addEventListener('change', function (e) {
     if (e.target.id === 'pa-date') { var v = e.target.value; if (v && v <= S.todayStr()) S.setDate(v); else e.target.value = state.date; return; }
-    if (e.target.id === 'pa-line' && e.target.value) { var dept = e.target.value; e.target.value = ''; S.openAttendance('Final', dept); }
+    if (e.target.id === 'pa-line' && e.target.value) {
+      var dept = e.target.value, other = (PA.lines.filter(function (l) { return l.dept === dept; })[0] || {}).by; e.target.value = '';
+      // another recorder filled this line: saving here replaces their attendance, so ask first
+      if (other) S.ask(S.shortLine(dept) + ' attendance was filled by ' + nm(other) + '. Saving here replaces it. Open it?', { ok: 'Open', cancel: 'Cancel' }).then(function (ok) { if (ok) S.openAttendance('Final', dept); });
+      else S.openAttendance('Final', dept);
+    }
   });
 
   // phone: the same list is the Attendance tab

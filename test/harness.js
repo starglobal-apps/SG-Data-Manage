@@ -252,4 +252,17 @@ var selfN = notifyFor_('m.trCreate', { date: TODAY, factory: '666', from_dept: L
 var otherN = notifyFor_('m.trCreate', { date: TODAY, factory: '666', from_dept: L1, to_dept: 'FAC666-Line 9-SL009', hour: 12, items: [{ role: 'Operator', count: 1 }] }, usersRows_().filter(u => u.user_id === 'rec2')[0], { ok: true, id: 'z2' });
 check('transfer to a line whose only recorder is the sender: nobody told (not the admins either)', selfN === null, selfN);
 check('same line, someone else sends: the recorder named there (Ravi) is told', otherN && otherN[0].to.join() === 'rec1', otherN);
+// ========== 11. a recorder sees only the lines whose attendance they filled ==========
+var nrTok = post({ action: 'login', pin: '4444' }); TOK.newrec = nrTok.token;
+var attOf = (who) => call(who, 'm.att', { date: TODAY, factory: '666' });
+var a1 = attOf('rec1'), a2 = attOf('newrec');
+check('line filled only by the admin (L2): every user of the line sees it', a1.items.some(x => x.dept === L2) && a2.items.some(x => x.dept === L2), [a1.items.map(x => x.dept), a2.items.map(x => x.dept)]);
+var nrSave = call('newrec', 'att.save', { phone: true, rid: 'nr1', date: TODAY, factory: '666', dept: L2, shift: 'Final', srn: 'SRN0620A', floor: 'First', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 8, count: 9 }] });
+a1 = attOf('rec1'); a2 = attOf('newrec');
+var pickL2 = a1.lines.filter(l => l.dept === L2)[0];
+check('L2 filled by New Rec: New Rec sees it, Ravi does not (picker says whose)', nrSave.ok && a2.items.some(x => x.dept === L2) && !a1.items.some(x => x.dept === L2) && pickL2 && pickL2.filled && pickL2.by === 'New Rec', [nrSave.message, a1.items.map(x => x.dept), pickL2]);
+check('Ravi still sees his own line L1', a1.items.some(x => x.dept === L1));
+check('admin sees every filled line', attOf('admin').items.some(x => x.dept === L2) && attOf('admin').items.some(x => x.dept === L1));
+var tx3 = call('rec1', 'm.trCreate', { rid: 'tx3', date: TODAY, factory: '666', from_dept: L1, to_dept: L2, hour: 13, items: [{ role: 'Helper', count: 1 }] });
+check('transfer to L2: request shows for New Rec (L2 recorder), not for Ravi, and goes to New Rec', tx3.ok && attOf('newrec').incoming.some(t => t.id === tx3.id) && !attOf('rec1').incoming.some(t => t.id === tx3.id) && nTo(tx3, nrTok.user.user_id), [tx3.message, tx3.notify]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

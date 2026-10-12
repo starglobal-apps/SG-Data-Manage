@@ -44,6 +44,24 @@ function sheetAttAgg_() {
   return out;
 }
 
+// The data recorder(s) a line's attendance of a date belongs to: names on its Final rows (entered_by), leaving out admins /
+// managers (they fill or fix for others). A recorder sees only the lines they filled (user, 2026-10-12); a line filled only
+// by an admin / manager is seen by every user of that line; admins / managers see every line.
+function attOwners_(attRows, date, dept) {
+  var boss = {}; usersRows_().forEach(function(u) { if (str_(u.role) === 'Admin' || str_(u.role) === 'Manager') { boss[str_(u.name).toLowerCase()] = 1; boss[str_(u.user_id).toLowerCase()] = 1; } });
+  var names = {};
+  attRows.forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.dept) !== dept || (str_(r.shift) || 'Final') !== 'Final') return;
+    var n = str_(r.entered_by); if (n && !boss[n.toLowerCase()]) names[n] = 1;
+  });
+  return Object.keys(names);
+}
+function attIsMine_(user, owners) {
+  if (isManager_(user) || !owners.length) return true;
+  var me = userName_(user).toLowerCase(), id = str_(user.user_id).toLowerCase();
+  return owners.some(function(n) { n = n.toLowerCase(); return n === me || n === id; });
+}
+
 // { date, factory } -> the phone Attendance tab: only lines with attendance on that date (app, or typed in the sheet),
 // the user's lines for the "line code" picker, manpower now, changes, status, SAM map, WhatsApp data.
 function mAtt_(req, user) {
@@ -66,8 +84,9 @@ function mAtt_(req, user) {
       srn = str_(fin[0].srn); sup = str_(fin[0].supervisor); inc = str_(fin[0].incharge); by = str_(fin[0].entered_by);
     } else if (shF) { roles = shF.roles; count = shF.count; fromSheet = true; }
     var otCount = ot.length ? ot.reduce(function(t, r) { return t + num_(r.count); }, 0) : (shO ? shO.count : 0);
-    pick.push({ dept: d.dept, cat: d.cat, filled: count > 0 });
-    if (!count) return;
+    var owners = count ? attOwners_(fin, date, d.dept) : [], mineLine = attIsMine_(user, owners);
+    pick.push({ dept: d.dept, cat: d.cat, filled: count > 0, by: count && !mineLine ? owners.join(', ') : '' });
+    if (!count || !mineLine) return;   // filled by another recorder: not on this recorder's list
     var ev = mEvents_(events, d.dept), mpNow = fromSheet ? count : mpAtSlot_(attDay, events, d.dept, slot);
     items.push({ dept: d.dept, cat: d.cat, count: count, srn: srn, supervisor: sup, incharge: inc, by: by, fromSheet: fromSheet, inSheet: !!shF, roles: roles,
                  ot: otCount, night: night, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow });
@@ -414,11 +433,12 @@ function mTrDecide_(req, user) {
 function mTransfers_(date, factory, user, depts) {
   var mine = {}; depts.forEach(function(d) { mine[d.dept] = 1; });
   var since = fmtDate_(new Date(new Date().getTime() - 7 * 86400000)), incoming = [], out = {};
+  var att = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.factory) === factory && str_(r.date) >= since; });
   readDaily_(CFG.TABS.TRANSFERS).forEach(function(r) {
     if (str_(r.factory) !== factory || !str_(r.to_dept)) return;
     var x = { id: str_(r.id), date: str_(r.date), from: str_(r.from_dept), to: str_(r.to_dept), time: str_(r.time), hour: trHourOf_(r.time),
               items: parseJsonArr_(r.items), total: num_(r.count), status: str_(r.status), by: str_(r.by) };
-    if (x.status === 'Pending' && mine[x.to] && x.date >= since) incoming.push(x);
+    if (x.status === 'Pending' && mine[x.to] && x.date >= since && attIsMine_(user, attOwners_(att, x.date, x.to))) incoming.push(x);   // the receiving line's recorder decides
     if (x.date === date && mine[x.from]) (out[x.from] = out[x.from] || []).push(x);
     if (x.date === date && mine[x.to] && x.status === 'Accepted') (out[x.to] = out[x.to] || []).push(x);
   });
