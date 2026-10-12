@@ -39,7 +39,7 @@ phone / web app (docs/)  ──►  Cloudflare Worker (this folder)  ──►  
    - Deploy.
 4. Open the Worker URL (`https://sg-data-manage-api.<your-subdomain>.workers.dev/`). It should show
    `{"ok":true,"service":"sg-data-manage-api",...}`.
-5. Put that URL in `docs/config.js` → `WORKER_URL`, bump `CACHE` in `docs/sw.js`, push. Empty `WORKER_URL` = the app
+5. Put that URL in `docs/config.js` → `WORKER_URL`, bump `CACHE` in `docs/sw.js`, push. Live: `https://sg-data-manage-api.star-mis2.workers.dev/`. Empty `WORKER_URL` = the app
    calls Apps Script directly, as before.
 
 Every push to `main` that changes this folder redeploys the Worker automatically.
