@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v83';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v84';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -129,7 +129,7 @@
   // is skipped for 10 min. A save that is not safe to send twice (no rid) is never re-sent automatically.
   // calls that only read (same list as READ_ACTIONS in cloudflare/src/index.js): safe to send to Apps Script after the Worker failed
   var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|outDay|reviewReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent|push\.(sub|unsub|key|status|test))$/;
-  function workerOn() { if (!WORKER_URL) return false; var t = 0; try { t = +localStorage.getItem('sg_wdown') || 0; } catch (e) {} return Date.now() - t > 600000; }
+  function workerOn() { if (!WORKER_URL) return false; var t = 0; try { t = +localStorage.getItem('sg_wdown') || 0; } catch (e) {} return Date.now() - t > 120000; }   // after a failure: Apps Script direct for 2 min
   function workerDown() { try { localStorage.setItem('sg_wdown', String(Date.now())); } catch (e) {} }
   function directPost(body, text, attempt, mob, again) {
     return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: text, redirect: 'follow' })
@@ -149,11 +149,17 @@
     var mob = isMobile(), text = JSON.stringify(mob ? Object.assign({ lang: 'en' }, body) : body);
     var again = SAFE_AGAIN.test(String(body.action)) || !!body.rid;   // Google HTML page: tried again (as before)
     var resend = READ_CALLS.test(String(body.action)) || !!body.rid;  // Worker failed: reading, or a save the server applies only once
-    if (!workerOn()) return directPost(body, text, 0, mob, again);
+    // notifications live only in the Worker: never sent to Apps Script (it does not know them), even after a Worker failure
+    var pushCall = /^push\./.test(String(body.action));
+    var noWorker = { ok: false, error: 'BUSY', message: 'Notification server not reachable — check the internet and try again' };
+    if (pushCall && !WORKER_URL) return Promise.resolve(noWorker);
+    // after a Worker failure only reads skip it for 2 min; saves always try it first (their notifications are sent there)
+    if (!pushCall && !workerOn() && READ_CALLS.test(String(body.action))) return directPost(body, text, 0, mob, again);
     return fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: text })
       .then(function (r) {
         var xc = r.headers.get('X-Cache');
         if (!xc || r.status >= 500) {   // not the Worker's own answer (Cloudflare error page / Worker crashed)
+          if (pushCall) return noWorker;
           workerDown();
           if (resend) return directPost(body, text, 0, mob, again);
           return { ok: false, error: 'BUSY', message: tx('Server busy — dekho save hua ya nahi, phir dobara karo', 'Server is busy — check whether it was saved, then try again') };
@@ -161,7 +167,8 @@
         return r.text().then(function (t) {
           var d = null; try { d = JSON.parse(t); } catch (e) {}
           // Google busy behind the Worker: calls that are safe to repeat go to Apps Script directly (with its retries)
-          if (!d || (xc === 'ERROR' && resend)) {
+          if (!d && pushCall) return noWorker;
+          if (!d || (xc === 'ERROR' && resend && !pushCall)) {
             if (resend) return directPost(body, text, 0, mob, again);
             return { ok: false, error: 'BUSY', message: 'Server is busy — please try again' };
           }
@@ -169,6 +176,7 @@
           return d;
         });
       }, function (err) {   // Worker not reachable: reading / once-only saves go direct; other saves report "no network" as before
+        if (pushCall) return noWorker;
         workerDown();
         if (resend) return directPost(body, text, 0, mob, again);
         throw err;
