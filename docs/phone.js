@@ -25,13 +25,18 @@
   };
   PD.stale = function () { var d = PD.get(); return PD.dirty || !d || d.partial || Date.now() - PD.at > EVERY; };
   // fetch fresh data; silent = no progress bar. Re-renders the open tab when it arrives.
-  PD.load = function (silent) {
+  // force = must not get an old copy from the Worker cache (after a save, or the user pressed refresh)
+  PD.load = function (silent, force) {
     var k = key(), date = state.date, pk = k + '|' + date;
     if (PD.p && PD.pk === pk) return PD.p;
     PD.pk = pk;
-    PD.p = S.api('m.all', { date: date, factory: state.factory }, { quiet: true, silent: !!silent })
+    var fresh = !!(force || PD.dirty);
+    PD.p = S.api('m.all', fresh ? { date: date, factory: state.factory, fresh: true } : { date: date, factory: state.factory }, { quiet: true, silent: !!silent })
       .then(function (d) {
+        var cache = d && d._cache; if (d) delete d._cache;
         PD.p = null; if (k !== key() || date !== state.date) return d;   // the date / factory changed meanwhile
+        // Worker answered with its old copy (someone saved since / older than 5 min): show it now, ask once more for the new one
+        if (cache === 'STALE' && !PD.dirty) setTimeout(function () { PD.load(true, true).catch(function () {}); }, 3000);
         PD.data = d; PD.key = k; PD.date = date; PD.at = Date.now(); PD.dirty = false;
         try {
           Object.keys(localStorage).forEach(function (x) { if (x.indexOf('sg_pd_') === 0 && x !== k) localStorage.removeItem(x); });

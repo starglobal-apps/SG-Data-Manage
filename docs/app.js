@@ -4,6 +4,8 @@
   'use strict';
 
   var API_URL = (window.SG_CONFIG && window.SG_CONFIG.API_URL) || '';
+  // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
+  var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
@@ -122,20 +124,53 @@
   // requests run at once). Phone: calls that are safe to repeat (login, reading, background saves with an id) are tried
   // again up to 3 times; otherwise a clear "server busy" message instead of a JSON error.
   var SAFE_AGAIN = /^(login|me|masters|m\.all|m\.outDay|m\.reviewReport|m\.warm|users\.list|staff\.list|orders\.active|att\.get)$/;
-  function rawPost(body, attempt) {
-    attempt = attempt || 0;
-    var mob = isMobile();
-    return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(mob ? Object.assign({ lang: 'en' }, body) : body), redirect: 'follow' })
+  // Worker first (when set); when it cannot be reached or crashes, the call goes to Apps Script directly and the Worker
+  // is skipped for 10 min. A save that is not safe to send twice (no rid) is never re-sent automatically.
+  // calls that only read (same list as READ_ACTIONS in cloudflare/src/index.js): safe to send to Apps Script after the Worker failed
+  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|outDay|reviewReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent)$/;
+  function workerOn() { if (!WORKER_URL) return false; var t = 0; try { t = +localStorage.getItem('sg_wdown') || 0; } catch (e) {} return Date.now() - t > 600000; }
+  function workerDown() { try { localStorage.setItem('sg_wdown', String(Date.now())); } catch (e) {} }
+  function directPost(body, text, attempt, mob, again) {
+    return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: text, redirect: 'follow' })
       .then(function (r) {
         if (!mob) return r.json();
         return r.text().then(function (t) {
           try { return JSON.parse(t); } catch (e) {
-            if (attempt < 3 && (SAFE_AGAIN.test(String(body.action)) || body.rid)) {
-              return new Promise(function (res) { setTimeout(res, [1000, 2500, 4000][attempt]); }).then(function () { return rawPost(body, attempt + 1); });
+            if (attempt < 3 && again) {
+              return new Promise(function (res) { setTimeout(res, [1000, 2500, 4000][attempt]); }).then(function () { return directPost(body, text, attempt + 1, mob, again); });
             }
             return { ok: false, error: 'BUSY', message: 'Server is busy — please try again' };
           }
         });
+      });
+  }
+  function rawPost(body) {
+    var mob = isMobile(), text = JSON.stringify(mob ? Object.assign({ lang: 'en' }, body) : body);
+    var again = SAFE_AGAIN.test(String(body.action)) || !!body.rid;   // Google HTML page: tried again (as before)
+    var resend = READ_CALLS.test(String(body.action)) || !!body.rid;  // Worker failed: reading, or a save the server applies only once
+    if (!workerOn()) return directPost(body, text, 0, mob, again);
+    return fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: text })
+      .then(function (r) {
+        var xc = r.headers.get('X-Cache');
+        if (!xc || r.status >= 500) {   // not the Worker's own answer (Cloudflare error page / Worker crashed)
+          workerDown();
+          if (resend) return directPost(body, text, 0, mob, again);
+          return { ok: false, error: 'BUSY', message: tx('Server busy — dekho save hua ya nahi, phir dobara karo', 'Server is busy — check whether it was saved, then try again') };
+        }
+        return r.text().then(function (t) {
+          var d = null; try { d = JSON.parse(t); } catch (e) {}
+          // Google busy behind the Worker: calls that are safe to repeat go to Apps Script directly (with its retries)
+          if (!d || (xc === 'ERROR' && resend)) {
+            if (resend) return directPost(body, text, 0, mob, again);
+            return { ok: false, error: 'BUSY', message: 'Server is busy — please try again' };
+          }
+          if (typeof d === 'object') d._cache = xc;
+          return d;
+        });
+      }, function (err) {   // Worker not reachable: reading / once-only saves go direct; other saves report "no network" as before
+        workerDown();
+        if (resend) return directPost(body, text, 0, mob, again);
+        throw err;
       });
   }
 
@@ -786,7 +821,7 @@
   $('#in-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
   $('#hdr-back').addEventListener('click', back);
   $('#hdr-ctx').addEventListener('click', function () { if (state.user && !nav.sub) openContext(); });
-  $('#hdr-refresh').addEventListener('click', function () { if (isMobile()) { if (nav.sub) return; SG.pd.load(false).then(function () { toast('Updated', 'ok'); }).catch(function (e) { toast(e.message, 'bad'); }); } else hardRefresh(); });
+  $('#hdr-refresh').addEventListener('click', function () { if (isMobile()) { if (nav.sub) return; SG.pd.load(false, true).then(function () { toast('Updated', 'ok'); }).catch(function (e) { toast(e.message, 'bad'); }); } else hardRefresh(); });
   $('#hdr-bell').addEventListener('click', function () { if (SG.transferInbox) SG.transferInbox(); });
   function setBell(n) { var b = $('#hdr-bell'); b.hidden = !state.user; $('#bell-dot').hidden = !n; }
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });

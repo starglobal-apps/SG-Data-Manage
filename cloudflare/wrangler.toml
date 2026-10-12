@@ -1,0 +1,25 @@
+# SG Data Manage API on Cloudflare Workers (its own Worker + D1; the Operation Bulletin Worker is separate).
+# Deployed from GitHub by Cloudflare Workers Builds (Workers & Pages -> Import a repository, root directory: cloudflare).
+name = "sg-data-manage-api"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+# The Apps Script web app (gas/) that keeps all business rules and writes the Google Sheets.
+# Same deployment as docs/config.js API_URL. Change both if the deployment ever changes.
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxRMj8PZHeu2R1aQ2aLHca53jnTIhwpMoZAluzh95PssakhV3GYS-yRTMEW1C9Uz-ZUCg/exec"
+# A cached m.all copy older than this (seconds) is refreshed in the background. 300 = the phone's own 5 min refresh.
+CACHE_MAX_AGE_SEC = "300"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sg-data-manage"
+# Paste the Database ID of the D1 database "sg-data-manage" here (Cloudflare dashboard -> Storage & Databases -> D1).
+database_id = "PASTE-D1-DATABASE-ID-HERE"
+
+# Daily clean-up (UTC) of cached copies nobody asked for in a week.
+[triggers]
+crons = ["23 21 * * *"]
+
+[observability]
+enabled = true

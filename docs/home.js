@@ -339,7 +339,7 @@
       if (phone() && PA.wa) { var txt = S.waAttendanceText(PA.wa, 'Final'); if (txt) S.shareText('Send attendance to group', txt); else S.toast('No attendance filled yet', 'bad'); return; }
       S.sendToGroup(b.dataset.wa); return;
     }
-    if (b.dataset.retry) { box().innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false).catch(attFail); return; }
+    if (b.dataset.retry) { box().innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false, true).catch(attFail); return; }
     if (b.dataset.setsam) {
       var srn = b.dataset.setsam;
       S.askText(S.tx(srn + ' ka SAM (making, minute per piece)', 'SAM of ' + srn + ' (making, minutes per piece)'), { ok: 'Save' }).then(function (v) {

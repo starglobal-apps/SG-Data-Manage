@@ -198,6 +198,6 @@
     if (b.dataset.open) { var p = b.dataset.open.split('|'); openLine(O.groups[+p[0]] && O.groups[+p[0]].lines[+p[1]]); return; }
     if (b.dataset.wopen) { openLine(O.waiting[+b.dataset.wopen]); return; }
     if (b.dataset.wa) { S.shareText('Send output to group', waOutputText()); return; }
-    if (b.dataset.reload) { $('#mout-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false).catch(fail); return; }
+    if (b.dataset.reload) { $('#mout-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false, true).catch(fail); return; }
   });
 })();

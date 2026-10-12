@@ -43,5 +43,5 @@
     inp.addEventListener('input', function () { P.q = inp.value; var pos = inp.selectionStart; render(); var i2 = $('#pm-q'); i2.focus(); try { i2.setSelectionRange(pos, pos); } catch (e) {} });
   }
 
-  $('#tab-mpms').addEventListener('click', function (e) { if (e.target.closest('[data-reload]')) { $('#mpms-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false).catch(fail); } });
+  $('#tab-mpms').addEventListener('click', function (e) { if (e.target.closest('[data-reload]')) { $('#mpms-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false, true).catch(fail); } });
 })();
