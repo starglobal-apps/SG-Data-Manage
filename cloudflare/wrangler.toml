@@ -15,7 +15,7 @@ CACHE_MAX_AGE_SEC = "300"
 binding = "DB"
 database_name = "sg-data-manage"
 # Paste the Database ID of the D1 database "sg-data-manage" here (Cloudflare dashboard -> Storage & Databases -> D1).
-database_id = "PASTE-D1-DATABASE-ID-HERE"
+database_id = "e8ffbd22-9bcb-4253-812b-57e33dd1d136"
 
 # Daily clean-up (UTC) of cached copies nobody asked for in a week.
 [triggers]
