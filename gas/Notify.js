@@ -119,3 +119,11 @@ function pushSub_(req, user) {
   return { ok: true, user_id: str_(user.user_id), name: userName_(user) };
 }
 function pushUnsub_(req, user) { return { ok: true, user_id: str_(user.user_id) }; }
+
+// push.status (admin): the active users, so the Worker's "phones registered" list can show names
+function pushStatus_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  return { ok: true, users: usersRows_().filter(function(u) { return isTrue_(u.active); }).map(function(u) { return { id: str_(u.user_id), name: str_(u.name), role: str_(u.role) }; }) };
+}
+// push.test: the Worker sends a test notification to this user's phones and answers with the push service's reply
+function pushTest_(req, user) { return { ok: true, user_id: str_(user.user_id) }; }

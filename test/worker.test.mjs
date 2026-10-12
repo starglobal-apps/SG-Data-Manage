@@ -46,6 +46,8 @@ globalThis.fetch = async (url, init) => {
     const pad = GAS.big ? 'x'.repeat(1200000) : '';
     return new Response(JSON.stringify({ ok: true, date: body.date, factory: body.factory, user: body.token, data: GAS.data, build: GAS.n, extra: body.fresh, att: { ok: true, items: [] }, out: { ok: true }, pms: { ok: true }, rev: null, pad }));
   }
+  if (body.action === 'push.test') return new Response(JSON.stringify(body.token === 'bad' ? { ok: false, error: 'AUTH' } : { ok: true, user_id: body.token === 'tokA' ? 'u1' : 'u2' }));
+  if (body.action === 'push.status') return new Response(JSON.stringify(body.token === 'tokAdmin' ? { ok: true, users: [{ id: 'u1', name: 'Jeetu' }, { id: 'u2', name: 'Shrikant' }] } : { ok: false, error: 'PERM', message: 'Admin only' }));
   if (body.action === 'push.sub' || body.action === 'push.unsub') return new Response(JSON.stringify(body.token === 'bad' ? { ok: false, error: 'AUTH' } : { ok: true, user_id: body.token === 'tokA' ? 'u1' : 'u2' }));
   if (body.action === 'x.save') return new Response(JSON.stringify({ ok: true, saved: 1, notify: GAS.notify }));
   if (body.action === 'm.warm') return new Response(JSON.stringify({ ok: true, ms: 5, imported: GAS.warmImported }));
@@ -102,7 +104,7 @@ const ver = () => env.DB.sql.prepare("SELECT v FROM meta WHERE k='ver'").get().v
   const a = await all('tokA'); await settle();
   check('saver then gets HIT with the new data', a.cache === 'HIT' && a.json.data === GAS.data, [a.cache, a.json.data, GAS.data]);
   const b = await all('tokB');
-  check('other user: STALE old copy at once', b.cache === 'STALE' && b.json.data === GAS.data - 1, [b.cache, b.json.data]);
+  check('other user after a save: never the old copy (new data at once)', b.cache !== 'STALE' && b.json.data === GAS.data, [b.cache, b.json.data]);
   await settle();
   const b2 = await all('tokB'); await settle();
   check('other user: next ask HIT with new data', b2.cache === 'HIT' && b2.json.data === GAS.data, [b2.cache, b2.json.data]);
@@ -127,14 +129,11 @@ const ver = () => env.DB.sql.prepare("SELECT v FROM meta WHERE k='ver'").get().v
   await post({ action: 'm.setFloor', token: 'tokB', dept: 'x' });   // tokB saves: tokA copy is now out of date
   await settle();
   GAS.delay = 1500;
-  const slow = (async () => { const r = await all('tokA'); return r; })();   // STALE + starts a slow background refresh
-  const s1 = await slow;
-  check('stale copy while a refresh runs', s1.cache === 'STALE');
   const n1 = GAS.n;
-  const f = await all('tokA', { fresh: true });   // must wait for the running refresh, not start a second one
+  const [s1, f] = await Promise.all([all('tokA'), (async () => { await new Promise((r) => setTimeout(r, 200)); return all('tokA', { fresh: true }); })()]);
   await settle(); GAS.delay = 0;
-  check('fresh waits for the running refresh and returns new data', (f.cache === 'HIT' || f.cache === 'MISS') && f.json.data === GAS.data, [f.cache, f.json && f.json.data]);
-  check('only one Apps Script build for that copy', GAS.n - n1 === 1, GAS.n - n1);
+  check('someone saved: the next ask waits for new data instead of the old copy', s1.cache !== 'STALE' && s1.json.data === GAS.data, [s1.cache, s1.json.data]);
+  check('a second ask at the same time waits for that same build', f.json.data === GAS.data && GAS.n - n1 === 1, [f.cache, GAS.n - n1]);
 }
 
 // 5. what is never cached
@@ -233,6 +232,29 @@ const ver = () => env.DB.sql.prepare("SELECT v FROM meta WHERE k='ver'").get().v
   const c = await post({ action: 'm.all', token: 'tokBld', date: '2026-10-12', factory: '666', lang: 'en', b: 'v81' }); await settle();
   check('same build -> HIT, new build -> MISS (fresh from Apps Script)', a.cache === 'MISS' && b.cache === 'HIT' && c.cache === 'MISS', [a.cache, b.cache, c.cache]);
   check('the build reaches Apps Script', GAS.calls.filter(x => x.action === 'm.all' && x.token === 'tokBld').map(x => x.b).join() === 'v80,v81');
+}
+
+
+// 10. phone registration confirmed, test notification, admin status + log
+{
+  const te2 = new TextEncoder();
+  const ua = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const pub = Buffer.from(await crypto.subtle.exportKey('raw', ua.publicKey)).toString('base64url');
+  const sub2 = { endpoint: 'https://push.test/phone2', keys: { p256dh: pub, auth: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64url') } };
+  const ok = await post({ action: 'push.sub', token: 'tokA', sub: sub2 });
+  const bad = await post({ action: 'push.sub', token: 'bad', sub: sub2 });
+  check('push.sub reply says stored (and not stored for a bad login)', ok.json.stored === true && bad.json.stored === false, [ok.json, bad.json]);
+  PUSH.calls = [];
+  const t1 = await post({ action: 'push.test', token: 'tokA' });
+  check('push.test: sent to my phone, push service answer in the reply', t1.json.ok && PUSH.calls.length === 1 && t1.json.results.length === 1 && t1.json.results[0].status === 201, t1.json);
+  const t2 = await post({ action: 'push.test', token: 'tokB' });
+  check('push.test without a registered phone: says so', t2.json.results.length === 1 && t2.json.results[0].status === 0 && /no phone/.test(t2.json.results[0].info), t2.json);
+  const st = await post({ action: 'push.status', token: 'tokAdmin' });
+  const notAdmin = await post({ action: 'push.status', token: 'tokA' });
+  check('push.status (admin): phones per user + recent log with "no phone"', st.json.ok && st.json.users.length === 2 && st.json.phones.some(p => p.user_id === 'u1' && p.n >= 1) && st.json.log.some(l => l.user_id === 'u2' && l.status === 0), st.json);
+  check('push.status for a non-admin: refused, no data', notAdmin.json.ok === false && !notAdmin.json.phones, notAdmin.json);
+  const vb = ver(); await post({ action: 'push.status', token: 'tokAdmin' }); await post({ action: 'push.test', token: 'tokA' }); await settle();
+  check('push.status / push.test do not bump the data version', ver() === vb);
 }
 
 // 7. big payload in parts, age limit, cron cleanup

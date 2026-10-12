@@ -278,4 +278,8 @@ var txL3 = call('newrec', 'm.trCreate', { rid: 'txL3', date: TODAY, factory: '66
 var badDecide = call('rec2', 'm.trDecide', { rid: 'bd1', id: txL3.id, decision: 'accept' });
 var goodDecide = call('rec1', 'm.trDecide', { rid: 'gd1', id: txL3.id, decision: 'accept' });
 check('transfer to L3: only its recorder (Ravi) can accept', txL3.ok && nTo(txL3, 'rec1') && !nTo(txL3, 'rec2') && badDecide.ok === false && badDecide.error === 'PERM' && goodDecide.ok, [txL3.message, badDecide, goodDecide.message]);
+// ========== 13. notification status / test routes ==========
+var pst = call('admin', 'push.status', {}), pstR = call('rec1', 'push.status', {}), ptt = call('rec1', 'push.test', {});
+check('push.status: admin gets the active users, a recorder is refused', pst.ok && pst.users.some(u => u.id === 'rec1' && u.name === 'Ravi') && pstR.ok === false && pstR.error === 'PERM', [pstR]);
+check('push.test: confirms who asked', ptt.ok && ptt.user_id === 'rec1');
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

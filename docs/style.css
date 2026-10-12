@@ -765,3 +765,9 @@ body.phone .nt-ask { display: flex; align-items: center; gap: 8px; padding: 8px 
 body.phone .nt-ask .b { flex: 1; min-width: 0; display: flex; flex-direction: column; } body.phone .nt-ask b { font-size: 13.5px; } body.phone .nt-ask span { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
 body.phone .nt-btns { display: flex; gap: 5px; flex: none; } body.phone .nt-btns .btn.small { min-height: 30px; padding: 4px 9px; font-size: 12px; }
 .ob-btns { display: flex; gap: 5px; flex: none; }
+/* Main -> Notifications sheet */
+.nt-state { background: var(--bg); border-radius: 10px; padding: 9px 11px; margin: 0 0 8px; display: flex; flex-direction: column; gap: 2px; } .nt-state span { font-size: 12.5px; color: var(--muted); }
+.nt-list { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.nt-list > div { display: flex; justify-content: space-between; gap: 8px; padding: 6px 9px; border-top: 1px solid var(--line); font-size: 12.5px; } .nt-list > div:first-child { border-top: 0; }
+.nt-list span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .nt-list b { flex: none; color: var(--muted); font-weight: 600; }
+.nt-list > div.on b { color: var(--ok); } .nt-list > div.bad b { color: var(--bad); } .nt-list.log span { white-space: normal; }

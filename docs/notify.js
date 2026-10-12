@@ -5,7 +5,7 @@
 //  · A push while the app is open refreshes the data; tapping a notification opens its tab (#mrev, #matt, ...).
 (function () {
   'use strict';
-  var S = window.SG, state = S.state;
+  var S = window.SG, state = S.state, $ = S.$;
   var N = S.notify = {};
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, String(v)); } catch (e) {} return null; }
   function u8(b64) { var s = String(b64).replace(/-/g, '+').replace(/_/g, '/'); s += '==='.slice((s.length + 3) % 4); var raw = atob(s), out = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; }
@@ -27,7 +27,9 @@
         }).then(function (sub) { return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(d.key) }); });
       });
     }).then(function (sub) {
-      return S.api('push.sub', { sub: sub.toJSON() }, { quiet: true, silent: true }).then(function () {
+      return S.api('push.sub', { sub: sub.toJSON() }, { quiet: true, silent: true }).then(function (r) {
+        // registered only when the notification server (Cloudflare Worker) really kept it
+        if (!r || r.stored !== true) throw new Error('Notification server not reachable — try again in a minute');
         ls('sg_push_at', Date.now()); ls('sg_push_ep', sub.endpoint); ls('sg_push_user', state.user && state.user.user_id);
         return sub;
       });
@@ -52,6 +54,37 @@
   N.off = function () {
     var ep = ls('sg_push_ep'); ls('sg_push_at', null); ls('sg_push_user', null);
     if (ep && state.token) S.api('push.unsub', { endpoint: ep }, { quiet: true, silent: true }).catch(function () {});
+  };
+  // Main -> Notifications: this phone's state, a test notification, and (admin) who has notifications + what was sent
+  function when(ms) { var d = new Date(Number(ms)); return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function resultText(x) { return x.status === 0 ? 'no phone registered' : x.status >= 200 && x.status < 300 ? 'delivered to the push service ✓' : 'refused (' + x.status + ') ' + (x.info || ''); }
+  N.screen = function () {
+    var st = N.state(), on = N.on(), esc = S.esc;
+    var html = '<div class="nt-state"><b>This phone: ' + (on ? 'On ✓' : st === 'denied' ? 'Blocked' : st === 'unsupported' ? 'Not available' : 'Off') + '</b><span>' +
+      (on ? 'Transfer requests, approvals and sent-back output arrive even when the app is closed.' : st === 'denied' ? 'Allow notifications for this app in the phone settings (Chrome → Site settings → Notifications), then come back.' :
+        st === 'unsupported' ? 'This browser cannot show app notifications. iPhone: add the app to the Home Screen and open it from there.' : 'Turn on to get transfer requests, approvals and sent-back output at once.') + '</span></div>' +
+      (on ? '<button class="btn big" data-nttest="1">Send a test notification to this phone</button>' : st === 'default' || st === 'granted' ? '<button class="btn big" data-ntenable="1">Turn on notifications</button>' : '') +
+      '<div id="nt-res" class="hint"></div>' + (S.isAdmin && S.isAdmin() ? '<h2 style="margin-top:14px">Who gets notifications</h2><div id="nt-adm" class="hint">Loading…</div>' : '');
+    S.sheet.open('Notifications', html);
+    $('#sheet-content').onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.ntenable) N.enable().then(function () { N.screen(); });
+      if (b.dataset.nttest) {
+        b.disabled = true; $('#nt-res').textContent = 'Sending…';
+        S.api('push.test', {}, { quiet: true }).then(function (r) {
+          var res = r.results || [];
+          $('#nt-res').innerHTML = !res.length ? 'Not sent — the notification server did not answer. Try again.' : res.map(function (x) { return esc(resultText(x)); }).join('<br>') + (res.some(function (x) { return x.status === 0; }) ? '<br>Tap "Turn on" again on this phone.' : '');
+          if (res.some(function (x) { return x.status === 0; })) { ls('sg_push_at', null); }
+        }).catch(function (er) { $('#nt-res').textContent = er.message; }).then(function () { b.disabled = false; });
+      }
+    };
+    if (S.isAdmin && S.isAdmin()) S.api('push.status', {}, { quiet: true, silent: true }).then(function (r) {
+      var ph = {}; (r.phones || []).forEach(function (p) { ph[p.user_id] = p; });
+      var names = {}; (r.users || []).forEach(function (u) { names[u.id] = u.name; });
+      var users = (r.users || []).slice().sort(function (a, b) { return (ph[b.id] ? 1 : 0) - (ph[a.id] ? 1 : 0) || a.name.localeCompare(b.name); });
+      $('#nt-adm').innerHTML = '<div class="nt-list">' + users.map(function (u) { var p = ph[u.id]; return '<div class="' + (p ? 'on' : '') + '"><span>' + esc(u.name.replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '')) + '</span><b>' + (p ? '✓ ' + p.n + (p.n > 1 ? ' phones' : ' phone') : '— not on') + '</b></div>'; }).join('') + '</div>' +
+        '<h2 style="margin-top:14px">Last notifications</h2><div class="nt-list log">' + ((r.log || []).map(function (l) { return '<div class="' + (l.status >= 200 && l.status < 300 ? 'on' : 'bad') + '"><span>' + when(l.at) + ' · ' + esc((names[l.user_id] || l.user_id).replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '')) + ' · ' + esc(l.title) + '</span><b>' + esc(resultText(l)) + '</b></div>'; }).join('') || '<div><span>None yet</span></div>') + '</div>';
+    }).catch(function (e) { var el = $('#nt-adm'); if (el) el.textContent = e.message; });
   };
   // "turn on" card on the Attendance tab: only while the phone has not answered, hidden for 3 days after "Later"
   N.askHtml = function () {

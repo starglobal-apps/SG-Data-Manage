@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v81';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v82';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -128,7 +128,7 @@
   // Worker first (when set); when it cannot be reached or crashes, the call goes to Apps Script directly and the Worker
   // is skipped for 10 min. A save that is not safe to send twice (no rid) is never re-sent automatically.
   // calls that only read (same list as READ_ACTIONS in cloudflare/src/index.js): safe to send to Apps Script after the Worker failed
-  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|outDay|reviewReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent|push\.(sub|unsub|key))$/;
+  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|outDay|reviewReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent|push\.(sub|unsub|key|status|test))$/;
   function workerOn() { if (!WORKER_URL) return false; var t = 0; try { t = +localStorage.getItem('sg_wdown') || 0; } catch (e) {} return Date.now() - t > 600000; }
   function workerDown() { try { localStorage.setItem('sg_wdown', String(Date.now())); } catch (e) {} }
   function directPost(body, text, attempt, mob, again) {
@@ -829,7 +829,7 @@
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
     else if (m === 'prefresh') phoneRefresh();
-    else if (m === 'notif') { if (SG.notify) SG.notify.enable().then(function () { tabs.main(); }); }
+    else if (m === 'notif') { if (SG.notify) { SG.notify.screen(); SG.sheet.onClose = function () { tabs.main(); }; } }
     else if (m === 'import') ask(tx('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', 'Run import in the background? It takes 1–2 minutes.'), { ok: tx('Chalao', 'Run') }).then(function (ok) { if (!ok) return; toast(tx('Import chal raha hai… (lagbhag 30 sec)', 'Import running… (about 30 sec)'), '', 6000); api('admin.importNow', {}, { quiet: true }).then(function (d) { toast(d.running ? tx('Import pehle se chal raha hai — 2 min baad Refresh karo', 'Import is already running — try again in 2 min') : tx('Import ho gaya ✓', 'Import done ✓ — loading the new data'), 'ok', 8000); if (d.done && SG.pd) { SG.pd.dirty = true; SG.pd.load(true).catch(function () {}); } }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
     else if (m === 'print') SG.printSrn();
     else if (m === 'staff') screens.staff();

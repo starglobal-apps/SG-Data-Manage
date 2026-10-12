@@ -96,6 +96,8 @@ function routes_() {
     'm.trDecide':     mTrDecide_,
     'push.sub':       pushSub_,
     'push.unsub':     pushUnsub_,
+    'push.status':    pushStatus_,
+    'push.test':      pushTest_,
     'target.get':     targetGet_,
     'target.sam':     targetSamSave_,
     'defects.list':   defectsList_,

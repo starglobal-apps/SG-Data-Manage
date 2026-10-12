@@ -14,7 +14,7 @@ const READ_ACTIONS = new Set([
   'att.get', 'att.status', 'att.prev', 'att.today', 'orders.active', 'hourly.get', 'hourly.day', 'hourly.rows', 'hour.get',
   'factory.today', 'line.today', 'review.count', 'review.list', 'users.recorders', 'users.list', 'staff.list', 'pms.get',
   'report.check', 'report.line', 'report.packing', 'report.srn', 'report.endline', 'target.get', 'defects.list',
-  'manpower.get', 'audit.recent', 'push.sub', 'push.unsub', 'push.key',
+  'manpower.get', 'audit.recent', 'push.sub', 'push.unsub', 'push.key', 'push.status', 'push.test',
 ]);
 // D1 limits a value to ~2 MB, so a payload is stored in parts.
 const CHUNK = 500000;
@@ -49,6 +49,8 @@ async function ensureSchema(db) {
     db.prepare('CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, at INTEGER NOT NULL)'),
     db.prepare('CREATE INDEX IF NOT EXISTS push_subs_user ON push_subs (user_id)'),
     db.prepare('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)'),
+    // what happened to each notification (admin: Main -> Notifications): status 0 = that user has no phone registered
+    db.prepare('CREATE TABLE IF NOT EXISTS push_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, user_id TEXT, title TEXT, status INTEGER, info TEXT)'),
     db.prepare("INSERT OR IGNORE INTO meta (k, v) VALUES ('ver', 1)"),
   ]);
   // last_view made before the build column existed
@@ -155,8 +157,9 @@ async function cachedAll(env, ctx, req) {
   const ageOf = (parts) => Math.max(0, Math.round((Date.now() - Number(parts[0].at)) / 1000));
   const isStale = (cc) => Number(cc.parts[0].ver) < cc.gver || ageOf(cc.parts) > maxAge;
 
-  // fresh: the app has just saved something (or the user pressed refresh) and must not see the old copy.
-  if (req.fresh === true) {
+  // fresh: the app has just saved something (or the user pressed refresh) and must not see the old copy; and when anybody
+  // saved since this copy was made, nobody gets it either (a transfer request must show at once) — only age alone is served stale.
+  if (req.fresh === true || (c.complete && Number(c.parts[0].ver) < c.gver)) {
     if (c.complete && !isStale(c)) return reply(c.parts.map((p) => p.data).join(''), { 'X-Cache': 'HIT', 'X-Cache-Age': String(ageOf(c.parts)) });
     if (!(await takeLock(db, key))) {
       // another refresh of this copy is running (e.g. the one started by the save): wait for it instead of a second one
@@ -273,7 +276,12 @@ async function pushOne(env, v, sub, msg) {
   if (msg.tag) headers.Topic = b64u(await crypto.subtle.digest('SHA-256', enc.encode(msg.tag))).slice(0, 32);   // a newer push with the same tag replaces an undelivered one
   const r = await fetch(sub.endpoint, { method: 'POST', headers, body });
   if (r.status === 404 || r.status === 410) await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(sub.endpoint).run();
-  return r.status;
+  const info = r.ok ? new URL(sub.endpoint).host : (new URL(sub.endpoint).host + ' ' + (await r.text().catch(() => '')).slice(0, 160));
+  await pushLog(env, sub.user_id, msg.title, r.status, info);
+  return { user_id: sub.user_id, status: r.status, info };
+}
+async function pushLog(env, userId, title, status, info) {
+  await env.DB.prepare('INSERT INTO push_log (at, user_id, title, status, info) VALUES (?, ?, ?, ?, ?)').bind(Date.now(), String(userId || ''), String(title || '').slice(0, 120), status, String(info || '').slice(0, 200)).run().catch(() => {});
 }
 /** Sends the notify list of a reply. Returns the push statuses (for tests / logs). */
 async function sendNotify(env, list) {
@@ -281,27 +289,41 @@ async function sendNotify(env, list) {
   const ids = [...new Set(list.flatMap((n) => (Array.isArray(n.to) ? n.to : []).map(String)))].slice(0, 200);
   if (!ids.length) return [];
   const rows = (await env.DB.prepare('SELECT endpoint, user_id, p256dh, auth FROM push_subs WHERE user_id IN (' + ids.map(() => '?').join(',') + ')').bind(...ids).all()).results || [];
-  if (!rows.length) return [];
-  const v = await vapidKeys(env.DB);
+  const v = rows.length ? await vapidKeys(env.DB) : null;
   const jobs = [];
   for (const n of list) {
     const msg = { title: String(n.title || 'SG Data').slice(0, 120), body: String(n.body || '').slice(0, 300), tag: String(n.tag || '').slice(0, 120), url: String(n.url || '').slice(0, 40) };
-    for (const sub of rows) if ((n.to || []).map(String).includes(sub.user_id)) jobs.push(pushOne(env, v, sub, msg).catch(() => 0));
+    for (const id of [...new Set((n.to || []).map(String))]) {
+      const subs = rows.filter((r) => r.user_id === id);
+      if (!subs.length) { jobs.push(pushLog(env, id, msg.title, 0, 'no phone registered').then(() => ({ user_id: id, status: 0, info: 'no phone registered' }))); continue; }
+      for (const sub of subs) jobs.push(pushOne(env, v, sub, msg).catch((e) => ({ user_id: id, status: -1, info: String(e && e.message || e) })));
+    }
   }
   return Promise.all(jobs);
 }
 /** push.sub / push.unsub replies (Apps Script confirmed the user): keep or drop the phone's address. */
 async function savePushSub(env, req, text) {
   let r; try { r = JSON.parse(text); } catch (e) { return; }
-  if (!r || !r.ok) return;
+  if (!r || !r.ok) return false;
   if (req.action === 'push.sub') {
     const s = req.sub || {}, k = s.keys || {};
-    if (!s.endpoint || !/^https:\/\//.test(s.endpoint) || !k.p256dh || !k.auth || !r.user_id) return;
+    if (!s.endpoint || !/^https:\/\//.test(s.endpoint) || !k.p256dh || !k.auth || !r.user_id) return false;
     await env.DB.prepare('INSERT INTO push_subs (endpoint, user_id, p256dh, auth, at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, at = ?5')
       .bind(String(s.endpoint), String(r.user_id), String(k.p256dh), String(k.auth), Date.now()).run();
+    return true;
   } else if (req.action === 'push.unsub' && req.endpoint) {
     await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(String(req.endpoint)).run();
+    return true;
   }
+  return false;
+}
+/** push.status (admin, confirmed by Apps Script): who has a phone registered + the last notifications and their result. */
+async function pushStatus(env, text) {
+  const r = JSON.parse(text);
+  if (!r.ok) return r;
+  const subs = (await env.DB.prepare('SELECT user_id, COUNT(*) AS n, MAX(at) AS at FROM push_subs GROUP BY user_id').all()).results || [];
+  const log = (await env.DB.prepare('SELECT at, user_id, title, status, info FROM push_log ORDER BY id DESC LIMIT 60').all()).results || [];
+  return Object.assign(r, { phones: subs, log });
 }
 
 export default {
@@ -332,7 +354,21 @@ export default {
       if (action === 'push.key') return reply(JSON.stringify({ ok: true, key: (await vapidKeys(env.DB)).pub }), { 'X-Cache': 'BYPASS' });
 
       const text = await upstream(env, bodyText);
-      if (req && (action === 'push.sub' || action === 'push.unsub')) await savePushSub(env, req, text).catch(() => {});
+      if (req && (action === 'push.sub' || action === 'push.unsub')) {
+        // the app counts a phone as registered only when the Worker really stored it
+        const stored = await savePushSub(env, req, text).catch(() => false);
+        let r = null; try { r = JSON.parse(text); } catch (e) {}
+        if (r) return reply(JSON.stringify(Object.assign(r, { stored })), { 'X-Cache': 'BYPASS' });
+      }
+      if (action === 'push.status') return reply(JSON.stringify(await pushStatus(env, text)), { 'X-Cache': 'BYPASS' });
+      if (action === 'push.test') {
+        let r = null; try { r = JSON.parse(text); } catch (e) {}
+        if (r && r.ok && r.user_id) {
+          const results = await sendNotify(env, [{ to: [r.user_id], title: 'Test notification', body: 'Notifications work on this phone ✓', tag: 'test', url: '#main' }]);
+          return reply(JSON.stringify(Object.assign(r, { results })), { 'X-Cache': 'BYPASS' });
+        }
+        return reply(text, { 'X-Cache': 'BYPASS' });
+      }
       // notifications of this save: sent after the reply (Apps Script decided who gets what)
       if (text.indexOf('"notify":[') > 0) {
         let n = null; try { n = JSON.parse(text).notify; } catch (e) {}
@@ -358,6 +394,7 @@ export default {
       env.DB.prepare('DELETE FROM payload_cache WHERE at < ?').bind(weekAgo),
       env.DB.prepare('DELETE FROM last_view WHERE at < ?').bind(weekAgo),
       env.DB.prepare('DELETE FROM push_subs WHERE at < ?').bind(Date.now() - 60 * 24 * 3600 * 1000),
+      env.DB.prepare('DELETE FROM push_log WHERE at < ?').bind(weekAgo),
       env.DB.prepare("DELETE FROM meta WHERE k LIKE 'lock:%' AND v < ?").bind(Date.now() - 24 * 3600 * 1000),
     ]);
   },
