@@ -301,6 +301,7 @@
   // static page text: English on the phone (data-en / data-en-ph), the original text on the web
   function applyLang() {
     var en = isMobile();
+    document.body.classList.toggle('phone', en);   // phone-only compact design (style.css: body.phone); the web layout is untouched
     $$('[data-en]').forEach(function (el) { if (el.dataset.hi === undefined) el.dataset.hi = el.textContent; el.textContent = en ? el.dataset.en : el.dataset.hi; });
     $$('[data-en-ph]').forEach(function (el) { if (el.dataset.hiPh === undefined) el.dataset.hiPh = el.placeholder; el.placeholder = en ? el.dataset.enPh : el.dataset.hiPh; });
   }

@@ -23,6 +23,9 @@
 
   function n(v) { return (Math.round(+v || 0)).toLocaleString('en-IN'); }
   function cell(label, v, warn) { return '<span class="pm-c' + (warn ? ' warn' : '') + '"><small>' + label + '</small><b>' + n(v) + '</b></span>'; }
+  // share of the loading that reached each step: a thin bar under the numbers
+  function bar(r) { var base = Math.max(+r.loading || 0, +r.order || 0); if (!base) return ''; var w = function (v) { return Math.max(0, Math.min(100, Math.round((+v || 0) * 100 / base))); };
+    return '<div class="pm-bar"><i style="width:' + w(r.stitched) + '%"></i><i class="pk" style="width:' + w(r.packed) + '%"></i><i class="sh" style="width:' + w(r.shipped) + '%"></i></div>'; }
 
   function render() {
     var q = P.q.trim().toUpperCase();
@@ -31,12 +34,10 @@
     html += '<div class="pm-sub">' + rows.length + ' SRN · only unshipped' + (P.err ? ' · <span style="color:var(--bad)">unloading not available</span>' : '') + '</div>';
     if (!rows.length) html += '<div class="empty">' + (q ? 'No SRN found' : 'No unshipped SRN') + '</div>';
     html += rows.slice(0, 300).map(function (r) {
-      return '<div class="pm-card"><div class="pm-h"><b>' + esc(r.srn) + '</b>' + (r.order ? '<span>order ' + n(r.order) + '</span>' : '') + '</div>' +
-        (r.style || r.buyer ? '<div class="pm-s">' + esc([r.buyer, r.style].filter(Boolean).join(' · ')) + '</div>' : '') +
-        '<div class="pm-g">' + cell('Loading', r.loading) + cell('Stitching', r.stitched, r.stitched > r.loading - (r.contractor || 0)) + cell('Endline pass', r.endPass, r.endPass > r.stitched) +
-        cell('Pack', r.packed, r.packed > r.endPass + (r.contractor || 0)) + cell('Unloading', r.unloaded) + cell('Shipped', r.shipped) + '</div>' +
-        (r.contractor ? '<div class="pm-ct"><span>Loaded to contractor' + (r.contractors ? ' · ' + esc(r.contractors) : '') + '</span><b>' + n(r.contractor) + '</b></div>' +
-          '<div class="pm-s" style="white-space:normal">Contractor stitching / endline is not reported — only pack and unloading</div>' : '') + '</div>';
+      return '<div class="pm-card"><div class="pm-h"><b>' + esc(r.srn) + '</b>' + (r.style || r.buyer ? '<span class="pm-s">' + esc([r.buyer, r.style].filter(Boolean).join(' · ')) + '</span>' : '<span class="pm-s"></span>') + (r.order ? '<span class="pm-o">Order <b>' + n(r.order) + '</b></span>' : '') + '</div>' +
+        '<div class="pm-g">' + cell('Load', r.loading) + cell('Stitch', r.stitched, r.stitched > r.loading - (r.contractor || 0)) + cell('Endline', r.endPass, r.endPass > r.stitched) +
+        cell('Pack', r.packed, r.packed > r.endPass + (r.contractor || 0)) + cell('Unload', r.unloaded) + cell('Ship', r.shipped) + '</div>' + bar(r) +
+        (r.contractor ? '<div class="pm-ct"><span>Contractor' + (r.contractors ? ' · ' + esc(r.contractors) : '') + ' <i>(stitch / endline not reported)</i></span><b>' + n(r.contractor) + '</b></div>' : '') + '</div>';
     }).join('');
     $('#mpms-body').innerHTML = html;
     var inp = $('#pm-q');

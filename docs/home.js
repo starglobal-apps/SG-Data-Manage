@@ -199,31 +199,33 @@
     var today = S.todayStr(), past = state.date !== today;
     var html = '<div class="card pa-top"><div class="row">' +
       '<div class="field small"><label>Date</label><input type="date" id="pa-date" value="' + esc(state.date) + '" max="' + today + '"></div>' +
-      '<div class="field"><label>Line code</label><select id="pa-line"><option value="">— select line —</option>' +
+      '<div class="field"><label>Fill attendance · line</label><select id="pa-line"><option value="">— select line —</option>' +
         PA.lines.map(function (l) { return '<option value="' + esc(l.dept) + '">' + esc(S.shortLine(l.dept)) + (l.filled ? '  ✓' : '') + '</option>'; }).join('') + '</select></div></div>' +
-      '<div class="hint">' + (past ? '<b style="color:var(--warn)">' + esc(S.fmtDay(state.date)) + ' attendance</b> · <button class="lnk" data-day="' + today + '">back to today</button>' : 'Select line → fill attendance → Save. Filled lines show below.') + '</div></div>';
+      (past ? '<div class="hint"><b style="color:var(--warn)">' + esc(S.fmtDay(state.date)) + ' attendance</b> · <button class="lnk" data-day="' + today + '">back to today</button></div>' : '') + '</div>';
     PA.incoming.forEach(function (t) {
-      html += '<div class="card tr-in"><div class="tr-h">Transfer request</div><div class="tr-b"><b>' + esc(S.shortLine(t.from)) + ' → ' + esc(S.shortLine(t.to)) + '</b> · ' + t.total + (t.total > 1 ? ' people' : ' person') + '</div>' +
-        '<div class="m">' + t.items.map(function (i) { return i.count + ' ' + esc(i.role); }).join(', ') + '</div>' +
-        '<div class="m">From <b>' + hourLabel(t.hour) + '</b>' + (t.date !== S.todayStr() ? ' · ' + esc(S.fmtDay(t.date)) : '') + ' · by ' + esc(t.by) + '</div>' +
+      html += '<div class="card tr-in"><div class="tr-top"><div class="tr-b"><span class="tr-h">Transfer request</span><b>' + esc(S.shortLine(t.from)) + ' → ' + esc(S.shortLine(t.to)) + '</b> · ' + t.total + (t.total > 1 ? ' people' : ' person') + '</div>' +
+        '<div class="m">' + t.items.map(function (i) { return i.count + ' ' + esc(i.role); }).join(', ') + ' · from <b>' + hourLabel(t.hour) + '</b>' + (t.date !== S.todayStr() ? ' · ' + esc(S.fmtDay(t.date)) : '') + ' · by ' + esc(t.by) + '</div></div>' +
         '<div class="tr-acts"><button class="btn small danger" data-trno="' + esc(t.id) + '">Reject</button><button class="btn small ok" data-trok="' + esc(t.id) + '">Accept</button></div></div>';
     });
     var shown = withPending(PA.items);
+    if (shown.length) html += '<h2 class="pl-sec">Filled · ' + shown.length + (shown.length > 1 ? ' lines' : ' line') + ' <span>' + shown.reduce(function (a, x) { return a + (+x.count || 0); }, 0) + ' people</span></h2>';
     if (PA.loading) html += '<div class="ob-line" style="margin:4px 4px 10px"><span class="ob-spin"></span>Updating ' + esc(S.fmtDay(state.date)) + '…</div>';
     else if (!shown.length) html += '<div class="empty">' + (past ? 'No attendance on this date' : 'No attendance filled today yet') + '</div>';
     shown.forEach(function (x) {
       var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent', ev = evText(x);
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.roles), x.dept) : null;
-      html += '<div class="chk-line done al-done"><div class="b"><div class="n">' + esc(S.shortLine(x.dept)) + (x.fromSheet ? ' <em class="ot">from sheet</em>' : '') + '</div>' +
-        '<div class="m">' + (x.srn ? esc(x.srn) + ' · ' : '') + x.count + ' people' + (!x.fromSheet && x.mpNow !== x.count ? ' · now <b>' + x.mpNow + '</b>' : '') + (x.ot ? ' · OT ' + x.ot : '') + (x.night ? ' · Night ' + x.night : '') + (x.by ? ' · ' + esc(x.by) : '') + '</div>' +
-        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + x.ob.map(obLine).join('') + trText(x) + (st === 'Synced' && !x.ob.length ? '<div class="m" style="color:var(--ok)">In main sheet ✓</div>' : '') + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') +
-        (lock ? '<div class="m">' + (st === 'Submitted' ? 'In admin review' : st === 'Sent' ? 'In main sheet ✓' : esc(st)) + '</div>' : '') +
-        (x.fromSheet && !lock ? '<div class="m">Filled in main sheet — Update / Change writes to the main sheet</div>' : '') + '</div>' +
+      var tag = (st === 'Synced' && !x.ob.length) || st === 'Sent' ? '<em class="tag ok">✓ In sheet</em>' : st === 'Submitted' ? '<em class="tag warn">In review</em>' : st === 'Approved' ? '<em class="tag">' + esc(st) + '</em>' : '';
+      var meta = [x.srn ? '<b>' + esc(x.srn) + '</b>' : '',
+        !x.fromSheet && x.mpNow !== x.count ? 'now <b>' + x.mpNow + '</b>' : '', x.ot ? 'OT ' + x.ot : '', x.night ? 'Night ' + x.night : '', x.by ? esc(x.by) : ''].filter(Boolean).join(' · ');
+      html += '<div class="chk-line done al-done pl-card"><div class="b">' +
+        '<div class="pl-h"><span class="n">' + esc(S.shortLine(x.dept)) + '</span>' + (x.fromSheet ? '<em class="tag">from sheet</em>' : '') + tag + '<span class="pl-mp"><b>' + x.count + '</b> people</span></div>' +
+        '<div class="m">' + meta + '</div>' +
+        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + x.ob.map(obLine).join('') + trText(x) + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') + '</div>' +
         (lock ? '' : '<div class="pa-acts">' +
-          '<button class="btn small ghost" data-chg="' + esc(x.dept) + '">Change attendance<small>line, SRN, all</small></button>' +
-          '<button class="btn small ghost" data-ot="' + esc(x.dept) + '">OT / Night<small>' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'Night ' + x.night : '') : 'fill') + '</small></button>' +
-          '<button class="btn small ghost upd" data-upd="' + esc(x.dept) + '">Update attendance<small>half day / absent</small></button>' +
-          '<button class="btn small ghost trb" data-tr="' + esc(x.dept) + '">Transfer manpower<small>to another line</small></button></div>') + '</div>';
+          '<button class="btn small ghost" data-chg="' + esc(x.dept) + '">Change</button>' +
+          '<button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'N ' + x.night : '') : 'OT / Night') + '</button>' +
+          '<button class="btn small ghost upd" data-upd="' + esc(x.dept) + '">Half / Absent</button>' +
+          '<button class="btn small ghost trb" data-tr="' + esc(x.dept) + '">Transfer</button></div>') + '</div>';
     });
     if (PA.items.length) html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send attendance to group · ' + PA.items.length + (PA.items.length > 1 ? ' lines' : ' line') + '</button></div>';
     box().innerHTML = html;
