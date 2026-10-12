@@ -226,8 +226,8 @@ check('notify: attendance save -> admin, not the saver', nTo(s1, 'admin') && !nT
 check('notify: same rid resent -> no second notification', !s1b.notify, s1b.notify);
 check('notify: output saved -> admin, opens Approve', nTo(o1, 'admin') && o1.notify[0].url === '#mrev' && /Output for approval/.test(o1.notify[0].title) && /150 pcs/.test(o1.notify[0].body), o1.notify);
 check('notify: transfer request -> recorder of the receiving line only', nTo(t1, 'rec2') && !nTo(t1, 'rec1') && !nTo(t1, 'admin') && /Transfer request · Line 1-SL001 → /.test(t1.notify[0].title), t1.notify);
-check('notify: transfer accepted -> who asked', nTo(t2, 'rec1') && !nTo(t2, 'rec2') && /Transfer accepted/.test(t2.notify[0].title), t2.notify);
-check('notify: transfer rejected -> who asked', nTo(t4, 'rec1') && /Transfer rejected/.test(t4.notify[0].title), t4.notify);
+check('notify: transfer accepted -> who asked + admin, not the one who accepted', nTo(t2, 'rec1') && nTo(t2, 'admin') && !nTo(t2, 'rec2') && /Transfer accepted/.test(t2.notify[0].title), t2.notify);
+check('notify: transfer rejected -> who asked + admin', nTo(t4, 'rec1') && nTo(t4, 'admin') && /Transfer rejected/.test(t4.notify[0].title), t4.notify);
 check('notify: output sent back -> recorder of that line (L3: rec2) with the reason', nTo(rj, 'rec2') && !nTo(rj, 'rec1') && !nTo(rj, 'admin') && /Output sent back/.test(rj.notify[0].title) && /wrong qty/.test(rj.notify[0].body), rj.notify);
 check('notify: output approved -> line recorder', nTo(ap, 'rec1') && /Output approved/.test(ap.notify[0].title), ap.notify);
 var nr = call('rec1', 'm.out', {});

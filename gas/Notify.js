@@ -8,7 +8,7 @@
 //   half day / absent update                         -> admins
 //   output sent for approval                         -> admins
 //   transfer request                                 -> the recorder named on the receiving line's attendance (else its line users, else admins)
-//   transfer accepted / rejected                     -> who made the request
+//   transfer accepted / rejected                     -> who made the request + admins
 //   output approved / sent back / edited by admin    -> who submitted it + the recorder named on that line's attendance
 
 function notifyFor_(action, req, user, res) {
@@ -49,7 +49,7 @@ function notifyFor_(action, req, user, res) {
     var t = readDaily_(CFG.TABS.TRANSFERS).filter(function(r) { return str_(r.id) === str_(req.id); })[0];
     if (t) {
       var ok = str_(req.decision) === 'accept';
-      add(notifyUsersByName_(t.by), 'Transfer ' + (ok ? 'accepted' : 'rejected') + ' · ' + L(t.from_dept) + ' → ' + L(t.to_dept),
+      add(notifyUsersByName_(t.by).concat(notifyAdmins_(str_(t.factory))), 'Transfer ' + (ok ? 'accepted' : 'rejected') + ' · ' + L(t.from_dept) + ' → ' + L(t.to_dept),
         num_(t.count) + ' people · ' + (ok ? 'they work on ' + L(t.to_dept) + ' from ' + str_(t.time) : 'they stay on ' + L(t.from_dept)) + ' · by ' + by, 'tr|' + str_(t.id), '#matt');
     }
   }
