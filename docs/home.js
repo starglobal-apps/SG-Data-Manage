@@ -195,6 +195,8 @@
     if (it.state === 'failed') return '<div class="ob-line bad"><span>⚠ ' + esc(what) + ' not saved' + (it.error ? ' — ' + esc(it.error) : '') + '</span><button class="btn small" data-resend="' + esc(it.id) + '">Resend</button></div>';
     return '<div class="ob-line"><span class="ob-spin"></span>' + esc(what) + ' — saving…</div>';
   }
+  // a person's name without the staff code in front ("SG02483-Jeetu Goswami" -> "Jeetu Goswami")
+  function nm(v) { return String(v || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '').trim(); }
   function renderPhoneAtt() {
     var today = S.todayStr(), past = state.date !== today;
     var html = '<div class="card pa-top"><div class="row">' +
@@ -217,11 +219,12 @@
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.roles), x.dept) : null;
       html += '<div class="chk-line done al-done pl-card"><div class="b">' +
         '<div class="pl-h"><span class="n">' + esc(S.shortLine(x.dept)) + '</span>' + (x.srn ? '<span class="pl-srn">' + esc(x.srn) + '</span>' : '') +
+          (x.supervisor || x.incharge ? '<span class="pl-staff">' + (x.supervisor ? '<span><i>Sup</i> ' + esc(nm(x.supervisor)) + '</span>' : '') + (x.incharge ? '<span><i>Inc</i> ' + esc(nm(x.incharge)) + '</span>' : '') + '</span>' : '') +
           (lock ? '<em class="tag warn">' + (st === 'Submitted' ? 'In review' : st === 'Sent' ? 'In sheet' : esc(st)) + '</em>'
                 : '<button type="button" class="pl-edit" data-acts="' + esc(x.dept) + '" aria-label="Update ' + esc(S.shortLine(x.dept)) + '">' + icon('edit') + '</button>') + '</div>' +
         '<div class="pl-kv"><div><small>Manpower</small><b>' + (+x.count || 0) + '</b></div>' +
           '<div><small>Hourly target</small>' + (tg && tg.v ? '<b>' + tg.v + '<i> pcs</i></b>' : '<b class="na">—</b>') + '</div>' +
-          '<div><small>Recorder</small><b class="who">' + esc(String(x.by || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '') || (x.fromSheet ? 'Main sheet' : '—')) + '</b></div></div>' +
+          '<div><small>Recorder</small><b class="who">' + esc(nm(x.by) || (x.fromSheet ? 'Main sheet' : '—')) + '</b></div></div>' +
         x.ob.map(obLine).join('') + '</div></div>';
     });
     if (PA.items.length) html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send attendance to group · ' + PA.items.length + (PA.items.length > 1 ? ' lines' : ' line') + '</button></div>';
