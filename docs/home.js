@@ -207,28 +207,44 @@
         '<div class="m">' + t.items.map(function (i) { return i.count + ' ' + esc(i.role); }).join(', ') + ' · from <b>' + hourLabel(t.hour) + '</b>' + (t.date !== S.todayStr() ? ' · ' + esc(S.fmtDay(t.date)) : '') + ' · by ' + esc(t.by) + '</div></div>' +
         '<div class="tr-acts"><button class="btn small danger" data-trno="' + esc(t.id) + '">Reject</button><button class="btn small ok" data-trok="' + esc(t.id) + '">Accept</button></div></div>';
     });
-    var shown = withPending(PA.items);
+    var shown = PA.shown = withPending(PA.items);
     if (shown.length) html += '<h2 class="pl-sec">Filled · ' + shown.length + (shown.length > 1 ? ' lines' : ' line') + ' <span>' + shown.reduce(function (a, x) { return a + (+x.count || 0); }, 0) + ' people</span></h2>';
     if (PA.loading) html += '<div class="ob-line" style="margin:4px 4px 10px"><span class="ob-spin"></span>Updating ' + esc(S.fmtDay(state.date)) + '…</div>';
     else if (!shown.length) html += '<div class="empty">' + (past ? 'No attendance on this date' : 'No attendance filled today yet') + '</div>';
+    // one card per line: line code + SRN, then manpower · hourly target · recorder; the pencil opens the update actions
     shown.forEach(function (x) {
-      var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent', ev = evText(x);
+      var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent';
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.roles), x.dept) : null;
-      var tag = (st === 'Synced' && !x.ob.length) || st === 'Sent' ? '<em class="tag ok">✓ In sheet</em>' : st === 'Submitted' ? '<em class="tag warn">In review</em>' : st === 'Approved' ? '<em class="tag">' + esc(st) + '</em>' : '';
-      var meta = [x.srn ? '<b>' + esc(x.srn) + '</b>' : '',
-        !x.fromSheet && x.mpNow !== x.count ? 'now <b>' + x.mpNow + '</b>' : '', x.ot ? 'OT ' + x.ot : '', x.night ? 'Night ' + x.night : '', x.by ? esc(x.by) : ''].filter(Boolean).join(' · ');
       html += '<div class="chk-line done al-done pl-card"><div class="b">' +
-        '<div class="pl-h"><span class="n">' + esc(S.shortLine(x.dept)) + '</span>' + (x.fromSheet ? '<em class="tag">from sheet</em>' : '') + tag + '<span class="pl-mp"><b>' + x.count + '</b> people</span></div>' +
-        '<div class="m">' + meta + '</div>' +
-        (ev ? '<div class="m al-ev">' + esc(ev) + '</div>' : '') + x.ob.map(obLine).join('') + trText(x) + (tg ? '<div class="al-tg">' + tg.html + '</div>' : '') + '</div>' +
-        (lock ? '' : '<div class="pa-acts">' +
-          '<button class="btn small ghost" data-chg="' + esc(x.dept) + '">Change</button>' +
-          '<button class="btn small ghost" data-ot="' + esc(x.dept) + '">' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'N ' + x.night : '') : 'OT / Night') + '</button>' +
-          '<button class="btn small ghost upd" data-upd="' + esc(x.dept) + '">Half / Absent</button>' +
-          '<button class="btn small ghost trb" data-tr="' + esc(x.dept) + '">Transfer</button></div>') + '</div>';
+        '<div class="pl-h"><span class="n">' + esc(S.shortLine(x.dept)) + '</span>' + (x.srn ? '<span class="pl-srn">' + esc(x.srn) + '</span>' : '') +
+          (lock ? '<em class="tag warn">' + (st === 'Submitted' ? 'In review' : st === 'Sent' ? 'In sheet' : esc(st)) + '</em>'
+                : '<button type="button" class="pl-edit" data-acts="' + esc(x.dept) + '" aria-label="Update ' + esc(S.shortLine(x.dept)) + '">' + icon('edit') + '</button>') + '</div>' +
+        '<div class="pl-kv"><div><small>Manpower</small><b>' + (+x.count || 0) + '</b></div>' +
+          '<div><small>Hourly target</small>' + (tg && tg.v ? '<b>' + tg.v + '<i> pcs</i></b>' : '<b class="na">—</b>') + '</div>' +
+          '<div><small>Recorder</small><b class="who">' + esc(String(x.by || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '') || (x.fromSheet ? 'Main sheet' : '—')) + '</b></div></div>' +
+        x.ob.map(obLine).join('') + '</div></div>';
     });
     if (PA.items.length) html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send attendance to group · ' + PA.items.length + (PA.items.length > 1 ? ' lines' : ' line') + '</button></div>';
     box().innerHTML = html;
+  }
+  // pencil on a line card: the update actions as buttons (+ what changed on that line today)
+  function actsSheet(x) {
+    var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.roles), x.dept) : null, ev = evText(x);
+    var info = [x.fromSheet ? 'Filled in the main sheet' : '', x.status === 'Synced' ? 'In main sheet ✓' : '', ev, x.ot ? 'OT ' + x.ot + ' people' : '', x.night ? 'Night ' + x.night + ' people' : '',
+      !x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count ? 'Manpower now ' + x.mpNow : ''].filter(Boolean);
+    var html = '<div class="pl-acts">' +
+      '<button class="btn ghost" data-chg="' + esc(x.dept) + '">Change attendance<small>line, SRN, roles</small></button>' +
+      '<button class="btn ghost" data-ot="' + esc(x.dept) + '">OT / Night<small>' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'Night ' + x.night : '') : 'fill') + '</small></button>' +
+      '<button class="btn ghost upd" data-upd="' + esc(x.dept) + '">Half day / Absent<small>update attendance</small></button>' +
+      '<button class="btn ghost trb" data-tr="' + esc(x.dept) + '">Transfer<small>to another line</small></button>' +
+      (x.srn && x.cat === 'STITCH' && !(tg && tg.v) ? '<button class="btn ghost wide" data-setsam="' + esc(x.srn) + '">Set SAM of ' + esc(x.srn) + '<small>hourly target needs it</small></button>' : '') + '</div>' +
+      (info.length || (x.transfers || []).length ? '<div class="pl-info">' + info.map(function (t) { return '<div class="m">' + esc(t) + '</div>'; }).join('') + trText(x) + '</div>' : '');
+    S.sheet.open(S.shortLine(x.dept) + (x.srn ? ' · ' + x.srn : ''), html);
+    $('#sheet-content').onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.upd || b.dataset.tr) { attListClick({ target: b }); return; }   // these open their own popup in place
+      S.sheet.close(); setTimeout(function () { attListClick({ target: b }); }, 150);   // after the popup has closed (back history)
+    };
   }
   // ---------- "Transfer manpower": people of a line go to another line from a whole hour; that line's recorder accepts ----------
   function hourLabel(h) { return (h % 12 || 12) + (h >= 12 ? ' PM' : ' AM'); }
@@ -350,6 +366,7 @@
       });
       return;
     }
+    if (b.dataset.acts) { var xa = (PA.shown || PA.items).filter(function (i) { return i.dept === b.dataset.acts; })[0]; if (xa) actsSheet(xa); return; }
     if (b.dataset.ot) { var xo = PA.items.filter(function (i) { return i.dept === b.dataset.ot; })[0]; S.openAttendance(xo && !xo.ot && xo.night ? 'Night' : 'OT', b.dataset.ot); return; }
     if (b.dataset.chg) { S.openAttendance('Final', b.dataset.chg, { change: true }); return; }
     if (b.dataset.upd) { updSheet(PA.items.filter(function (i) { return i.dept === b.dataset.upd; })[0]); return; }
