@@ -10,3 +10,6 @@ gas/Sources.js
 .clasp.json
 .claude/launch.json
 docs/mock.js
+
+# Local hand-over brief (contains the scriptId)
+NEW-PC-PROMPT.md
