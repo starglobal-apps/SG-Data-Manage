@@ -14,7 +14,7 @@ const READ_ACTIONS = new Set([
   'att.get', 'att.status', 'att.prev', 'att.today', 'orders.active', 'hourly.get', 'hourly.day', 'hourly.rows', 'hour.get',
   'factory.today', 'line.today', 'review.count', 'review.list', 'users.recorders', 'users.list', 'staff.list', 'pms.get',
   'report.check', 'report.line', 'report.packing', 'report.srn', 'report.endline', 'target.get', 'defects.list',
-  'manpower.get', 'audit.recent',
+  'manpower.get', 'audit.recent', 'push.sub', 'push.unsub', 'push.key',
 ]);
 // D1 limits a value to ~2 MB, so a payload is stored in parts.
 const CHUNK = 500000;
@@ -45,6 +45,10 @@ async function ensureSchema(db) {
     db.prepare('CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL)'),
     // the last m.all date / factory of each token (hashed), so a save can refresh that user's copy. No token is stored.
     db.prepare('CREATE TABLE IF NOT EXISTS last_view (tk TEXT PRIMARY KEY, date TEXT, factory TEXT, lang TEXT, at INTEGER NOT NULL)'),
+    // phone notification addresses (Web Push): one row per phone, linked to the user Apps Script confirmed
+    db.prepare('CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, at INTEGER NOT NULL)'),
+    db.prepare('CREATE INDEX IF NOT EXISTS push_subs_user ON push_subs (user_id)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)'),
     db.prepare("INSERT OR IGNORE INTO meta (k, v) VALUES ('ver', 1)"),
   ]);
   schemaReady = true;
@@ -205,6 +209,98 @@ function tokenOf(bodyText, req) {
   return m ? m[1] : '';
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Phone notifications (Web Push, RFC 8291 aes128gcm + VAPID RFC 8292). Apps Script puts { notify: [{ to: [user_id],
+// title, body, tag, url }] } on a save's reply; the Worker sends one push per phone of those users. The VAPID key pair is
+// made by the Worker on first use and kept in D1 (nothing to configure). A phone address the push service no longer
+// knows (404 / 410) is removed.
+const enc = new TextEncoder();
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = (s) => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4)), (c) => c.charCodeAt(0));
+const cat = (...a) => { const out = new Uint8Array(a.reduce((n, x) => n + x.length, 0)); let o = 0; for (const x of a) { out.set(x, o); o += x.length; } return out; };
+async function hmac(key, data) {
+  const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', k, data));
+}
+
+let VAPID = null;
+async function vapidKeys(db) {
+  if (VAPID) return VAPID;
+  let row = await db.prepare("SELECT v FROM kv WHERE k = 'vapid'").first();
+  if (!row) {
+    const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+    const jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+    const pub = b64u(await crypto.subtle.exportKey('raw', kp.publicKey));
+    await db.prepare("INSERT OR IGNORE INTO kv (k, v) VALUES ('vapid', ?)").bind(JSON.stringify({ jwk, pub })).run();
+    row = await db.prepare("SELECT v FROM kv WHERE k = 'vapid'").first();   // two first requests at once: both use the stored one
+  }
+  const v = JSON.parse(row.v);
+  const priv = await crypto.subtle.importKey('jwk', v.jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  VAPID = { priv, pub: v.pub };
+  return VAPID;
+}
+async function vapidAuth(v, endpoint) {
+  const head = b64u(enc.encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  const claims = b64u(enc.encode(JSON.stringify({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: 'https://starglobal-apps.github.io/SG-Data-Manage/' })));
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, v.priv, enc.encode(head + '.' + claims));
+  return 'vapid t=' + head + '.' + claims + '.' + b64u(sig) + ', k=' + v.pub;
+}
+/** RFC 8291: the payload encrypted for one phone (its p256dh public key + auth secret). */
+async function encryptPush(sub, text) {
+  const uaPub = unb64u(sub.p256dh), auth = unb64u(sub.auth);
+  const as = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const asPub = new Uint8Array(await crypto.subtle.exportKey('raw', as.publicKey));
+  const uaKey = await crypto.subtle.importKey('raw', uaPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const ecdh = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: uaKey }, as.privateKey, 256));
+  const prkKey = await hmac(auth, ecdh);
+  const ikm = await hmac(prkKey, cat(enc.encode('WebPush: info\0'), uaPub, asPub, new Uint8Array([1])));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const prk = await hmac(salt, ikm);
+  const cek = (await hmac(prk, cat(enc.encode('Content-Encoding: aes128gcm\0'), new Uint8Array([1])))).slice(0, 16);
+  const nonce = (await hmac(prk, cat(enc.encode('Content-Encoding: nonce\0'), new Uint8Array([1])))).slice(0, 12);
+  const key = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, cat(enc.encode(text), new Uint8Array([2]))));
+  const rs = new Uint8Array([0, 0, 16, 0]);   // record size 4096
+  return cat(salt, rs, new Uint8Array([asPub.length]), asPub, ct);
+}
+async function pushOne(env, v, sub, msg) {
+  const body = await encryptPush(sub, JSON.stringify(msg));
+  const headers = { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'high', Authorization: await vapidAuth(v, sub.endpoint) };
+  if (msg.tag) headers.Topic = b64u(await crypto.subtle.digest('SHA-256', enc.encode(msg.tag))).slice(0, 32);   // a newer push with the same tag replaces an undelivered one
+  const r = await fetch(sub.endpoint, { method: 'POST', headers, body });
+  if (r.status === 404 || r.status === 410) await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(sub.endpoint).run();
+  return r.status;
+}
+/** Sends the notify list of a reply. Returns the push statuses (for tests / logs). */
+async function sendNotify(env, list) {
+  if (!Array.isArray(list) || !list.length) return [];
+  const ids = [...new Set(list.flatMap((n) => (Array.isArray(n.to) ? n.to : []).map(String)))].slice(0, 200);
+  if (!ids.length) return [];
+  const rows = (await env.DB.prepare('SELECT endpoint, user_id, p256dh, auth FROM push_subs WHERE user_id IN (' + ids.map(() => '?').join(',') + ')').bind(...ids).all()).results || [];
+  if (!rows.length) return [];
+  const v = await vapidKeys(env.DB);
+  const jobs = [];
+  for (const n of list) {
+    const msg = { title: String(n.title || 'SG Data').slice(0, 120), body: String(n.body || '').slice(0, 300), tag: String(n.tag || '').slice(0, 120), url: String(n.url || '').slice(0, 40) };
+    for (const sub of rows) if ((n.to || []).map(String).includes(sub.user_id)) jobs.push(pushOne(env, v, sub, msg).catch(() => 0));
+  }
+  return Promise.all(jobs);
+}
+/** push.sub / push.unsub replies (Apps Script confirmed the user): keep or drop the phone's address. */
+async function savePushSub(env, req, text) {
+  let r; try { r = JSON.parse(text); } catch (e) { return; }
+  if (!r || !r.ok) return;
+  if (req.action === 'push.sub') {
+    const s = req.sub || {}, k = s.keys || {};
+    if (!s.endpoint || !/^https:\/\//.test(s.endpoint) || !k.p256dh || !k.auth || !r.user_id) return;
+    await env.DB.prepare('INSERT INTO push_subs (endpoint, user_id, p256dh, auth, at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, p256dh = ?3, auth = ?4, at = ?5')
+      .bind(String(s.endpoint), String(r.user_id), String(k.p256dh), String(k.auth), Date.now()).run();
+  } else if (req.action === 'push.unsub' && req.endpoint) {
+    await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(String(req.endpoint)).run();
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -230,8 +326,15 @@ export default {
       if (action === CACHED_ACTION && req) return await cachedAll(env, ctx, req);
 
       if (action === 'ping') return reply(JSON.stringify({ ok: true, app: 'SG Data API', via: 'worker', time: new Date().toISOString() }), { 'X-Cache': 'BYPASS' });
+      if (action === 'push.key') return reply(JSON.stringify({ ok: true, key: (await vapidKeys(env.DB)).pub }), { 'X-Cache': 'BYPASS' });
 
       const text = await upstream(env, bodyText);
+      if (req && (action === 'push.sub' || action === 'push.unsub')) await savePushSub(env, req, text).catch(() => {});
+      // notifications of this save: sent after the reply (Apps Script decided who gets what)
+      if (text.indexOf('"notify":[') > 0) {
+        let n = null; try { n = JSON.parse(text).notify; } catch (e) {}
+        if (n) ctx.waitUntil(sendNotify(env, n).catch(() => {}));
+      }
       // m.warm only reads, unless it ran the due import into MASTER DATA
       const wrote = !READ_ACTIONS.has(action) || (action === 'm.warm' && /"imported":true/.test(text));
       if (wrote) {
@@ -251,6 +354,7 @@ export default {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM payload_cache WHERE at < ?').bind(weekAgo),
       env.DB.prepare('DELETE FROM last_view WHERE at < ?').bind(weekAgo),
+      env.DB.prepare('DELETE FROM push_subs WHERE at < ?').bind(Date.now() - 60 * 24 * 3600 * 1000),
       env.DB.prepare("DELETE FROM meta WHERE k LIKE 'lock:%' AND v < ?").bind(Date.now() - 24 * 3600 * 1000),
     ]);
   },

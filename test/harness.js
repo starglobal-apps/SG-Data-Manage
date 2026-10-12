@@ -220,4 +220,18 @@ check('staff.save again: same row re-activated (no duplicate)', stA2.ok && stRow
 var hidden = call('admin', 'staff.remove', { name: 'Name From History', kind: 'Incharge' });
 check('staff.remove of a name not in SETTINGS: hidden by a new row', hidden.ok && readTab_(CFG.TABS.MASTERS).some(r => r.type === 'STAFF' && r.key === 'Name From History' && String(r.active).toUpperCase() === 'FALSE'));
 check('staff.remove: bad kind rejected', call('admin', 'staff.remove', { name: 'X', kind: 'Boss' }).ok === false);
+// ========== 9. notifications (reply.notify, sent by the Worker) ==========
+var nTo = (r, id) => (r.notify || []).some(n => n.to.indexOf(id) >= 0);
+check('notify: attendance save -> admin, not the saver', nTo(s1, 'admin') && !nTo(s1, 'rec1') && /Attendance · Line 1-SL001/.test(s1.notify[0].title) && /by Ravi/.test(s1.notify[0].body), s1.notify);
+check('notify: same rid resent -> no second notification', !s1b.notify, s1b.notify);
+check('notify: output saved -> admin, opens Approve', nTo(o1, 'admin') && o1.notify[0].url === '#mrev' && /Output for approval/.test(o1.notify[0].title) && /150 pcs/.test(o1.notify[0].body), o1.notify);
+check('notify: transfer request -> recorder of the receiving line only', nTo(t1, 'rec2') && !nTo(t1, 'rec1') && !nTo(t1, 'admin') && /Transfer request · Line 1-SL001 → /.test(t1.notify[0].title), t1.notify);
+check('notify: transfer accepted -> who asked', nTo(t2, 'rec1') && !nTo(t2, 'rec2') && /Transfer accepted/.test(t2.notify[0].title), t2.notify);
+check('notify: transfer rejected -> who asked', nTo(t4, 'rec1') && /Transfer rejected/.test(t4.notify[0].title), t4.notify);
+check('notify: output sent back -> recorder of that line (L3: rec2) with the reason', nTo(rj, 'rec2') && !nTo(rj, 'rec1') && !nTo(rj, 'admin') && /Output sent back/.test(rj.notify[0].title) && /wrong qty/.test(rj.notify[0].body), rj.notify);
+check('notify: output approved -> line recorder', nTo(ap, 'rec1') && /Output approved/.test(ap.notify[0].title), ap.notify);
+var nr = call('rec1', 'm.out', {});
+check('notify: reads carry no notify', !nr.notify);
+var ps = call('rec1', 'push.sub', { sub: { endpoint: 'https://push.example/abc', keys: { p256dh: 'x', auth: 'y' } } });
+check('push.sub: confirms the user', ps.ok && ps.user_id === 'rec1' && call('rec1', 'push.sub', { sub: {} }).ok === false, ps);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

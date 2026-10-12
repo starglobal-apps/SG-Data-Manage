@@ -760,3 +760,7 @@ body.phone .pl-staff span { white-space: nowrap; overflow: hidden; text-overflow
 body.phone .pl-staff i { font-style: normal; font-weight: 600; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
 body.phone .pl-h .n, body.phone .pl-srn { flex: none; }
 body.phone .pl-h .n { max-width: 46%; }
+/* "turn on notifications" card (phone Attendance tab) */
+body.phone .nt-ask { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-color: #c7d6fb; background: #f4f7ff; }
+body.phone .nt-ask .b { flex: 1; min-width: 0; display: flex; flex-direction: column; } body.phone .nt-ask b { font-size: 13.5px; } body.phone .nt-ask span { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+body.phone .nt-btns { display: flex; gap: 5px; flex: none; } body.phone .nt-btns .btn.small { min-height: 30px; padding: 4px 9px; font-size: 12px; }

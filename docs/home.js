@@ -199,7 +199,7 @@
   function nm(v) { return String(v || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '').trim(); }
   function renderPhoneAtt() {
     var today = S.todayStr(), past = state.date !== today;
-    var html = '<div class="card pa-top"><div class="row">' +
+    var html = (S.notify ? S.notify.askHtml() : '') + '<div class="card pa-top"><div class="row">' +
       '<div class="field small"><label>Date</label><input type="date" id="pa-date" value="' + esc(state.date) + '" max="' + today + '"></div>' +
       '<div class="field"><label>Fill attendance · line</label><select id="pa-line"><option value="">— select line —</option>' +
         PA.lines.map(function (l) { return '<option value="' + esc(l.dept) + '">' + esc(S.shortLine(l.dept)) + (l.filled ? '  ✓' : '') + '</option>'; }).join('') + '</select></div></div>' +

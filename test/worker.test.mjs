@@ -32,7 +32,9 @@ function makeD1() {
 
 // ---------- fake Apps Script ----------
 const GAS = { n: 0, calls: [], delay: 0, mode: 'ok', big: false, warmImported: false, data: 1 };
+const PUSH = { calls: [], status: 201 };
 globalThis.fetch = async (url, init) => {
+  if (String(url).startsWith('https://push.test/')) { PUSH.calls.push({ url: String(url), headers: init.headers, body: new Uint8Array(init.body) }); return new Response('', { status: PUSH.status }); }
   const body = JSON.parse(init.body);
   GAS.calls.push(body);
   if (GAS.delay) await new Promise((r) => setTimeout(r, GAS.delay));
@@ -44,6 +46,8 @@ globalThis.fetch = async (url, init) => {
     const pad = GAS.big ? 'x'.repeat(1200000) : '';
     return new Response(JSON.stringify({ ok: true, date: body.date, factory: body.factory, user: body.token, data: GAS.data, build: GAS.n, extra: body.fresh, att: { ok: true, items: [] }, out: { ok: true }, pms: { ok: true }, rev: null, pad }));
   }
+  if (body.action === 'push.sub' || body.action === 'push.unsub') return new Response(JSON.stringify(body.token === 'bad' ? { ok: false, error: 'AUTH' } : { ok: true, user_id: body.token === 'tokA' ? 'u1' : 'u2' }));
+  if (body.action === 'x.save') return new Response(JSON.stringify({ ok: true, saved: 1, notify: GAS.notify }));
   if (body.action === 'm.warm') return new Response(JSON.stringify({ ok: true, ms: 5, imported: GAS.warmImported }));
   if (body.action === 'att.save') { GAS.data++; return new Response(JSON.stringify({ ok: true, saved: 1 })); }
   return new Response(JSON.stringify({ ok: true, action: body.action }));
@@ -165,6 +169,60 @@ const ver = () => env.DB.sql.prepare("SELECT v FROM meta WHERE k='ver'").get().v
   const v1 = ver();
   await post({ action: 'm.reviewDecide', token: 'tokA', id: 'x', decision: 'approve' }); await settle();
   check('unknown / write action bumps', ver() === v1 + 1);
+}
+
+
+// 8. phone notifications (Web Push)
+{
+  const sc = globalThis.crypto.subtle, te = new TextEncoder();
+  const b64u = (b) => Buffer.from(b).toString('base64url'), unb = (t) => new Uint8Array(Buffer.from(t, 'base64url'));
+  const hm = async (k, d) => new Uint8Array(await sc.sign('HMAC', await sc.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']), d));
+  const cat = (...a) => { const o = new Uint8Array(a.reduce((n, x) => n + x.length, 0)); let i = 0; for (const x of a) { o.set(x, i); i += x.length; } return o; };
+  // a phone: its key pair + auth secret
+  const ua = await sc.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const uaPub = new Uint8Array(await sc.exportKey('raw', ua.publicKey)), auth = crypto.getRandomValues(new Uint8Array(16));
+  const sub = { endpoint: 'https://push.test/phone1', keys: { p256dh: b64u(uaPub), auth: b64u(auth) } };
+  async function decrypt(body) {   // what the phone does (RFC 8291)
+    const salt = body.slice(0, 16), idlen = body[20], asPub = body.slice(21, 21 + idlen), ct = body.slice(21 + idlen);
+    const asKey = await sc.importKey('raw', asPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    const ecdh = new Uint8Array(await sc.deriveBits({ name: 'ECDH', public: asKey }, ua.privateKey, 256));
+    const ikm = await hm(await hm(auth, ecdh), cat(te.encode('WebPush: info\0'), uaPub, asPub, new Uint8Array([1])));
+    const prk = await hm(salt, ikm);
+    const cek = (await hm(prk, cat(te.encode('Content-Encoding: aes128gcm\0'), new Uint8Array([1])))).slice(0, 16);
+    const nonce = (await hm(prk, cat(te.encode('Content-Encoding: nonce\0'), new Uint8Array([1])))).slice(0, 12);
+    const pt = new Uint8Array(await sc.decrypt({ name: 'AES-GCM', iv: nonce }, await sc.importKey('raw', cek, 'AES-GCM', false, ['decrypt']), ct));
+    return JSON.parse(new TextDecoder().decode(pt.slice(0, pt.length - 1)));
+  }
+  const k1 = await post({ action: 'push.key' }), k2 = await post({ action: 'push.key' });
+  check('push.key: public key made once and kept', k1.json.ok && unb(k1.json.key).length === 65 && k1.json.key === k2.json.key);
+  const v0 = ver();
+  const ps = await post({ action: 'push.sub', token: 'tokA', sub });
+  const row = env.DB.sql.prepare('SELECT user_id FROM push_subs WHERE endpoint = ?').get(sub.endpoint);
+  check('push.sub: stored for the user Apps Script confirmed, no data version bump', ps.json.ok && row && row.user_id === 'u1' && ver() === v0, row);
+  await post({ action: 'push.sub', token: 'bad', sub: { endpoint: 'https://push.test/evil', keys: sub.keys } });
+  check('push.sub with a bad login: not stored', !env.DB.sql.prepare('SELECT 1 FROM push_subs WHERE endpoint = ?').get('https://push.test/evil'));
+  GAS.notify = [{ to: ['u1'], title: 'Output for approval · Line 1-SL030', body: '650 pcs · by Jeetu', tag: 'out|2026-10-12|L1|Final', url: '#mrev' }, { to: ['nobody'], title: 'x', body: 'y' }];
+  PUSH.calls = [];
+  const sv = await post({ action: 'x.save', token: 'tokB' }); await settle();
+  check('save reply passed through unchanged', sv.json.saved === 1 && sv.cache === 'BYPASS');
+  check('one push to the one phone of u1 (none for users without a phone)', PUSH.calls.length === 1 && PUSH.calls[0].url === sub.endpoint, PUSH.calls.length);
+  const pc = PUSH.calls[0], h = pc.headers;
+  const msg = await decrypt(pc.body);
+  check('push payload decrypts on the phone: title, body, url, tag', msg.title === GAS.notify[0].title && msg.body === GAS.notify[0].body && msg.url === '#mrev' && msg.tag === GAS.notify[0].tag, msg);
+  const m = /^vapid t=([^.]+)\.([^.]+)\.([^,]+), k=(.+)$/.exec(h.Authorization);
+  const claims = m && JSON.parse(Buffer.from(m[2], 'base64url').toString());
+  const vk = m && await sc.importKey('raw', unb(m[4]), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+  const sigOk = m && await sc.verify({ name: 'ECDSA', hash: 'SHA-256' }, vk, unb(m[3]), te.encode(m[1] + '.' + m[2]));
+  check('VAPID: signed JWT for the push service origin, key = push.key', !!sigOk && claims.aud === 'https://push.test' && claims.exp > Date.now() / 1000 && m[4] === k1.json.key, claims);
+  check('push headers: aes128gcm, TTL, urgency, topic', h['Content-Encoding'] === 'aes128gcm' && h.TTL === '86400' && h.Urgency === 'high' && /^[A-Za-z0-9_-]{1,32}$/.test(h.Topic));
+  PUSH.status = 410; PUSH.calls = [];
+  await post({ action: 'x.save', token: 'tokB' }); await settle(); PUSH.status = 201;
+  check('phone address gone (410) -> removed', PUSH.calls.length === 1 && !env.DB.sql.prepare('SELECT 1 FROM push_subs WHERE endpoint = ?').get(sub.endpoint));
+  await post({ action: 'push.sub', token: 'tokA', sub }); await post({ action: 'push.unsub', token: 'tokA', endpoint: sub.endpoint });
+  check('push.unsub (logout) removes the phone', !env.DB.sql.prepare('SELECT 1 FROM push_subs WHERE endpoint = ?').get(sub.endpoint));
+  PUSH.calls = []; GAS.notify = undefined;
+  await post({ action: 'x.save', token: 'tokB' }); await settle();
+  check('a save without notify sends nothing', PUSH.calls.length === 0);
 }
 
 // 7. big payload in parts, age limit, cron cleanup

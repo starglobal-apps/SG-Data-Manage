@@ -127,7 +127,7 @@
   // Worker first (when set); when it cannot be reached or crashes, the call goes to Apps Script directly and the Worker
   // is skipped for 10 min. A save that is not safe to send twice (no rid) is never re-sent automatically.
   // calls that only read (same list as READ_ACTIONS in cloudflare/src/index.js): safe to send to Apps Script after the Worker failed
-  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|outDay|reviewReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent)$/;
+  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|outDay|reviewReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent|push\.(sub|unsub|key))$/;
   function workerOn() { if (!WORKER_URL) return false; var t = 0; try { t = +localStorage.getItem('sg_wdown') || 0; } catch (e) {} return Date.now() - t > 600000; }
   function workerDown() { try { localStorage.setItem('sg_wdown', String(Date.now())); } catch (e) {} }
   function directPost(body, text, attempt, mob, again) {
@@ -261,10 +261,11 @@
         $('#in-pin').value = '';
         return loadMasters();
       })
-      .then(function () { ensureLine(); home(); flushQueue(); })
+      .then(function () { ensureLine(); home(); flushQueue(); if (SG.notify) SG.notify.refresh(); })
       .catch(function (e) { $('#login-msg').textContent = e.message; });
   }
   function logout() {
+    if (window.SG && SG.notify && state.token) SG.notify.off();   // this phone stops getting this user's notifications
     state.token = ''; state.user = null;
     localStorage.removeItem('sg_token'); localStorage.removeItem('sg_user');
     $('#nav').hidden = true; document.body.classList.remove('has-nav');
@@ -794,6 +795,9 @@
     if (isAdmin()) html += '<div class="task" data-m="users"><div class="ic">' + icon('user') + '</div><div class="b"><div class="n">Users</div><div class="s">Add or remove users, PIN, lines</div></div>' + icon('chev') + '</div>' +
       '<div class="task" data-m="staff"><div class="ic">' + icon('att') + '</div><div class="b"><div class="n">Supervisor / Incharge</div><div class="s">Add or remove the names shown in attendance</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="prefresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Fresh data</div><div class="s">Load the latest loading, SRN, attendance, output, PMS from the sheets</div></div>' + icon('chev') + '</div>';
+    var ns = SG.notify ? SG.notify.state() : 'unsupported', non = ns === 'granted' && SG.notify.on();
+    html += '<div class="task" data-m="notif"><div class="ic"' + (non ? ' style="background:var(--ok-soft);color:var(--ok)"' : '') + '>' + icon('bell') + '</div><div class="b"><div class="n">Notifications · ' + (non ? 'On' : ns === 'denied' ? 'Blocked' : ns === 'unsupported' ? 'Not available' : 'Off') + '</div><div class="s">' +
+      (non ? 'Transfer requests, approvals, sent-back output' : ns === 'denied' ? 'Allow notifications for this app in the phone settings' : ns === 'unsupported' ? 'iPhone: add the app to the Home Screen first' : 'Tap to turn on') + '</div></div>' + icon('chev') + '</div>';
     if (isAdmin()) html += '<div class="task" data-m="import"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Import data</div><div class="s">Main sheets → MASTER DATA (runs in background, 1–2 min)</div></div>' + icon('chev') + '</div>';
     html += '</div>';
     if (q.length) html += queueHtml(q);
@@ -823,6 +827,7 @@
     else if (m === 'users') screens.users();
     else if (m === 'hard') hardRefresh();
     else if (m === 'prefresh') phoneRefresh();
+    else if (m === 'notif') { if (SG.notify) SG.notify.enable().then(function () { tabs.main(); }); }
     else if (m === 'import') ask(tx('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', 'Run import in the background? It takes 1–2 minutes.'), { ok: tx('Chalao', 'Run') }).then(function (ok) { if (!ok) return; toast(tx('Import chal raha hai… (lagbhag 30 sec)', 'Import running… (about 30 sec)'), '', 6000); api('admin.importNow', {}, { quiet: true }).then(function (d) { toast(d.running ? tx('Import pehle se chal raha hai — 2 min baad Refresh karo', 'Import is already running — try again in 2 min') : tx('Import ho gaya ✓', 'Import done ✓ — loading the new data'), 'ok', 8000); if (d.done && SG.pd) { SG.pd.dirty = true; SG.pd.load(true).catch(function () {}); } }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
     else if (m === 'print') SG.printSrn();
     else if (m === 'staff') screens.staff();
@@ -896,6 +901,7 @@
     if (state.token && state.user) {
       var shown = !!state.masters;
       if (shown) { ensureLine(); home(); }
+      if (SG.notify) { SG.notify.openFromHash(); setTimeout(SG.notify.refresh, 3000); }
       var meAt = 0; try { meAt = Number(localStorage.getItem('sg_me_at') || 0); } catch (e) {}
       var meP = isMobile() && shown && Date.now() - meAt < 6 * 3600 * 1000 ? Promise.resolve({ user: state.user }) : api('me', {}, { quiet: true }).then(function (d) { try { localStorage.setItem('sg_me_at', String(Date.now())); } catch (e) {} return d; });
       meP.then(function (d) { if (d.token) { state.token = d.token; localStorage.setItem('sg_token', d.token); } setUser(d.user); return isMobile() && mastersFresh() ? null : loadMasters(); }).then(function () { ensureLine(); $$('.manager-only').forEach(function (el) { el.hidden = !isManager(); }); $$('.admin-only').forEach(function (el) { el.hidden = !isAdmin(); }); if (!nav.sub && !(shown && isMobile())) tab(nav.tab); else applyRoleNav(); flushQueue(); })

@@ -33,15 +33,20 @@ function doPost(e) {
       var res;
       try { res = handler(req, user); } catch (e) { rc.remove(rk); throw e; }
       if (res && res.ok) rc.put(rk, JSON.stringify(res), 21600); else rc.remove(rk);
-      return out_(res);
+      return out_(withNotify_(action, req, user, res));
     }
-    return out_(handler(req, user));
+    return out_(withNotify_(action, req, user, handler(req, user)));
   } catch (err) {
     return json_(str_(req.lang) === 'en' ? enReply_(fail_('SERVER', String(err && err.message || err))) : fail_('SERVER', String(err && err.message || err)));
   }
 }
 
 var ONCE_ACTIONS_ = { 'att.save': 1, 'm.attUpd': 1, 'm.attSync': 1, 'm.outSave': 1 };
+// phone notifications for this save (gas/Notify.js) ride on the reply; a failure there never fails the save
+function withNotify_(action, req, user, res) {
+  try { var n = notifyFor_(action, req, user, res); if (n) res.notify = n; } catch (e) {}
+  return res;
+}
 
 function routes_() {
   return {
@@ -88,6 +93,8 @@ function routes_() {
     'm.warm':         mWarm_,
     'm.all':          mAll_,
     'm.trDecide':     mTrDecide_,
+    'push.sub':       pushSub_,
+    'push.unsub':     pushUnsub_,
     'target.get':     targetGet_,
     'target.sam':     targetSamSave_,
     'defects.list':   defectsList_,
