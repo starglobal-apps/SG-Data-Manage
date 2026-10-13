@@ -416,17 +416,41 @@ function mTrDecide_(req, user) {
   if (!lineVisible_(user, toOwners, to)) return fail_('PERM', 'Only ' + toOwners.join(', ') + ' (recorder of ' + to.replace(/^FAC\d+-/, '') + ') can accept this transfer');
   var items = parseJsonArr_(t.items), stamp = nowStr_(), by = userName_(user), hour = trHourOf_(t.time);
   var after = shiftHours_('Final') - trHoursBefore_(hour);
+  // accept: the people may be split over this line and other lines (allocations [{ dept, role, count }]); none = all to this line
+  var allocs = items.map(function(x) { return { dept: to, role: str_(x.role), count: num_(x.count) }; });
+  if (action === 'accept' && Array.isArray(req.allocations) && req.allocations.length) {
+    allocs = req.allocations.map(function(a) { return { dept: str_(a.dept), role: str_(a.role), count: num_(a.count) }; }).filter(function(a) { return a.count > 0; });
+    var need = {}, got = {};
+    items.forEach(function(x) { need[str_(x.role)] = (need[str_(x.role)] || 0) + num_(x.count); });
+    for (var i = 0; i < allocs.length; i++) {
+      var a = allocs[i];
+      if (!a.dept || !a.role || Math.floor(a.count) !== a.count) return fail_('VAL', 'Select the line and a whole number for every row');
+      if (need[a.role] === undefined) return fail_('VAL', a.role + ' was not in this transfer');
+      if (a.dept === from) return fail_('VAL', 'They come from ' + from.replace(/^FAC\d+-/, '') + ' — to keep them there, reject the transfer');
+      var known = mastersRows_().some(function(r) { return str_(r.type) === 'DEPT' && str_(r.key) === a.dept && str_(r.factory) === factory && isTrue_(r.active); });
+      if (!known) return fail_('VAL', 'Line not found: ' + a.dept);
+      if (!canWrite_(user, factory, a.dept)) return fail_('PERM', 'No permission for ' + a.dept);
+      got[a.role] = (got[a.role] || 0) + a.count;
+    }
+    var off = Object.keys(need).filter(function(r) { return (got[r] || 0) !== need[r]; })[0];
+    if (off) return fail_('VAL', off + ': ' + need[off] + ' came, ' + (got[off] || 0) + ' placed — place all of them');
+  }
+  var allocDepts = []; allocs.forEach(function(a) { if (allocDepts.indexOf(a.dept) < 0) allocDepts.push(a.dept); });
   withLock_(function() {
     if (action === 'accept') {
-      var base = appAttOrCopy_(date, factory, to, by, stamp);   // receiving line's attendance typed in the sheet comes into the app first
-      if (base.add.length) appendRows_(CFG.TABS.ATT_DAILY, base.add);
-      appendRows_(CFG.TABS.MANPOWER_EVENTS, base.evs.concat(items.map(function(x) {
-        return { id: uuid_(), date: date, factory: factory, dept: to, role: str_(x.role), event: 'TRANSFER_IN', count: num_(x.count), time: str_(t.time),
+      var add = [], evs = [];
+      allocDepts.forEach(function(d) {   // a line's attendance typed in the sheet comes into the app first
+        var base = appAttOrCopy_(date, factory, d, by, stamp); add = add.concat(base.add); evs = evs.concat(base.evs);
+      });
+      if (add.length) appendRows_(CFG.TABS.ATT_DAILY, add);
+      appendRows_(CFG.TABS.MANPOWER_EVENTS, evs.concat(allocs.map(function(a) {
+        return { id: uuid_(), date: date, factory: factory, dept: a.dept, role: a.role, event: 'TRANSFER_IN', count: a.count, time: str_(t.time),
                  eff_hours: after, note: 'transfer:' + id + ' ← ' + from, entered_by: by, entered_at: stamp };
       })));
     }
     var sh = tab_(CFG.TABS.TRANSFERS, true), head = physHeadOf_(CFG.TABS.TRANSFERS);
     sh.getRange(t._row, head.indexOf('status') + 1).setValue(action === 'accept' ? 'Accepted' : 'Rejected');
+    if (action === 'accept') sh.getRange(t._row, head.indexOf('allocations') + 1).setValue(JSON.stringify(allocs));
     sh.getRange(t._row, head.indexOf('decided_by') + 1).setValue(by);
     sh.getRange(t._row, head.indexOf('decided_at') + 1).setValue(stamp);
     if (action !== 'accept') {   // last: deleting event rows shifts the rows of this sheet
@@ -435,9 +459,10 @@ function mTrDecide_(req, user) {
     }
   });
   invalidateDaily_(CFG.TABS.TRANSFERS);
-  audit_(user, 'transfer.' + action, id, { to: to });
-  var s = attSync_(date, factory, action === 'accept' ? to : from, 'Final', user, true);
-  return { ok: true, sheetError: s.ok ? '' : s.message };
+  audit_(user, 'transfer.' + action, id, { to: to, allocations: action === 'accept' ? allocs : undefined });
+  var errs = [];
+  (action === 'accept' ? allocDepts : [from]).forEach(function(d) { var s = attSync_(date, factory, d, 'Final', user, true); if (!s.ok) errs.push(s.message); });
+  return { ok: true, allocations: action === 'accept' ? allocs : [], sheetError: errs.join(' · ') };
 }
 
 // transfers for the phone Attendance tab: requests waiting for my lines (any recent day) and my lines' transfers of the date
@@ -451,7 +476,15 @@ function mTransfers_(date, factory, user, depts) {
               items: parseJsonArr_(r.items), total: num_(r.count), status: str_(r.status), by: str_(r.by) };
     if (x.status === 'Pending' && mine[x.to] && x.date >= since && lineVisible_(user, attOwners_(att, x.date, x.to, 'Final'), x.to)) incoming.push(x);   // the receiving line's recorder decides
     if (x.date === date && mine[x.from]) (out[x.from] = out[x.from] || []).push(x);
-    if (x.date === date && mine[x.to] && x.status === 'Accepted') (out[x.to] = out[x.to] || []).push(x);
+    if (x.date === date && x.status === 'Accepted') {
+      var al = parseJsonArr_(r.allocations), byDept = {};
+      if (!al.length) al = x.items.map(function(i) { return { dept: x.to, role: i.role, count: i.count }; });
+      al.forEach(function(a) { var d = str_(a.dept); (byDept[d] = byDept[d] || []).push({ role: str_(a.role), count: num_(a.count) }); });
+      Object.keys(byDept).forEach(function(d) {
+        if (!mine[d]) return;
+        (out[d] = out[d] || []).push(Object.assign({}, x, { to: d, items: byDept[d], total: byDept[d].reduce(function(t2, i) { return t2 + i.count; }, 0) }));
+      });
+    }
   });
   return { incoming: incoming, byLine: out };
 }

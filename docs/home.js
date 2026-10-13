@@ -301,14 +301,70 @@
   }
   function trDecide(id, action) {
     var t = PA.incoming.filter(function (i) { return i.id === id; })[0]; if (!t) return;
-    var msg = action === 'accept' ? 'Accept ' + t.total + (t.total > 1 ? ' people' : ' person') + ' from ' + S.shortLine(t.from) + ' on ' + S.shortLine(t.to) + ' from ' + hourLabel(t.hour) + '?' : 'Reject this transfer? The people stay on ' + S.shortLine(t.from) + '.';
-    S.ask(msg, { ok: action === 'accept' ? 'Accept' : 'Reject', cancel: 'Cancel', danger: action !== 'accept' }).then(function (ok) {
+    if (action === 'accept') { acceptSheet(t); return; }
+    S.ask('Reject this transfer? The people stay on ' + S.shortLine(t.from) + '.', { ok: 'Reject', cancel: 'Cancel', danger: true }).then(function (ok) {
       if (!ok) return;
-      S.pd.send('m.trDecide', { id: id, decision: action, factory: state.factory },
-        { dept: t.to, date: state.date, shift: 'Final', kind: 'trd', trId: id, label: (action === 'accept' ? 'Accept' : 'Reject') + ' transfer from ' + S.shortLine(t.from) });
-      S.toast(action === 'accept' ? 'Accepting — ' + S.shortLine(t.to) + ' gets them from ' + hourLabel(t.hour) : 'Rejecting the transfer', 'ok', 4000);
+      S.pd.send('m.trDecide', { id: id, decision: 'reject', factory: state.factory },
+        { dept: t.to, date: state.date, shift: 'Final', kind: 'trd', trId: id, label: 'Reject transfer from ' + S.shortLine(t.from) });
+      S.toast('Rejecting the transfer', 'ok', 4000);
     });
   }
+  // Accept: the people of each type stay on this line, or are split over this line and other lines (e.g. 10 operators:
+  // 5 here, 5 to Line 3). Every person must be placed; the server checks it again.
+  function acceptSheet(t) {
+    var lines = PA.allLines.filter(function (l) { return l.dept !== t.from; });
+    var rows = t.items.map(function (i) { return [{ dept: t.to, count: i.count }]; });
+    var placed = function (ri) { return rows[ri].reduce(function (a, r) { return a + (Number(r.count) || 0); }, 0); };
+    var opts = function (sel) {
+      return '<option value="">— line —</option>' + lines.map(function (l) { return '<option value="' + esc(l.dept) + '"' + (l.dept === sel ? ' selected' : '') + '>' + esc(S.shortLine(l.dept)) + (l.dept === t.to ? ' (this line)' : '') + '</option>'; }).join('');
+    };
+    function body() {
+      return '<p class="hint" style="margin:0 0 8px"><b>' + t.total + (t.total > 1 ? ' people' : ' person') + '</b> from ' + esc(S.shortLine(t.from)) + ', working from <b>' + hourLabel(t.hour) + '</b>. Keep them on ' + esc(S.shortLine(t.to)) + ' or split them over lines.</p>' +
+        t.items.map(function (i, ri) {
+          var n = placed(ri);
+          return '<div class="ac-role"><div class="ac-h"><b>' + i.count + ' ' + esc(i.role) + '</b><span id="ac-n' + ri + '" class="' + (n === i.count ? 'ok' : 'bad') + '">' + n + ' of ' + i.count + ' placed</span></div>' +
+            rows[ri].map(function (r, k) {
+              return '<div class="ac-row"><select data-acl="' + ri + '|' + k + '">' + opts(r.dept) + '</select><input type="number" inputmode="numeric" min="0" data-acn="' + ri + '|' + k + '" value="' + (r.count || '') + '" placeholder="0">' +
+                (k ? '<button type="button" class="ac-x" data-acx="' + ri + '|' + k + '">✕</button>' : '<span class="ac-x"></span>') + '</div>';
+            }).join('') +
+            '<button type="button" class="lnk" data-acadd="' + ri + '">+ Another line</button></div>';
+        }).join('') +
+        '<button class="btn ok big" data-acgo="1">Accept</button>';
+    }
+    function redraw() { S.sheet.keepScroll(function () { $('#sheet-content').innerHTML = body(); }); }
+    S.sheet.open('Accept transfer · ' + S.shortLine(t.from) + ' → ' + S.shortLine(t.to), body());
+    var c = $('#sheet-content');
+    c.oninput = c.onchange = function (e) {
+      var el = e.target, key = el.dataset.acn || el.dataset.acl; if (!key) return;
+      var p = key.split('|'), ri = +p[0], k = +p[1];
+      if (el.dataset.acn !== undefined) rows[ri][k].count = el.value === '' ? 0 : Number(el.value); else rows[ri][k].dept = el.value;
+      var n = placed(ri), tag = $('#ac-n' + ri); if (tag) { tag.textContent = n + ' of ' + t.items[ri].count + ' placed'; tag.className = n === t.items[ri].count ? 'ok' : 'bad'; }
+    };
+    c.onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.acadd !== undefined) { var ri = +b.dataset.acadd; rows[ri].push({ dept: '', count: Math.max(0, t.items[ri].count - placed(ri)) }); redraw(); return; }
+      if (b.dataset.acx) { var q = b.dataset.acx.split('|'); rows[+q[0]].splice(+q[1], 1); redraw(); return; }
+      if (b.dataset.acgo) {
+        var allocs = [], err = '';
+        t.items.forEach(function (i, ri) {
+          rows[ri].forEach(function (r) {
+            var n = Number(r.count) || 0;
+            if (n < 0 || Math.floor(n) !== n) err = err || 'Enter whole numbers';
+            if (n > 0 && !r.dept) err = err || 'Select the line for ' + n + ' ' + i.role;
+            if (n > 0 && r.dept) allocs.push({ dept: r.dept, role: i.role, count: n });
+          });
+          if (placed(ri) !== i.count) err = err || i.role + ': ' + i.count + ' came, ' + placed(ri) + ' placed — place all of them';
+        });
+        if (err) { S.toast(err, 'bad', 5000); return; }
+        var split = allocs.some(function (a) { return a.dept !== t.to; });
+        S.sheet.close();
+        S.pd.send('m.trDecide', { id: t.id, decision: 'accept', factory: state.factory, allocations: allocs },
+          { dept: t.to, date: state.date, shift: 'Final', kind: 'trd', trId: t.id, label: 'Accept transfer from ' + S.shortLine(t.from) });
+        S.toast(split ? 'Accepting — split over ' + allocs.map(function (a) { return S.shortLine(a.dept); }).filter(function (v, x, arr) { return arr.indexOf(v) === x; }).join(', ') : 'Accepting — ' + S.shortLine(t.to) + ' gets them from ' + hourLabel(t.hour), 'ok', 4500);
+      }
+    };
+  }
+
 
   // "Update attendance": mark absent / half day for a manpower type of the line (half day asks the hours worked)
   S.phoneLineFilled = function (dept) { return PA.items.some(function (i) { return i.dept === dept && !i.fromSheet; }); };

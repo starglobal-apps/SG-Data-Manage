@@ -282,4 +282,23 @@ check('transfer to L3: only its recorder (Ravi) can accept', txL3.ok && nTo(txL3
 var pst = call('admin', 'push.status', {}), pstR = call('rec1', 'push.status', {}), ptt = call('rec1', 'push.test', {});
 check('push.status: admin gets the active users, a recorder is refused', pst.ok && pst.users.some(u => u.id === 'rec1' && u.name === 'Ravi') && pstR.ok === false && pstR.error === 'PERM', [pstR]);
 check('push.test: confirms who asked', ptt.ok && ptt.user_id === 'rec1');
+// ========== 14. accept a transfer and split the people over several lines ==========
+var sp = call('newrec', 'm.trCreate', { rid: 'sp1', date: TODAY, factory: '666', from_dept: L2, to_dept: L1, hour: 14, items: [{ role: 'Operator', count: 4 }] });
+var spBad1 = call('rec1', 'm.trDecide', { rid: 'spb1', id: sp.id, decision: 'accept', allocations: [{ dept: L1, role: 'Operator', count: 2 }, { dept: L3, role: 'Operator', count: 1 }] });
+var spBad2 = call('rec1', 'm.trDecide', { rid: 'spb2', id: sp.id, decision: 'accept', allocations: [{ dept: L1, role: 'Operator', count: 2 }, { dept: L2, role: 'Operator', count: 2 }] });
+check('split: totals must match, and not back to the line they came from', sp.ok && spBad1.ok === false && /4 came, 3 placed/.test(spBad1.message) && spBad2.ok === false && /reject/.test(spBad2.message), [sp.message, spBad1.message, spBad2.message]);
+var l3SheetBefore = attSheetRows(L3, TODAY).length;
+var spOk = call('rec1', 'm.trDecide', { rid: 'spok', id: sp.id, decision: 'accept', allocations: [{ dept: L1, role: 'Operator', count: 2 }, { dept: L3, role: 'Operator', count: 2 }] });
+var spEv = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(e => e.event === 'TRANSFER_IN' && String(e.note).indexOf('transfer:' + sp.id) === 0);
+var spRow = readTab_(CFG.TABS.TRANSFERS).filter(t => t.id === sp.id)[0];
+check('split: 2 in on L1 and 2 in on L3, allocations kept, status Accepted', spOk.ok && spEv.length === 2 && spEv.some(e => e.dept === L1 && +e.count === 2) && spEv.some(e => e.dept === L3 && +e.count === 2) && spRow.status === 'Accepted' && JSON.parse(spRow.allocations).length === 2, [spOk.message, spEv.map(e => e.dept + ':' + e.count)]);
+var l3Sheet = attSheetRows(L3, TODAY);
+check('split: L3 main sheet has the 2 transferred-in operators', l3Sheet.some(r => r.role === 'Operator' && r.count === 2 && /transferred in/.test(r.remark)), l3Sheet);
+var spView = call('rec1', 'm.att', { date: TODAY, factory: '666' });
+var l3Item = spView.items.filter(x => x.dept === L3)[0], l1Item = spView.items.filter(x => x.dept === L1)[0];
+check('split: each line card lists the transfer with its own people', l3Item && l3Item.transfers.some(t => t.id === sp.id && t.total === 2) && l1Item.transfers.some(t => t.id === sp.id && t.total === 2), [l3Item && l3Item.transfers]);
+check('split: requester + admin told where they went', nTo(spOk, nrTok.user.user_id) && nTo(spOk, 'admin') && /Line 1-SL001 \(2 Operator\), Line 3-SL003 \(2 Operator\)/.test(spOk.notify[0].body), spOk.notify);
+var plain = call('newrec', 'm.trCreate', { rid: 'sp2', date: TODAY, factory: '666', from_dept: L2, to_dept: L1, hour: 15, items: [{ role: 'Operator', count: 1 }] });
+var plainOk = call('rec1', 'm.trDecide', { rid: 'sp2ok', id: plain.id, decision: 'accept' });
+check('accept without a split: all to the receiving line (as before)', plainOk.ok && readTab_(CFG.TABS.MANPOWER_EVENTS).some(e => e.event === 'TRANSFER_IN' && String(e.note).indexOf('transfer:' + plain.id) === 0 && e.dept === L1 && +e.count === 1));
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

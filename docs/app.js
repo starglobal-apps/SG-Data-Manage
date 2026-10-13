@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v84';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v85';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -154,7 +154,7 @@
     var noWorker = { ok: false, error: 'BUSY', message: 'Notification server not reachable — check the internet and try again' };
     if (pushCall && !WORKER_URL) return Promise.resolve(noWorker);
     // after a Worker failure only reads skip it for 2 min; saves always try it first (their notifications are sent there)
-    if (!pushCall && !workerOn() && READ_CALLS.test(String(body.action))) return directPost(body, text, 0, mob, again);
+    if (!pushCall && (!WORKER_URL || (!workerOn() && READ_CALLS.test(String(body.action))))) return directPost(body, text, 0, mob, again);
     return fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: text })
       .then(function (r) {
         var xc = r.headers.get('X-Cache');

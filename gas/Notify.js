@@ -8,7 +8,7 @@
 //   half day / absent update                         -> admins
 //   output sent for approval                         -> admins
 //   transfer request                                 -> the recorder named on the receiving line's attendance (else its line users, else admins)
-//   transfer accepted / rejected                     -> who made the request + admins
+//   transfer accepted / rejected                     -> who made the request + admins; lines it was split to -> their recorders
 //   output approved / sent back / edited by admin    -> who submitted it + the recorder named on that line's attendance
 
 function notifyFor_(action, req, user, res) {
@@ -48,9 +48,17 @@ function notifyFor_(action, req, user, res) {
   else if (action === 'm.trDecide') {
     var t = readDaily_(CFG.TABS.TRANSFERS).filter(function(r) { return str_(r.id) === str_(req.id); })[0];
     if (t) {
-      var ok = str_(req.decision) === 'accept';
+      var ok = str_(req.decision) === 'accept', al = ok ? (res.allocations || []) : [], perLine = {};
+      al.forEach(function(a) { var d = str_(a.dept); (perLine[d] = perLine[d] || []).push(num_(a.count) + ' ' + str_(a.role)); });
+      var lines = Object.keys(perLine);
+      var where = lines.length > 1 || (lines.length === 1 && lines[0] !== str_(t.to_dept)) ? lines.map(function(d) { return L(d) + ' (' + perLine[d].join(', ') + ')'; }).join(', ') : L(t.to_dept);
       add(notifyUsersByName_(t.by).concat(notifyAdmins_(str_(t.factory))), 'Transfer ' + (ok ? 'accepted' : 'rejected') + ' · ' + L(t.from_dept) + ' → ' + L(t.to_dept),
-        num_(t.count) + ' people · ' + (ok ? 'they work on ' + L(t.to_dept) + ' from ' + str_(t.time) : 'they stay on ' + L(t.from_dept)) + ' · by ' + by, 'tr|' + str_(t.id), '#matt');
+        num_(t.count) + ' people · ' + (ok ? 'they work on ' + where + ' from ' + str_(t.time) : 'they stay on ' + L(t.from_dept)) + ' · by ' + by, 'tr|' + str_(t.id), '#matt');
+      // other lines that got people: their recorders are told
+      lines.forEach(function(d) {
+        if (d === str_(t.to_dept)) return;
+        add(notifyRecorders_(str_(t.date), str_(t.factory), d, me), 'Manpower added · ' + L(d), perLine[d].join(', ') + ' from ' + str_(t.time) + ' (transfer from ' + L(t.from_dept) + ') · by ' + by, 'tr|' + str_(t.id) + '|' + d, '#matt');
+      });
     }
   }
   else if (action === 'm.reviewDecide' || action === 'm.reviewEdit') {
