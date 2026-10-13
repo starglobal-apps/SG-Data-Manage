@@ -787,3 +787,6 @@ body.phone .rp-top .row { align-items: flex-end; gap: 8px; } body.phone .rp-top 
 .rp-sum div { background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; text-align: center; }
 .rp-sum small { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; } .rp-sum b { font-size: 17px; } .rp-sum b.bad { color: var(--bad); }
 .pm-card[data-rep] { cursor: pointer; } .pm-card[data-rep]:active { background: var(--soft); }
+/* report image preview */
+.si-prev { background: #e5e7eb; border-radius: 10px; padding: 6px; margin: 0 0 8px; max-height: 55vh; overflow: auto; }
+.si-prev img { display: block; width: 100%; height: auto; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.15); background: #fff; }

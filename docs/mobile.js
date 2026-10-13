@@ -72,7 +72,7 @@
       html += '<h2 class="mo-date">Filled today <span>' + t + ' pcs</span></h2>' + O.done.map(function (l) {
         return '<div class="mo-card done lock"><span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + '</span><span class="s">' + l.entries.map(function (e) { return esc(e.srn); }).join(', ') + ' · ' + l.mp + ' people</span>' + (l.status ? '<span class="st">' + esc(statusText(l.status)) + '</span>' : '') + '</span><span class="v">' + total(l) + '<small>pcs</small></span></div>';
       }).join('');
-      html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="1" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send today\'s output to group</button></div>';
+      html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="1" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Share today\'s output (image)</button></div>';
     }
     $('#mout-body').innerHTML = html;
   }
@@ -177,6 +177,23 @@
     out.push('- ' + (state.user.name || ''));
     return out.join('\n');
   }
+  // ---- today's output as an image (WhatsApp group): one row per line / shift / SRN, total at the end
+  function outputImage() {
+    var p = O.today.split('-'), rows = [], grand = 0;
+    O.done.forEach(function (l) {
+      var t = total(l); if (!t) return; grand += t;
+      var es = l.entries.filter(function (e) { return e.total; });
+      es.forEach(function (e, i) {
+        rows.push({ cells: [i ? '' : S.shortLine(l.dept), i ? '' : (l.shift === 'Final' ? 'Shift' : l.shift), e.srn, i ? '' : String(l.mp) + (l.mp !== l.mpBase ? ' (' + l.mpBase + ')' : ''), String(e.total)], boldCols: [4] });
+      });
+    });
+    rows.push({ fill: '#f3f4f6', bold: true, cells: ['Total', '', '', '', String(grand)] });
+    return S.tableImage({
+      title: 'Stitching Output', sub: p[2] + '/' + p[1] + '/' + p[0] + ' · FAC' + state.factory,
+      cols: [{ t: 'Line', w: 300, align: 'left' }, { t: 'Shift', w: 90 }, { t: 'SRN', w: 150 }, { t: 'Manpower', w: 130 }, { t: 'Output pcs', w: 130 }],
+      rows: rows, foot: ['Total output ' + grand + ' pcs'], stamp: S.imgStamp()
+    });
+  }
   S.shareText = function (title, text) {
     S.sheet.open(title, '<pre class="wa-prev">' + esc(text) + '</pre>' +
       '<a class="btn big wa" id="wa-open" href="https://wa.me/?text=' + encodeURIComponent(text) + '" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none">' + icon('wa') + ' Send on WhatsApp</a>' +
@@ -197,7 +214,7 @@
     if (b.dataset.view) { O.view = b.dataset.view; if (O.view === 'day') loadDay(); else render(); return; }
     if (b.dataset.open) { var p = b.dataset.open.split('|'); openLine(O.groups[+p[0]] && O.groups[+p[0]].lines[+p[1]]); return; }
     if (b.dataset.wopen) { openLine(O.waiting[+b.dataset.wopen]); return; }
-    if (b.dataset.wa) { S.shareText('Send output to group', waOutputText()); return; }
+    if (b.dataset.wa) { if (!O.done.some(function (l) { return total(l); })) { toast('No output filled today yet', 'bad'); return; } S.shareImage('Send output to group', outputImage(), 'Output_FAC' + state.factory + '_' + O.today + '.png'); return; }
     if (b.dataset.reload) { $('#mout-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false, true).catch(fail); return; }
   });
 })();

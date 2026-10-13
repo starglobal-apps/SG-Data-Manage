@@ -31,7 +31,7 @@
         html += '<div class="rp-sum"><div><small>Output</small><b>' + n(out) + '</b></div><div><small>Loading</small><b>' + n(load) + '</b></div><div><small>Balance</small><b class="' + (load - out < 0 ? 'bad' : '') + '">' + n(load - out) + '</b></div></div>';
         html += S.morTable(r, {});
         html += '<p class="hint" style="margin:6px 0">Light rows = output in the app, waiting for approval / not in the main sheet yet.</p>';
-        html += '<button class="btn big wa" id="rp-wa" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send on WhatsApp</button>';
+        html += '<button class="btn big wa" id="rp-wa" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Share image on WhatsApp</button>';
       }
     }
     $('#mrep-body').innerHTML = html;
@@ -47,7 +47,34 @@
   }
   S.openSrnReport = function (srn) { S.tab('mrep'); load(srn); };
 
-  // WhatsApp: the same plain style as the output message
+  // WhatsApp: an image of the report in its printed format (the text version stays below for reference)
+  function reportImage(r) {
+    var h = r.head || {}, info = r.info || {}, nm = function (v) { return String(v || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, ''); };
+    var v = function (x) { return x === '' || x === null || x === undefined ? '' : n(x); };
+    var last = r.rows.length ? r.rows[r.rows.length - 1] : {}, out = +last.total || 0, ld = +last.loadTotal || 0;
+    var rows = [];
+    if (r.carry) rows.push({ fill: '#f3f4f6', bold: true, cells: ['Carry fwd', r.carry.days + ' days', v(r.carry.plan), v(r.carry.actual), v(r.carry.total), v(r.carry.variance), '', '', '', '', '', '', '', '', '', v(r.carry.load), v(r.carry.loadTotal)] });
+    r.rows.forEach(function (x) {
+      var p = (x.date || '').split('-'), d = p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0].slice(2) : x.date;
+      rows.push({ fill: x.src === 'app' ? '#eef3ff' : '', boldCols: [4], colors: { 5: x.variance > 0 ? '#c81e1e' : '' },
+        cells: [d, x.shift === 'OT' ? 'OT' : x.shift ? 'Shift' : '', v(x.plan), x.src === 'loading' ? '' : v(x.actual), v(x.total), v(x.variance), x.remark || '',
+                v(x.op), v(x.r1), v(x.r2), v(x.r4), v(x.r3), v(x.r5), v(x.hours), x.challan || '', v(x.load), v(x.loadTotal)] });
+    });
+    return S.tableImage({
+      title: 'Making Output Report', sub: [h.factory, S.shortLine(r.dept), r.srn].join(' · '),
+      info: [['Factory', h.factory], ['Incharge', nm(h.incharge)], ['SRN', r.srn + (info.item ? ' · ' + info.item : '') + (info.buyer ? ' (' + info.buyer + ')' : '')], ['Supervisor', nm(h.supervisor)],
+             ['Line', S.shortLine(r.dept)], ['Junior supervisor', nm(h.junior)]],
+      groups: [{ t: 'Output detail', n: 7 }, { t: 'Manpower detail', n: 7 }, { t: 'Loading details', n: 3 }],
+      cols: [{ t: 'Date', w: 104 }, { t: 'Operation', w: 84 }, { t: 'Plan output', w: 84 }, { t: 'Actual output', w: 88 }, { t: 'Total act output', w: 100 }, { t: 'Variance', w: 88 }, { t: 'Remark / reason', w: 210, align: 'left' },
+             { t: 'Operator', w: 82 }, { t: 'Helper', w: 72 }, { t: 'Paster', w: 72 }, { t: 'Endline QC', w: 80 }, { t: 'Thread cutter', w: 80 }, { t: 'Hand needle', w: 80 }, { t: 'Working hour', w: 80 },
+             { t: 'Challan no.', w: 120 }, { t: 'Loading qty', w: 84 }, { t: 'Total loading', w: 96 }],
+      rows: rows,
+      foot: ['Total output ' + n(out) + ' pcs   ·   Total loading ' + n(ld) + ' pcs   ·   Balance ' + n(ld - out) + ' pcs'],
+      stamp: S.imgStamp()
+    });
+  }
+
+  // plain-text version (kept for reference / copy)
   function waText(r) {
     var info = r.info || {}, rows = r.rows.filter(function (x) { return x.src !== 'loading' || x.load; });
     var last = r.rows.length ? r.rows[r.rows.length - 1] : {}, out = +last.total || 0, load = +last.loadTotal || 0;
@@ -70,7 +97,7 @@
     var b = e.target.closest('button'); if (!b) return;
     if (b.id === 'rp-go') { load($('#rp-srn').value); return; }
     if (b.dataset.rpl) { load(P.srn, b.dataset.rpl); return; }
-    if (b.id === 'rp-wa' && P.r) S.shareText('Send report on WhatsApp', waText(P.r));
+    if (b.id === 'rp-wa' && P.r) S.shareImage('Making Output Report', reportImage(P.r), 'Making_' + S.shortLine(P.r.dept).replace(/[^A-Za-z0-9-]+/g, '') + '_' + P.r.srn + '_' + S.todayStr() + '.png');
   });
   $('#tab-mrep').addEventListener('change', function (e) { if (e.target.id === 'rp-srn' && e.target.value) load(e.target.value); });
   $('#tab-mrep').addEventListener('keydown', function (e) { if (e.target.id === 'rp-srn' && e.key === 'Enter') { e.preventDefault(); load(e.target.value); } });
