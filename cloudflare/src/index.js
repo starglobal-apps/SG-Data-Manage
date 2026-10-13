@@ -10,7 +10,7 @@
 const CACHED_ACTION = 'm.all';
 // Calls that only read. Any other call may change data, so it bumps the global data version.
 const READ_ACTIONS = new Set([
-  'ping', 'login', 'me', 'masters', 'm.all', 'm.att', 'm.out', 'm.pms', 'm.outDay', 'm.reviewReport', 'm.warm',
+  'ping', 'login', 'me', 'masters', 'm.all', 'm.att', 'm.out', 'm.pms', 'm.outDay', 'm.reviewReport', 'm.srnReport', 'm.warm',
   'att.get', 'att.status', 'att.prev', 'att.today', 'orders.active', 'hourly.get', 'hourly.day', 'hourly.rows', 'hour.get',
   'factory.today', 'line.today', 'review.count', 'review.list', 'users.recorders', 'users.list', 'staff.list', 'pms.get',
   'report.check', 'report.line', 'report.packing', 'report.srn', 'report.endline', 'target.get', 'defects.list',

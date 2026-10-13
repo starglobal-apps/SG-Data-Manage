@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v86';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v87';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -84,7 +84,7 @@
     if (name === 'review' && !isAdmin()) name = 'home';
     if (isRecorder() && (name === 'reports' || name === 'data' || name === 'pms')) name = 'home';
     if (isMobile() && PHONE_TABS.indexOf(name) < 0) name = 'matt';
-    if (!isMobile() && (name === 'matt' || name === 'mout' || name === 'mpms' || name === 'mrev')) name = 'home';
+    if (!isMobile() && (name === 'matt' || name === 'mout' || name === 'mpms' || name === 'mrep' || name === 'mrev')) name = 'home';
     if (name === 'mrev' && !isAdmin()) name = 'matt';
     applyRoleNav();
     if (nav.sub || nav.tab !== name) pushHist({ tab: name });
@@ -99,6 +99,7 @@
     else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
     else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · pending', false);
     else if (name === 'mpms') setHeader('PMS data', 'FAC' + state.factory + ' · not shipped', false);
+    else if (name === 'mrep') setHeader('SRN report', 'FAC' + state.factory + ' · day-wise', false);
     else if (name === 'mrev') setHeader('Approve output', 'FAC' + state.factory + ' · waiting for approval', false);
     else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
@@ -124,11 +125,11 @@
   // Google sometimes answers with an HTML page instead of JSON (just after a new version is published, or when too many
   // requests run at once). Phone: calls that are safe to repeat (login, reading, background saves with an id) are tried
   // again up to 3 times; otherwise a clear "server busy" message instead of a JSON error.
-  var SAFE_AGAIN = /^(login|me|masters|m\.all|m\.outDay|m\.reviewReport|m\.warm|users\.list|staff\.list|orders\.active|att\.get)$/;
+  var SAFE_AGAIN = /^(login|me|masters|m\.all|m\.outDay|m\.reviewReport|m\.srnReport|m\.warm|users\.list|staff\.list|orders\.active|att\.get)$/;
   // Worker first (when set); when it cannot be reached or crashes, the call goes to Apps Script directly and the Worker
   // is skipped for 10 min. A save that is not safe to send twice (no rid) is never re-sent automatically.
   // calls that only read (same list as READ_ACTIONS in cloudflare/src/index.js): safe to send to Apps Script after the Worker failed
-  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|outDay|reviewReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent|push\.(sub|unsub|key|status|test))$/;
+  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|outDay|reviewReport|srnReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent|push\.(sub|unsub|key|status|test))$/;
   function workerOn() { if (!WORKER_URL) return false; var t = 0; try { t = +localStorage.getItem('sg_wdown') || 0; } catch (e) {} return Date.now() - t > 120000; }   // after a failure: Apps Script direct for 2 min
   function workerDown() { try { localStorage.setItem('sg_wdown', String(Date.now())); } catch (e) {} }
   function directPost(body, text, attempt, mob, again) {
@@ -303,7 +304,7 @@
   function isRecorder() { return !!state.user && !isManager(); }
   // Phone = the simple app: Attendance · Output · Main. The web (computer) keeps every tab exactly as before.
   // An admin/manager on a phone can switch to the full app from Main (sg_full).
-  var PHONE_TABS = ['matt', 'mout', 'mpms', 'mrev', 'main'];   // mrev: admin only
+  var PHONE_TABS = ['matt', 'mout', 'mpms', 'mrep', 'mrev', 'main'];   // mrev: admin only
   function isPhoneScreen() { try { return window.matchMedia('(max-width: 820px)').matches; } catch (e) { return false; } }
   // phone app text is English; the web keeps its text
   function tx(hi, en) { return isMobile() ? en : hi; }
@@ -323,7 +324,7 @@
       var t = b.dataset.tab;
       if (mob) { b.hidden = PHONE_TABS.indexOf(t) < 0 || (t === 'mrev' && !isAdmin()); return; }
       b.hidden = false;
-      if (t === 'matt' || t === 'mout' || t === 'mpms' || t === 'mrev') b.hidden = true;
+      if (t === 'matt' || t === 'mout' || t === 'mpms' || t === 'mrep' || t === 'mrev') b.hidden = true;
       if (t === 'reports' || t === 'data' || t === 'pms') b.hidden = rec;
       if (t === 'review') b.hidden = !isAdmin();
     });

@@ -620,70 +620,105 @@ function mReviewReport_(req, user) {
   if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
   var id = str_(req.id), it = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return str_(r.id) === id; })[0];
   if (!it) return fail_('NF', 'Not found');
-  var factory = str_(it.factory), dept = str_(it.dept), srn = str_(it.srn).toUpperCase();
+  var rep = outputReport_(str_(it.factory), str_(it.srn), str_(it.dept), id);
+  var one = rep.byLine[str_(it.dept)] || { head: rep.headOf(str_(it.dept)), carry: null, rows: [] };
+  return { ok: true, head: one.head, carry: one.carry, rows: one.rows, id: id };
+}
+
+// Phone Report tab: { factory, srn, dept? } -> the SRN's lines (output, loading) and the day-wise Making Output Report of
+// one line (the asked one, else the only / busiest one). Read-only, every user.
+function mSrnReport_(req, user) {
+  var factory = str_(req.factory), srn = str_(req.srn).toUpperCase(), dept = str_(req.dept);
+  if (!/^SRN/i.test(srn)) return fail_('VAL', 'Select an SRN');
+  var rep = outputReport_(factory, srn, '', '');
+  var lines = Object.keys(rep.byLine).map(function(d) {
+    var r = rep.byLine[d], last = r.rows.length ? r.rows[r.rows.length - 1] : {};
+    return { dept: d, output: num_(last.total), load: num_(last.loadTotal), days: r.rows.filter(function(x) { return x.src !== 'loading'; }).length + (r.carry ? r.carry.days : 0), last: str_(last.date) };
+  }).sort(function(a, b) { return b.output - a.output || b.load - a.load; });
+  var pick = dept && rep.byLine[dept] ? dept : (lines[0] ? lines[0].dept : '');
+  var one = pick ? rep.byLine[pick] : null;
+  var info = null; try { info = (ledgerLite_().srnInfo || {})[srn] || null; } catch (e) {}
+  return { ok: true, srn: srn, factory: factory, lines: lines, dept: pick, head: one ? one.head : null, carry: one ? one.carry : null, rows: one ? one.rows : [], info: info };
+}
+
+// The day-wise Making Output Report of an SRN, per line: the main stitching sheet + output in the app not in the sheet yet
+// (waiting / approved; curId = the review row being looked at) + loading challans. One row per date + shift, cumulative
+// totals, 15 rows a page (older days fold into a carry-forward row). onlyDept = '' -> every line of the SRN.
+function outputReport_(factory, srn, onlyDept, curId) {
+  srn = str_(srn).toUpperCase();
   var T = CFG.FINAL_TARGETS[factory === '117' ? 'STITCH_117' : 'STITCH_666'], col = {};
   Object.keys(T.cols).forEach(function(c) { col[T.cols[c]] = +c - 1; });
-  var rows = [], head = { factory: 'FAC' + factory, srn: srn, line: dept, incharge: '', supervisor: '', junior: '' };
-  // 1) the main stitching sheet (only this line + SRN)
+  var heads = {}, rowsBy = {};
+  var headOf = function(d) { return heads[d] = heads[d] || { factory: 'FAC' + factory, srn: srn, line: d, incharge: '', supervisor: '', junior: '' }; };
+  var push = function(d, x) { (rowsBy[d] = rowsBy[d] || []).push(x); };
+  var want = function(d) { return d && (!onlyDept || d === onlyDept); };
+  // 1) the main stitching sheet
   var v = Sheets.Spreadsheets.Values.get(srcId_(T.srcKey), "'" + T.sheet + "'!A" + T.minRow + ':AB', { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || [];
   v.forEach(function(r) {
-    if (str_(r[col.dept]) !== dept || str_(r[col.srn]).toUpperCase() !== srn) return;
-    var g = function(f) { return col[f] === undefined ? '' : r[col[f]]; };
-    rows.push({ date: dateKey_(g('date')), shift: /OT/i.test(str_(g('shift'))) ? 'OT' : 'Final', plan: g('plan') === '' ? '' : num_(g('plan')), actual: num_(g('output')),
-                remark: [str_(g('remark')), str_(g('reason'))].filter(String).join(' · '), op: num_(g('manpower')),
-                r1: num_(g('r1')), r2: num_(g('r2')), r3: num_(g('r3')), r4: num_(g('r4')), r5: num_(g('r5')), hours: num_(g('hours')), src: 'sheet' });
-    head.incharge = str_(g('master')) || head.incharge; head.supervisor = str_(g('supervisor')) || head.supervisor;
-    if (factory !== '117' && str_(r[27])) head.junior = str_(r[27]);
+    var d = str_(r[col.dept]);
+    if (!want(d) || str_(r[col.srn]).toUpperCase() !== srn) return;
+    var g = function(f) { return col[f] === undefined ? '' : r[col[f]]; }, h = headOf(d);
+    push(d, { date: dateKey_(g('date')), shift: /OT/i.test(str_(g('shift'))) ? 'OT' : 'Final', plan: g('plan') === '' ? '' : num_(g('plan')), actual: num_(g('output')),
+              remark: [str_(g('remark')), str_(g('reason'))].filter(String).join(' · '), op: num_(g('manpower')),
+              r1: num_(g('r1')), r2: num_(g('r2')), r3: num_(g('r3')), r4: num_(g('r4')), r5: num_(g('r5')), hours: num_(g('hours')), src: 'sheet' });
+    h.incharge = str_(g('master')) || h.incharge; h.supervisor = str_(g('supervisor')) || h.supervisor;
+    if (factory !== '117' && str_(r[27])) h.junior = str_(r[27]);
   });
   // 2) output in the app not in the sheet yet (waiting / approved)
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
-    if (str_(r.dept) !== dept || str_(r.srn).toUpperCase() !== srn || str_(r.type) !== 'STITCH') return;
-    var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved' && str_(r.id) !== id) return;
-    var p = parseJsonObj_(r.payload);
-    rows.push({ id: str_(r.id), date: str_(r.date), shift: str_(r.shift) || 'Final', plan: p.plan === undefined ? '' : p.plan, actual: num_(p.output), remark: str_(p.reason),
-                op: p.operators !== undefined ? num_(p.operators) : num_(p.manpower), r1: num_(p.r1), r2: num_(p.r2), r3: num_(p.r3), r4: num_(p.r4), r5: num_(p.r5),
-                hours: num_(p.hours), src: 'app', status: st, by: str_(r.submitted_by) });
-    head.incharge = head.incharge || str_(p.incharge); head.supervisor = head.supervisor || str_(p.supervisor);
+    var d = str_(r.dept);
+    if (!want(d) || str_(r.srn).toUpperCase() !== srn || str_(r.type) !== 'STITCH' || (factory && str_(r.factory) !== factory)) return;
+    var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved' && str_(r.id) !== curId) return;
+    var p = parseJsonObj_(r.payload), h = headOf(d);
+    push(d, { id: str_(r.id), date: str_(r.date), shift: str_(r.shift) || 'Final', plan: p.plan === undefined ? '' : p.plan, actual: num_(p.output), remark: str_(p.reason),
+              op: p.operators !== undefined ? num_(p.operators) : num_(p.manpower), r1: num_(p.r1), r2: num_(p.r2), r3: num_(p.r3), r4: num_(p.r4), r5: num_(p.r5),
+              hours: num_(p.hours), src: 'app', status: st, by: str_(r.submitted_by) });
+    h.incharge = h.incharge || str_(p.incharge); h.supervisor = h.supervisor || str_(p.supervisor);
   });
-  // 3) loading challans of this SRN on this line
-  var ld = [];
+  // 3) loading challans of this SRN
+  var ld = {};
   try {
     (Sheets.Spreadsheets.Values.get(srcId_(LOADING_JOB.srcKey), a1_(LOADING_JOB.srcSheet, LOADING_JOB.srcRow, LOADING_JOB.srcCol, LOADING_JOB.cols),
       { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || []).forEach(function(r) {
-      if (str_(r[5]).toUpperCase() !== srn || str_(r[10]) !== dept || !num_(r[7])) return;
-      ld.push({ date: dateKey_(r[1]), challan: str_(r[2]), qty: num_(r[7]) });
+      var d = str_(r[10]);
+      if (str_(r[5]).toUpperCase() !== srn || !want(d) || !num_(r[7])) return;
+      headOf(d); (ld[d] = ld[d] || []).push({ date: dateKey_(r[1]), challan: str_(r[2]), qty: num_(r[7]) });
     });
   } catch (e) {}
-  // one row per date + shift; a loading day without output gets its own row
-  var byKey = {};
-  rows.forEach(function(x) {
-    var k = x.date + '|' + (x.shift === 'OT' ? 2 : 1), y = byKey[k];
-    if (!y) { byKey[k] = x; return; }
-    if (x.src === 'app' || y.src === 'app') { if (x.src === 'app' && y.src !== 'app') byKey[k] = x; return; }   // waiting output replaces nothing already in the sheet
-    // several sheet rows of one day (half day / absent split rows): add them up, longest hours
-    ['plan', 'actual', 'op', 'r1', 'r2', 'r3', 'r4', 'r5'].forEach(function(f) { if (x[f] !== '' && x[f] !== undefined) y[f] = (y[f] === '' ? 0 : num_(y[f])) + num_(x[f]); });
-    y.hours = Math.max(num_(y.hours), num_(x.hours)); if (x.remark) y.remark = [y.remark, x.remark].filter(String).join(' · ');
+  var byLine = {};
+  Object.keys(heads).forEach(function(d) {
+    // one row per date + shift; a loading day without output gets its own row
+    var byKey = {};
+    (rowsBy[d] || []).forEach(function(x) {
+      var k = x.date + '|' + (x.shift === 'OT' ? 2 : 1), y = byKey[k];
+      if (!y) { byKey[k] = x; return; }
+      if (x.src === 'app' || y.src === 'app') { if (x.src === 'app' && y.src !== 'app') byKey[k] = x; return; }   // waiting output replaces nothing already in the sheet
+      // several sheet rows of one day (half day / absent split rows): add them up, longest hours
+      ['plan', 'actual', 'op', 'r1', 'r2', 'r3', 'r4', 'r5'].forEach(function(f) { if (x[f] !== '' && x[f] !== undefined) y[f] = (y[f] === '' ? 0 : num_(y[f])) + num_(x[f]); });
+      y.hours = Math.max(num_(y.hours), num_(x.hours)); if (x.remark) y.remark = [y.remark, x.remark].filter(String).join(' · ');
+    });
+    (ld[d] || []).forEach(function(l) {
+      var k = l.date + '|1', x = byKey[k] || byKey[l.date + '|2'];
+      if (!x) x = byKey[k] = { date: l.date, shift: '', plan: '', actual: 0, remark: '', op: '', r1: '', r2: '', r3: '', r4: '', r5: '', hours: '', src: 'loading' };
+      x.challan = (x.challan ? x.challan + ', ' : '') + l.challan; x.load = num_(x.load) + l.qty;
+    });
+    var list = Object.keys(byKey).sort().map(function(k) { return byKey[k]; }), cum = 0, loadCum = 0;
+    list.forEach(function(x) {
+      cum += num_(x.actual); x.total = cum; loadCum += num_(x.load); x.loadTotal = loadCum;
+      x.variance = x.plan === '' || x.plan === null ? '' : num_(x.plan) - num_(x.actual);
+    });
+    // one page = 15 rows: older rows fold into a "carry forward" first row
+    var PAGE = 15, carry = null;
+    if (list.length > PAGE) {
+      var old = list.slice(0, list.length - (PAGE - 1)), last = old[old.length - 1];
+      carry = { plan: old.reduce(function(t, x) { return t + num_(x.plan); }, 0), actual: old.reduce(function(t, x) { return t + num_(x.actual); }, 0), total: last.total,
+                load: old.reduce(function(t, x) { return t + num_(x.load); }, 0), loadTotal: last.loadTotal, days: old.length };
+      carry.variance = carry.plan - carry.actual;
+      list = list.slice(list.length - (PAGE - 1));
+    }
+    byLine[d] = { head: heads[d], carry: carry, rows: list };
   });
-  ld.forEach(function(l) {
-    var k = l.date + '|1', x = byKey[k] || byKey[l.date + '|2'];
-    if (!x) x = byKey[k] = { date: l.date, shift: '', plan: '', actual: 0, remark: '', op: '', r1: '', r2: '', r3: '', r4: '', r5: '', hours: '', src: 'loading' };
-    x.challan = (x.challan ? x.challan + ', ' : '') + l.challan; x.load = num_(x.load) + l.qty;
-  });
-  var list = Object.keys(byKey).sort().map(function(k) { return byKey[k]; }), cum = 0, loadCum = 0;
-  list.forEach(function(x) {
-    cum += num_(x.actual); x.total = cum; loadCum += num_(x.load); x.loadTotal = loadCum;
-    x.variance = x.plan === '' || x.plan === null ? '' : num_(x.plan) - num_(x.actual);
-  });
-  // one page = 15 rows: older rows fold into a "carry forward" first row
-  var PAGE = 15, carry = null;
-  if (list.length > PAGE) {
-    var old = list.slice(0, list.length - (PAGE - 1)), last = old[old.length - 1];
-    carry = { plan: old.reduce(function(t, x) { return t + num_(x.plan); }, 0), actual: old.reduce(function(t, x) { return t + num_(x.actual); }, 0), total: last.total,
-              load: old.reduce(function(t, x) { return t + num_(x.load); }, 0), loadTotal: last.loadTotal, days: old.length };
-    carry.variance = carry.plan - carry.actual;
-    list = list.slice(list.length - (PAGE - 1));
-  }
-  return { ok: true, head: head, carry: carry, rows: list, id: id };
+  return { byLine: byLine, headOf: headOf };
 }
 
 // { date, factory, dept, shift, slot, srn, qty (the shift's total), other (already in other slots), floor, allowOver }

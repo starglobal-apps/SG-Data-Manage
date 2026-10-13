@@ -779,3 +779,11 @@ body.phone .nt-btns { display: flex; gap: 5px; flex: none; } body.phone .nt-btns
 .ac-x { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 0; height: 30px; }
 .ac-h span.warn { color: var(--warn); }
 .btn.ok.warn { background: var(--warn); }
+/* phone Report tab */
+body.phone .rp-top .row { align-items: flex-end; gap: 8px; } body.phone .rp-top label { margin-top: 0; }
+.rp-head { display: flex; align-items: baseline; gap: 8px; margin: 2px 2px 6px; } .rp-head b { font-size: 16px; } .rp-head span { font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-lines { margin: 0 0 6px; } .rp-lines button small { display: block; font-size: 10.5px; font-weight: 500; }
+.rp-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 8px; }
+.rp-sum div { background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; text-align: center; }
+.rp-sum small { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; } .rp-sum b { font-size: 17px; } .rp-sum b.bad { color: var(--bad); }
+.pm-card[data-rep] { cursor: pointer; } .pm-card[data-rep]:active { background: var(--soft); }

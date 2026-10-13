@@ -64,8 +64,9 @@
     api('m.reviewReport', { id: id }, { quiet: true }).then(function (r) { drawReport(r, id); })
       .catch(function (e) { $('#sheet-content').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
-  function drawReport(r, id) {
-    var h = r.head, mine = {}; R.items.forEach(function (x) { mine[x.id] = x; });
+  // Making Output Report table (Approve -> Review and the Report tab). mine: review rows the admin decides here (reason inputs)
+  S.morTable = function (r, mine) {
+    mine = mine || {}; var h = r.head;
     var cell = function (v, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</td>'; };
     var html = '<div class="mor"><table class="mor-t"><tr><th colspan="2">Factory</th><td colspan="9">' + esc(h.factory) + '</td><th colspan="3">Incharge</th><td colspan="3">' + esc(h.incharge) + '</td></tr>' +
       '<tr><th colspan="2">SRN</th><td colspan="9">' + esc(h.srn) + '</td><th colspan="3">Supervisor</th><td colspan="3">' + esc(h.supervisor) + '</td></tr>' +
@@ -82,7 +83,12 @@
         cell(n(x.plan)) + cell(x.src === 'loading' ? '' : n(x.actual)) + cell(n(x.total)) + cell(n(x.variance), x.variance > 0 ? 'bad' : '') + cell(why) +
         cell(n(x.op)) + cell(n(x.r1)) + cell(n(x.r2)) + cell(n(x.r4)) + cell(n(x.r3)) + cell(n(x.r5)) + cell(n(x.hours)) + cell(esc(x.challan || '')) + cell(n(x.load)) + cell(n(x.loadTotal)) + '</tr>';
     });
-    html += '</table></div><p class="hint" style="margin:6px 0">Highlighted row = waiting for approval' + (r.rows.some(function (x) { return x.src === 'app' && !(x.id && mine[x.id]); }) ? ' · light rows = in the app, not in the main sheet yet' : '') + '</p>';
+    return html + '</table></div>';
+  };
+  function drawReport(r, id) {
+    var mine = {}; R.items.forEach(function (x) { mine[x.id] = x; });
+    var html = S.morTable(r, mine);
+    html += '<p class="hint" style="margin:6px 0">Highlighted row = waiting for approval' + (r.rows.some(function (x) { return x.src === 'app' && !(x.id && mine[x.id]); }) ? ' · light rows = in the app, not in the main sheet yet' : '') + '</p>';
     if (mine[id]) html += '<div class="tr-acts"><button class="btn danger" data-rrej="' + esc(id) + '">Reject</button><button class="btn ok" data-rok="' + esc(id) + '">Approve</button></div>';
     $('#sheet-content').innerHTML = html;
     $('#sheet-content').onclick = function (e) {

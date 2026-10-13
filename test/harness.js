@@ -322,4 +322,14 @@ var free = l2Ops - outNow - waiting;
 var hold = call('newrec', 'm.trCreate', { rid: 'h1', date: TODAY, factory: '666', from_dept: L2, to_dept: L3, hour: 16, items: [{ role: 'Operator', count: free }] });
 var hold2 = call('newrec', 'm.trCreate', { rid: 'h2', date: TODAY, factory: '666', from_dept: L2, to_dept: L1, hour: 16, items: [{ role: 'Operator', count: 1 }] });
 check('people in a waiting request cannot be transferred again', free > 0 && hold.ok && hold2.ok === false && /Only 0 Operator available/.test(hold2.message), [free, hold.message, hold2.message]);
+// ========== 16. Report tab: SRN day-wise report (and the admin Review report on the same builder) ==========
+var rp = call('rec1', 'm.srnReport', { factory: '666', srn: 'srn0620a' });
+var rpL1 = rp.lines && rp.lines.filter(l => l.dept === L1)[0];
+check('srn report: lines of the SRN with output, L1 report day-wise with cumulative total', rp.ok && rp.srn === 'SRN0620A' && rpL1 && rpL1.output > 0 && rp.dept && rp.rows.length > 0 && rp.rows[rp.rows.length - 1].total >= rp.rows[0].total, [rp.message, rp.lines, rp.dept]);
+var rp1 = call('rec2', 'm.srnReport', { factory: '666', srn: 'SRN0620A', dept: L1 });
+check('srn report for a chosen line: that line, any user may read it', rp1.ok && rp1.dept === L1 && rp1.head.line === L1 && rp1.rows.some(x => x.actual > 0), [rp1.message, rp1.head]);
+check('srn report: bad SRN refused', call('rec1', 'm.srnReport', { factory: '666', srn: 'x' }).ok === false);
+var anyRev = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.type === 'STITCH')[0];
+var rv = call('admin', 'm.reviewReport', { id: anyRev.id });
+check('admin review report still works on the shared builder', rv.ok && rv.head && rv.head.line === anyRev.dept && Array.isArray(rv.rows) && call('rec1', 'm.reviewReport', { id: anyRev.id }).ok === false, [rv.message]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

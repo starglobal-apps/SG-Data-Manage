@@ -34,7 +34,7 @@
     html += '<div class="pm-sub">' + rows.length + ' SRN · only unshipped' + (P.err ? ' · <span style="color:var(--bad)">unloading not available</span>' : '') + '</div>';
     if (!rows.length) html += '<div class="empty">' + (q ? 'No SRN found' : 'No unshipped SRN') + '</div>';
     html += rows.slice(0, 300).map(function (r) {
-      return '<div class="pm-card"><div class="pm-h"><b>' + esc(r.srn) + '</b>' + (r.style || r.buyer ? '<span class="pm-s">' + esc([r.buyer, r.style].filter(Boolean).join(' · ')) + '</span>' : '<span class="pm-s"></span>') + (r.order ? '<span class="pm-o">Order <b>' + n(r.order) + '</b></span>' : '') + '</div>' +
+      return '<div class="pm-card" data-rep="' + esc(r.srn) + '"><div class="pm-h"><b>' + esc(r.srn) + '</b>' + (r.style || r.buyer ? '<span class="pm-s">' + esc([r.buyer, r.style].filter(Boolean).join(' · ')) + '</span>' : '<span class="pm-s"></span>') + (r.order ? '<span class="pm-o">Order <b>' + n(r.order) + '</b></span>' : '') + '</div>' +
         '<div class="pm-g">' + cell('Load', r.loading) + cell('Stitch', r.stitched, r.stitched > r.loading - (r.contractor || 0)) + cell('Endline', r.endPass, r.endPass > r.stitched) +
         cell('Pack', r.packed, r.packed > r.endPass + (r.contractor || 0)) + cell('Unload', r.unloaded) + cell('Ship', r.shipped) + '</div>' + bar(r) +
         (r.contractor ? '<div class="pm-ct"><span>Contractor' + (r.contractors ? ' · ' + esc(r.contractors) : '') + ' <i>(stitch / endline not reported)</i></span><b>' + n(r.contractor) + '</b></div>' : '') + '</div>';
@@ -44,5 +44,7 @@
     inp.addEventListener('input', function () { P.q = inp.value; var pos = inp.selectionStart; render(); var i2 = $('#pm-q'); i2.focus(); try { i2.setSelectionRange(pos, pos); } catch (e) {} });
   }
 
+  // tap an SRN: its day-wise report (Report tab)
+  $('#tab-mpms').addEventListener('click', function (e) { var c = e.target.closest('[data-rep]'); if (c && S.openSrnReport) S.openSrnReport(c.dataset.rep); });
   $('#tab-mpms').addEventListener('click', function (e) { if (e.target.closest('[data-reload]')) { $('#mpms-body').innerHTML = '<div class="empty">Loading…</div>'; S.pd.load(false, true).catch(fail); } });
 })();
