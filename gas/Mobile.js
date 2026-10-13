@@ -378,28 +378,32 @@ function mTrCreate_(req, user) {
     if (base.none) return fail_('NF', 'No attendance on this line for this date');
     // people of each type still on the line (absent / left / already transferred out are not available)
     var left = {}; Object.keys(base.roles).forEach(function(r) { left[r] = base.roles[r]; });
-    readDaily_(CFG.TABS.MANPOWER_EVENTS).concat(base.evs).forEach(function(e) {
+    var evAll = readDaily_(CFG.TABS.MANPOWER_EVENTS).concat(base.evs), withEvents = {};
+    evAll.forEach(function(e) {
+      if (str_(e.event) === 'TRANSFER_OUT') { var m = /^transfer:([^ ]+)/.exec(str_(e.note)); if (m) withEvents[m[1]] = 1; }
       if (str_(e.date) !== date || str_(e.factory) !== factory || str_(e.dept) !== from) return;
       if (['ABSENT', 'LEFT_AT', 'TRANSFER_OUT'].indexOf(str_(e.event)) >= 0 && left[str_(e.role)] !== undefined) left[str_(e.role)] -= num_(e.count);
     });
+    // people already asked for in a request still waiting are not available again
+    readDaily_(CFG.TABS.TRANSFERS).forEach(function(t) {
+      if (str_(t.status) !== 'Pending' || str_(t.date) !== date || str_(t.factory) !== factory || str_(t.from_dept) !== from || withEvents[str_(t.id)]) return;
+      parseJsonArr_(t.items).forEach(function(i) { if (left[str_(i.role)] !== undefined) left[str_(i.role)] -= num_(i.count); });
+    });
     for (var i = 0; i < items.length; i++) {
       var have = Math.max(0, left[items[i].role] || 0);
-      if (items[i].count > have) return fail_('VAL', 'Only ' + have + ' ' + items[i].role + ' available on this line');
+      if (items[i].count > have) return fail_('VAL', 'Only ' + have + ' ' + items[i].role + ' available on this line' + (have < (base.roles[items[i].role] || 0) ? ' (others are absent, gone or in a transfer)' : ''));
     }
     if (base.add.length) appendRows_(CFG.TABS.ATT_DAILY, base.add);
     var total = items.reduce(function(t, x) { return t + x.count; }, 0);
     appendRows_(CFG.TABS.TRANSFERS, [{ id: id, date: date, factory: factory, from_dept: from, to_dept: to, role: items.length === 1 ? items[0].role : '', count: total, time: time, srn: '',
       status: 'Pending', note: 'phone', by: by, at: stamp, decided_by: '', decided_at: '', to_user: '', items: JSON.stringify(items), allocations: '' }]);
-    appendRows_(CFG.TABS.MANPOWER_EVENTS, base.evs.concat(items.map(function(x) {
-      return { id: uuid_(), date: date, factory: factory, dept: from, role: x.role, event: 'TRANSFER_OUT', count: x.count, time: time,
-               eff_hours: before, note: 'transfer:' + id + ' → ' + to, entered_by: by, entered_at: stamp };
-    })));
+    // nothing changes on the line or the main sheet until the request is accepted (user, 2026-10-13)
+    if (base.evs.length) appendRows_(CFG.TABS.MANPOWER_EVENTS, base.evs);
     return { ok: true, total: total };
   });
   if (!res.ok) return res;
   audit_(user, 'transfer.create', id, { from: from, to: to, hour: hour, items: items });
-  var s = attSync_(date, factory, from, 'Final', user, true);
-  return { ok: true, id: id, total: res.total, sheetError: s.ok ? '' : s.message };
+  return { ok: true, id: id, total: res.total, sheetError: '' };
 }
 
 // { id, decision: 'accept' | 'reject' } by the recorder of the receiving line. Accept: the people join that line from the
@@ -418,7 +422,8 @@ function mTrDecide_(req, user) {
   var after = shiftHours_('Final') - trHoursBefore_(hour);
   // accept: the people may be split over this line and other lines (allocations [{ dept, role, count }]); none = all to this line
   var allocs = items.map(function(x) { return { dept: to, role: str_(x.role), count: num_(x.count) }; });
-  if (action === 'accept' && Array.isArray(req.allocations) && req.allocations.length) {
+  var before = trHoursBefore_(hour);
+  if (action === 'accept' && Array.isArray(req.allocations)) {
     allocs = req.allocations.map(function(a) { return { dept: str_(a.dept), role: str_(a.role), count: num_(a.count) }; }).filter(function(a) { return a.count > 0; });
     var need = {}, got = {};
     items.forEach(function(x) { need[str_(x.role)] = (need[str_(x.role)] || 0) + num_(x.count); });
@@ -432,37 +437,45 @@ function mTrDecide_(req, user) {
       if (!canWrite_(user, factory, a.dept)) return fail_('PERM', 'No permission for ' + a.dept);
       got[a.role] = (got[a.role] || 0) + a.count;
     }
-    var off = Object.keys(need).filter(function(r) { return (got[r] || 0) !== need[r]; })[0];
-    if (off) return fail_('VAL', off + ': ' + need[off] + ' came, ' + (got[off] || 0) + ' placed — place all of them');
+    // fewer may be accepted (e.g. 8 of 10: the sender typed too many); the rest is simply not transferred
+    var over = Object.keys(got).filter(function(r) { return got[r] > need[r]; })[0];
+    if (over) return fail_('VAL', over + ': ' + need[over] + ' came, ' + got[over] + ' placed — not more than came');
+    if (!allocs.length) return fail_('VAL', 'Nobody accepted — to take nobody, reject the transfer');
   }
+  var acc = {}; allocs.forEach(function(a) { acc[a.role] = (acc[a.role] || 0) + a.count; });   // accepted per type
   var allocDepts = []; allocs.forEach(function(a) { if (allocDepts.indexOf(a.dept) < 0) allocDepts.push(a.dept); });
+  // a request made before 2026-10-13 already took the people off the sending line (TRANSFER_OUT rows): replaced below
+  var oldOut = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
   withLock_(function() {
     if (action === 'accept') {
       var add = [], evs = [];
-      allocDepts.forEach(function(d) {   // a line's attendance typed in the sheet comes into the app first
+      [from].concat(allocDepts).forEach(function(d) {   // a line's attendance typed in the sheet comes into the app first
         var base = appAttOrCopy_(date, factory, d, by, stamp); add = add.concat(base.add); evs = evs.concat(base.evs);
       });
       if (add.length) appendRows_(CFG.TABS.ATT_DAILY, add);
-      appendRows_(CFG.TABS.MANPOWER_EVENTS, evs.concat(allocs.map(function(a) {
+      appendRows_(CFG.TABS.MANPOWER_EVENTS, evs.concat(Object.keys(acc).map(function(r) {   // out of the sending line: only those accepted
+        return { id: uuid_(), date: date, factory: factory, dept: from, role: r, event: 'TRANSFER_OUT', count: acc[r], time: str_(t.time),
+                 eff_hours: before, note: 'transfer:' + id + ' → ' + to, entered_by: by, entered_at: stamp };
+      })).concat(allocs.map(function(a) {
         return { id: uuid_(), date: date, factory: factory, dept: a.dept, role: a.role, event: 'TRANSFER_IN', count: a.count, time: str_(t.time),
                  eff_hours: after, note: 'transfer:' + id + ' ← ' + from, entered_by: by, entered_at: stamp };
       })));
     }
+    // the transfer row first; deleting event rows (same sheet) shifts rows, so that comes last
     var sh = tab_(CFG.TABS.TRANSFERS, true), head = physHeadOf_(CFG.TABS.TRANSFERS);
     sh.getRange(t._row, head.indexOf('status') + 1).setValue(action === 'accept' ? 'Accepted' : 'Rejected');
     if (action === 'accept') sh.getRange(t._row, head.indexOf('allocations') + 1).setValue(JSON.stringify(allocs));
     sh.getRange(t._row, head.indexOf('decided_by') + 1).setValue(by);
     sh.getRange(t._row, head.indexOf('decided_at') + 1).setValue(stamp);
-    if (action !== 'accept') {   // last: deleting event rows shifts the rows of this sheet
-      var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.event) === 'TRANSFER_OUT' && str_(r.note).indexOf('transfer:' + id) === 0; });
-      deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
-    }
+    if (oldOut.length) deleteRows_(CFG.TABS.MANPOWER_EVENTS, oldOut.map(function(r) { return r._row; }));
   });
-  invalidateDaily_(CFG.TABS.TRANSFERS);
-  audit_(user, 'transfer.' + action, id, { to: to, allocations: action === 'accept' ? allocs : undefined });
-  var errs = [];
-  (action === 'accept' ? allocDepts : [from]).forEach(function(d) { var s = attSync_(date, factory, d, 'Final', user, true); if (!s.ok) errs.push(s.message); });
-  return { ok: true, allocations: action === 'accept' ? allocs : [], sheetError: errs.join(' · ') };
+  invalidateDaily_(CFG.TABS.TRANSFERS); invalidateDaily_(CFG.TABS.MANPOWER_EVENTS);
+  var cameN = items.reduce(function(a, x) { return a + num_(x.count); }, 0), accN = allocs.reduce(function(a, x) { return a + x.count; }, 0);
+  audit_(user, 'transfer.' + action, id, { to: to, came: cameN, accepted: action === 'accept' ? accN : 0, allocations: action === 'accept' ? allocs : undefined });
+  // main sheets: both sides on accept; on reject only an old-style request had changed the sending line
+  var errs = [], sync = action === 'accept' ? [from].concat(allocDepts) : (oldOut.length ? [from] : []);
+  sync.forEach(function(d) { var s = attSync_(date, factory, d, 'Final', user, true); if (!s.ok) errs.push(s.message); });
+  return { ok: true, came: cameN, accepted: action === 'accept' ? accN : 0, allocations: action === 'accept' ? allocs : [], sheetError: errs.join(' · ') };
 }
 
 // transfers for the phone Attendance tab: requests waiting for my lines (any recent day) and my lines' transfers of the date
@@ -475,7 +488,14 @@ function mTransfers_(date, factory, user, depts) {
     var x = { id: str_(r.id), date: str_(r.date), from: str_(r.from_dept), to: str_(r.to_dept), time: str_(r.time), hour: trHourOf_(r.time),
               items: parseJsonArr_(r.items), total: num_(r.count), status: str_(r.status), by: str_(r.by) };
     if (x.status === 'Pending' && mine[x.to] && x.date >= since && lineVisible_(user, attOwners_(att, x.date, x.to, 'Final'), x.to)) incoming.push(x);   // the receiving line's recorder decides
-    if (x.date === date && mine[x.from]) (out[x.from] = out[x.from] || []).push(x);
+    if (x.date === date && mine[x.from]) {
+      var acc0 = x.status === 'Accepted' ? parseJsonArr_(r.allocations) : [];
+      if (acc0.length) {   // accepted (maybe fewer than asked): the sending line shows those that went
+        var per = {}; acc0.forEach(function(a) { per[str_(a.role)] = (per[str_(a.role)] || 0) + num_(a.count); });
+        var its = Object.keys(per).map(function(k) { return { role: k, count: per[k] }; });
+        (out[x.from] = out[x.from] || []).push(Object.assign({}, x, { items: its, total: its.reduce(function(a, i) { return a + i.count; }, 0), asked: x.total }));
+      } else (out[x.from] = out[x.from] || []).push(x);
+    }
     if (x.date === date && x.status === 'Accepted') {
       var al = parseJsonArr_(r.allocations), byDept = {};
       if (!al.length) al = x.items.map(function(i) { return { dept: x.to, role: i.role, count: i.count }; });

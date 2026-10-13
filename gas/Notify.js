@@ -52,8 +52,10 @@ function notifyFor_(action, req, user, res) {
       al.forEach(function(a) { var d = str_(a.dept); (perLine[d] = perLine[d] || []).push(num_(a.count) + ' ' + str_(a.role)); });
       var lines = Object.keys(perLine);
       var where = lines.length > 1 || (lines.length === 1 && lines[0] !== str_(t.to_dept)) ? lines.map(function(d) { return L(d) + ' (' + perLine[d].join(', ') + ')'; }).join(', ') : L(t.to_dept);
-      add(notifyUsersByName_(t.by).concat(notifyAdmins_(str_(t.factory))), 'Transfer ' + (ok ? 'accepted' : 'rejected') + ' · ' + L(t.from_dept) + ' → ' + L(t.to_dept),
-        num_(t.count) + ' people · ' + (ok ? 'they work on ' + where + ' from ' + str_(t.time) : 'they stay on ' + L(t.from_dept)) + ' · by ' + by, 'tr|' + str_(t.id), '#matt');
+      var came = num_(res.came) || num_(t.count), got = ok ? num_(res.accepted) || came : 0, part = ok && got < came;
+      add(notifyUsersByName_(t.by).concat(notifyAdmins_(str_(t.factory))), 'Transfer ' + (ok ? (part ? 'partly accepted' : 'accepted') : 'rejected') + ' · ' + L(t.from_dept) + ' → ' + L(t.to_dept),
+        (ok ? got + (part ? ' of ' + came : '') + ' people work on ' + where + ' from ' + str_(t.time) + (part ? ' · ' + (came - got) + ' not accepted, nothing changes for them' : '')
+            : came + ' people · they stay on ' + L(t.from_dept)) + ' · by ' + by, 'tr|' + str_(t.id), '#matt');
       // other lines that got people: their recorders are told
       lines.forEach(function(d) {
         if (d === str_(t.to_dept)) return;

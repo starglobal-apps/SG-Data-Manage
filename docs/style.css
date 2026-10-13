@@ -777,3 +777,5 @@ body.phone .nt-btns { display: flex; gap: 5px; flex: none; } body.phone .nt-btns
 .ac-row { display: grid; grid-template-columns: 1fr 70px 30px; gap: 6px; align-items: center; margin: 0 0 6px; }
 .ac-row select, .ac-row input { min-height: 38px; } .ac-row input { text-align: center; font-weight: 700; }
 .ac-x { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 0; height: 30px; }
+.ac-h span.warn { color: var(--warn); }
+.btn.ok.warn { background: var(--warn); }

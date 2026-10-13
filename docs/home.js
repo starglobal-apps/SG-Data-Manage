@@ -259,7 +259,7 @@
     return (x.transfers || []).map(function (t) {
       var out = t.from === x.dept, who = t.items.map(function (i) { return i.count + ' ' + i.role; }).join(', ');
       var st = t.status === 'Pending' ? 'waiting for ' + S.shortLine(t.to) + ' to accept' : t.status === 'Rejected' ? 'rejected by ' + S.shortLine(t.to) : 'accepted';
-      return '<div class="m tr-st ' + (t.status === 'Rejected' ? 'bad' : t.status === 'Pending' ? 'wait' : 'ok') + '">' + (out ? '→ ' + esc(S.shortLine(t.to)) : '← ' + esc(S.shortLine(t.from))) + ' · ' + esc(who) + ' · from ' + hourLabel(t.hour) + (out ? ' · ' + esc(st) : '') + '</div>';
+      return '<div class="m tr-st ' + (t.status === 'Rejected' ? 'bad' : t.status === 'Pending' ? 'wait' : 'ok') + '">' + (out ? '→ ' + esc(S.shortLine(t.to)) : '← ' + esc(S.shortLine(t.from))) + ' · ' + esc(who) + (t.asked && t.asked !== t.total ? ' (of ' + t.asked + ' asked)' : '') + ' · from ' + hourLabel(t.hour) + (out ? ' · ' + esc(st) : '') + '</div>';
     }).join('');
   }
   // hours on the old / new line for a transfer at hour h (9–6 shift, lunch 1–2)
@@ -310,35 +310,38 @@
     });
   }
   // Accept: the people of each type stay on this line, or are split over this line and other lines (e.g. 10 operators:
-  // 5 here, 5 to Line 3). Every person must be placed; the server checks it again.
+  // 5 here, 5 to Line 3), or fewer are accepted (8 of 10: the other 2 are simply not transferred). The server checks it again.
   function acceptSheet(t) {
     var lines = PA.allLines.filter(function (l) { return l.dept !== t.from; });
     var rows = t.items.map(function (i) { return [{ dept: t.to, count: i.count }]; });
     var placed = function (ri) { return rows[ri].reduce(function (a, r) { return a + (Number(r.count) || 0); }, 0); };
+    var label = function (n, c) { return n === c ? 'all ' + c + ' accepted' : n > c ? n + ' — only ' + c + ' came' : n + ' of ' + c + ' accepted · ' + (c - n) + ' not'; };
+    var cls = function (n, c) { return n === c ? 'ok' : n > c || n === 0 ? 'bad' : 'warn'; };
     var opts = function (sel) {
       return '<option value="">— line —</option>' + lines.map(function (l) { return '<option value="' + esc(l.dept) + '"' + (l.dept === sel ? ' selected' : '') + '>' + esc(S.shortLine(l.dept)) + (l.dept === t.to ? ' (this line)' : '') + '</option>'; }).join('');
     };
     function body() {
-      return '<p class="hint" style="margin:0 0 8px"><b>' + t.total + (t.total > 1 ? ' people' : ' person') + '</b> from ' + esc(S.shortLine(t.from)) + ', working from <b>' + hourLabel(t.hour) + '</b>. Keep them on ' + esc(S.shortLine(t.to)) + ' or split them over lines.</p>' +
+      return '<p class="hint" style="margin:0 0 8px"><b>' + t.total + (t.total > 1 ? ' people' : ' person') + '</b> from ' + esc(S.shortLine(t.from)) + ', working from <b>' + hourLabel(t.hour) + '</b>. Keep them on ' + esc(S.shortLine(t.to)) + ', split them over lines, or accept fewer (the rest is not transferred).</p>' +
         t.items.map(function (i, ri) {
           var n = placed(ri);
-          return '<div class="ac-role"><div class="ac-h"><b>' + i.count + ' ' + esc(i.role) + '</b><span id="ac-n' + ri + '" class="' + (n === i.count ? 'ok' : 'bad') + '">' + n + ' of ' + i.count + ' placed</span></div>' +
+          return '<div class="ac-role"><div class="ac-h"><b>' + i.count + ' ' + esc(i.role) + '</b><span id="ac-n' + ri + '" class="' + cls(n, i.count) + '">' + label(n, i.count) + '</span></div>' +
             rows[ri].map(function (r, k) {
               return '<div class="ac-row"><select data-acl="' + ri + '|' + k + '">' + opts(r.dept) + '</select><input type="number" inputmode="numeric" min="0" data-acn="' + ri + '|' + k + '" value="' + (r.count || '') + '" placeholder="0">' +
                 (k ? '<button type="button" class="ac-x" data-acx="' + ri + '|' + k + '">✕</button>' : '<span class="ac-x"></span>') + '</div>';
             }).join('') +
             '<button type="button" class="lnk" data-acadd="' + ri + '">+ Another line</button></div>';
         }).join('') +
-        '<button class="btn ok big" data-acgo="1">Accept</button>';
+        '<div id="ac-note" class="hint" style="color:var(--warn);font-weight:600"></div><button class="btn ok big" data-acgo="1">Accept</button>';
     }
     function redraw() { S.sheet.keepScroll(function () { $('#sheet-content').innerHTML = body(); }); }
     S.sheet.open('Accept transfer · ' + S.shortLine(t.from) + ' → ' + S.shortLine(t.to), body());
     var c = $('#sheet-content');
     c.oninput = c.onchange = function (e) {
       var el = e.target, key = el.dataset.acn || el.dataset.acl; if (!key) return;
+      var go = c.querySelector('[data-acgo]'); if (go && go.dataset.sure) { delete go.dataset.sure; go.textContent = 'Accept'; go.classList.remove('warn'); var nt = $('#ac-note'); if (nt) nt.textContent = ''; }   // changed: confirm again
       var p = key.split('|'), ri = +p[0], k = +p[1];
       if (el.dataset.acn !== undefined) rows[ri][k].count = el.value === '' ? 0 : Number(el.value); else rows[ri][k].dept = el.value;
-      var n = placed(ri), tag = $('#ac-n' + ri); if (tag) { tag.textContent = n + ' of ' + t.items[ri].count + ' placed'; tag.className = n === t.items[ri].count ? 'ok' : 'bad'; }
+      var n = placed(ri), tag = $('#ac-n' + ri); if (tag) { tag.textContent = label(n, t.items[ri].count); tag.className = cls(n, t.items[ri].count); }
     };
     c.onclick = function (e) {
       var b = e.target.closest('button'); if (!b) return;
@@ -353,9 +356,16 @@
             if (n > 0 && !r.dept) err = err || 'Select the line for ' + n + ' ' + i.role;
             if (n > 0 && r.dept) allocs.push({ dept: r.dept, role: i.role, count: n });
           });
-          if (placed(ri) !== i.count) err = err || i.role + ': ' + i.count + ' came, ' + placed(ri) + ' placed — place all of them';
+          if (placed(ri) > i.count) err = err || i.role + ': ' + i.count + ' came — you can accept at most ' + i.count;
         });
+        if (!err && !allocs.length) err = 'Nobody accepted — to take nobody, use Reject';
         if (err) { S.toast(err, 'bad', 5000); return; }
+        var came = t.items.reduce(function (a, i) { return a + i.count; }, 0), got = allocs.reduce(function (a, x) { return a + x.count; }, 0);
+        if (got < came && !b.dataset.sure) {   // fewer than came: a second tap confirms (the question stays inside this popup)
+          b.dataset.sure = '1'; b.textContent = 'Accept ' + got + ' of ' + came + ' — tap again to confirm'; b.classList.add('warn');
+          var note = $('#ac-note'); if (note) note.textContent = 'The other ' + (came - got) + ' are not transferred — nothing changes for them on ' + S.shortLine(t.from) + '.';
+          return;
+        }
         var split = allocs.some(function (a) { return a.dept !== t.to; });
         S.sheet.close();
         S.pd.send('m.trDecide', { id: t.id, decision: 'accept', factory: state.factory, allocations: allocs },

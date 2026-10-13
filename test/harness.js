@@ -188,6 +188,7 @@ check('after cleanup: L1 not pending again, attendance still shown', !a4.out.gro
 // ========== 5. transfer ==========
 var t1 = call('rec1', 'm.trCreate', { date: TODAY, factory: '666', from_dept: L1, to_dept: L3, hour: 11, items: [{ role: 'Operator', count: 3 }] });
 check('transfer create', t1.ok && t1.total === 3, t1);
+check('transfer waiting: nothing changes on L1 or its main sheet yet', !attSheetRows(L1, TODAY).some(r => /transferred out/.test(r.remark)) && !readTab_(CFG.TABS.MANPOWER_EVENTS).some(e => String(e.note).indexOf('transfer:' + t1.id) === 0), attSheetRows(L1, TODAY));
 var a5 = call('rec2', 'm.all', { factory: '666', date: TODAY });
 check('receiver sees request', a5.att.incoming.length === 1 && a5.att.incoming[0].from === L1, a5.att.incoming);
 var t2 = call('rec2', 'm.trDecide', { id: t1.id, decision: 'accept' });
@@ -199,7 +200,7 @@ var t3 = call('rec1', 'm.trCreate', { date: TODAY, factory: '666', from_dept: L1
 var evBefore = readTab_(CFG.TABS.MANPOWER_EVENTS).length;
 var t4 = call('rec2', 'm.trDecide', { id: t3.id, decision: 'reject' });
 var trRows = readTab_(CFG.TABS.TRANSFERS);
-check('transfer reject: right transfer row marked, only its event removed', t4.ok && trRows.find(x => x.id === t3.id).status === 'Rejected' && trRows.find(x => x.id === t1.id).status === 'Accepted' && readTab_(CFG.TABS.MANPOWER_EVENTS).length === evBefore - 1, { tr: trRows.map(x => x.id.slice(0, 4) + ':' + x.status), ev: readTab_(CFG.TABS.MANPOWER_EVENTS).length });
+check('transfer reject: right transfer row marked, nothing else changes', t4.ok && trRows.find(x => x.id === t3.id).status === 'Rejected' && trRows.find(x => x.id === t1.id).status === 'Accepted' && readTab_(CFG.TABS.MANPOWER_EVENTS).length === evBefore, { tr: trRows.map(x => x.id.slice(0, 4) + ':' + x.status), ev: readTab_(CFG.TABS.MANPOWER_EVENTS).length });
 // ========== 6. cancel attendance ==========
 var cx = call('rec2', 'att.save', { phone: true, rid: 'r9', date: TODAY, factory: '666', dept: L3, shift: 'Final', rows: [] });
 check('cancel: sheet rows removed', cx.ok && attSheetRows(L3, TODAY).length === 0 && attRows(L3, TODAY).length === 0, attSheetRows(L3, TODAY));
@@ -284,9 +285,9 @@ check('push.status: admin gets the active users, a recorder is refused', pst.ok 
 check('push.test: confirms who asked', ptt.ok && ptt.user_id === 'rec1');
 // ========== 14. accept a transfer and split the people over several lines ==========
 var sp = call('newrec', 'm.trCreate', { rid: 'sp1', date: TODAY, factory: '666', from_dept: L2, to_dept: L1, hour: 14, items: [{ role: 'Operator', count: 4 }] });
-var spBad1 = call('rec1', 'm.trDecide', { rid: 'spb1', id: sp.id, decision: 'accept', allocations: [{ dept: L1, role: 'Operator', count: 2 }, { dept: L3, role: 'Operator', count: 1 }] });
+var spBad1 = call('rec1', 'm.trDecide', { rid: 'spb1', id: sp.id, decision: 'accept', allocations: [{ dept: L1, role: 'Operator', count: 2 }, { dept: L3, role: 'Operator', count: 3 }] });
 var spBad2 = call('rec1', 'm.trDecide', { rid: 'spb2', id: sp.id, decision: 'accept', allocations: [{ dept: L1, role: 'Operator', count: 2 }, { dept: L2, role: 'Operator', count: 2 }] });
-check('split: totals must match, and not back to the line they came from', sp.ok && spBad1.ok === false && /4 came, 3 placed/.test(spBad1.message) && spBad2.ok === false && /reject/.test(spBad2.message), [sp.message, spBad1.message, spBad2.message]);
+check('split: not more than came, and not back to the line they came from', sp.ok && spBad1.ok === false && /4 came, 5 placed/.test(spBad1.message) && spBad2.ok === false && /reject/.test(spBad2.message), [sp.message, spBad1.message, spBad2.message]);
 var l3SheetBefore = attSheetRows(L3, TODAY).length;
 var spOk = call('rec1', 'm.trDecide', { rid: 'spok', id: sp.id, decision: 'accept', allocations: [{ dept: L1, role: 'Operator', count: 2 }, { dept: L3, role: 'Operator', count: 2 }] });
 var spEv = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(e => e.event === 'TRANSFER_IN' && String(e.note).indexOf('transfer:' + sp.id) === 0);
@@ -301,4 +302,24 @@ check('split: requester + admin told where they went', nTo(spOk, nrTok.user.user
 var plain = call('newrec', 'm.trCreate', { rid: 'sp2', date: TODAY, factory: '666', from_dept: L2, to_dept: L1, hour: 15, items: [{ role: 'Operator', count: 1 }] });
 var plainOk = call('rec1', 'm.trDecide', { rid: 'sp2ok', id: plain.id, decision: 'accept' });
 check('accept without a split: all to the receiving line (as before)', plainOk.ok && readTab_(CFG.TABS.MANPOWER_EVENTS).some(e => e.event === 'TRANSFER_IN' && String(e.note).indexOf('transfer:' + plain.id) === 0 && e.dept === L1 && +e.count === 1));
+// ========== 15. accept fewer than asked (8 of 10): only those move, the rest is not transferred ==========
+var pa = call('newrec', 'm.trCreate', { rid: 'pa1', date: TODAY, factory: '666', from_dept: L2, to_dept: L1, hour: 16, items: [{ role: 'Operator', count: 2 }] });
+var paNone = call('rec1', 'm.trDecide', { rid: 'pa0', id: pa.id, decision: 'accept', allocations: [] });
+var paOk = call('rec1', 'm.trDecide', { rid: 'pa2', id: pa.id, decision: 'accept', allocations: [{ dept: L1, role: 'Operator', count: 1 }] });
+var paEv = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(e => String(e.note).indexOf('transfer:' + pa.id) === 0);
+check('accept fewer: nobody accepted is refused; 1 of 2 -> 1 out of L2, 1 into L1', pa.ok && paNone.ok === false && /reject/.test(paNone.message) && paOk.ok && paOk.accepted === 1 && paOk.came === 2 &&
+  paEv.some(e => e.event === 'TRANSFER_OUT' && e.dept === L2 && +e.count === 1) && paEv.some(e => e.event === 'TRANSFER_IN' && e.dept === L1 && +e.count === 1) && paEv.length === 2, [pa.message, paNone.message, paOk.message, paEv.map(e => e.event + ':' + e.dept + ':' + e.count)]);
+check('accept fewer: sender told 1 of 2, 1 not accepted', nTo(paOk, nrTok.user.user_id) && /partly accepted/.test(paOk.notify[0].title) && /1 of 2 people/.test(paOk.notify[0].body) && /1 not accepted/.test(paOk.notify[0].body), paOk.notify);
+var paView = call('newrec', 'm.att', { date: TODAY, factory: '666' });
+var paL2 = (paView.items.filter(x => x.dept === L2)[0] || {}).transfers || [];
+check('accept fewer: the sending line shows 1 went (of 2 asked)', paL2.some(t => t.id === pa.id && t.total === 1 && t.asked === 2), paL2);
+check('accept fewer: L2 main sheet shows the 1 operator moved out at 16:00', attSheetRows(L2, TODAY).some(r => r.role === 'Operator' && r.count === 1 && /transferred out 16:00/.test(r.remark)), attSheetRows(L2, TODAY));
+// a waiting request keeps its people: they cannot be asked for twice
+var l2Ops = attRows(L2, TODAY).filter(r => r.role === 'Operator').reduce((a, r) => a + +r.count, 0);
+var outNow = readTab_(CFG.TABS.MANPOWER_EVENTS).filter(e => e.dept === L2 && e.event === 'TRANSFER_OUT').reduce((a, e) => a + +e.count, 0);
+var waiting = readTab_(CFG.TABS.TRANSFERS).filter(t => t.status === 'Pending' && t.from_dept === L2 && t.date === TODAY).reduce((a, t) => a + JSON.parse(t.items).reduce((b, i) => b + +i.count, 0), 0);
+var free = l2Ops - outNow - waiting;
+var hold = call('newrec', 'm.trCreate', { rid: 'h1', date: TODAY, factory: '666', from_dept: L2, to_dept: L3, hour: 16, items: [{ role: 'Operator', count: free }] });
+var hold2 = call('newrec', 'm.trCreate', { rid: 'h2', date: TODAY, factory: '666', from_dept: L2, to_dept: L1, hour: 16, items: [{ role: 'Operator', count: 1 }] });
+check('people in a waiting request cannot be transferred again', free > 0 && hold.ok && hold2.ok === false && /Only 0 Operator available/.test(hold2.message), [free, hold.message, hold2.message]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);
