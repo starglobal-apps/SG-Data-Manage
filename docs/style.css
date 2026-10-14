@@ -798,3 +798,18 @@ body.phone .rp-top .row { align-items: flex-end; gap: 8px; } body.phone .rp-top 
 .rp-dd b { font-size: 14.5px; } .rp-dd small { font-size: 11.5px; color: var(--muted); }
 .rp-none { padding: 10px 12px; font-size: 13px; color: var(--muted); }
 .pm-card.shipped { opacity: .85; border-style: dashed; }
+/* PMS: simple table, one row per SRN */
+.pm-tw { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.pm-t { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+.pm-t thead th { position: sticky; top: 0; z-index: 2; background: #f3f5f9; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; padding: 7px 2px; text-align: right; border-bottom: 1px solid var(--line); }
+.pm-t th.s, .pm-t td.s { text-align: left; width: 31%; padding-left: 9px; }
+.pm-t td { padding: 7px 4px 7px 2px; font-size: 12.5px; font-weight: 600; text-align: right; border-top: 1px solid #eef1f5; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-t tbody tr:first-child td { border-top: 0; }
+.pm-t td.z { color: #c3cad5; font-weight: 500; } .pm-t td.bad { color: var(--bad); background: #fff3f3; }
+.pm-t td.s b { font-size: 13.5px; display: inline; } .pm-t td.s i { font-style: normal; font-size: 9.5px; font-weight: 700; color: var(--ok); background: var(--ok-soft); border-radius: 4px; padding: 1px 4px; margin-left: 4px; vertical-align: 1px; }
+.pm-t td.s small { display: block; font-size: 10.5px; font-weight: 500; color: var(--muted); overflow: hidden; text-overflow: ellipsis; } .pm-t td.s small.ct { color: var(--warn); }
+.pm-t tr[data-rep] { cursor: pointer; } .pm-t tr[data-rep]:active td { background: var(--soft); } .pm-t tr.shipped td { color: var(--muted); }
+.pm-note { font-size: 11px; color: var(--muted); margin: 6px 2px 0; line-height: 1.4; }
+.pm-tw { overflow: clip; } body.phone .pm-t thead th { top: 46px; }
+.pm-t thead th { font-size: 9.5px; letter-spacing: 0; padding: 7px 3px 7px 0; }
+.pm-t td.s em { font-style: normal; font-size: 10.5px; font-weight: 600; color: var(--muted); margin-left: 5px; }

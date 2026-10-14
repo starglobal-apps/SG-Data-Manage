@@ -35,12 +35,18 @@
     var html = '<input id="pm-q" class="pm-q" type="search" inputmode="search" placeholder="Search SRN (e.g. 630) / style" value="' + esc(P.q) + '">';
     html += '<div class="pm-sub">' + (q ? rows.length + ' found' + (P.fq !== q && q.length >= 2 ? ' · looking in shipped…' : '') : P.rows.length + ' open SRN (not shipped) · search finds shipped ones too') + (P.err ? ' · <span style="color:var(--bad)">unloading not available</span>' : '') + '</div>';
     if (!rows.length) html += '<div class="empty">' + (q ? (P.fq === q ? 'No SRN found' : 'Searching…') : 'No open SRN') + '</div>';
-    html += rows.slice(0, 400).map(function (r) {
-      return '<div class="pm-card' + (r.isShipped ? ' shipped' : '') + '" data-rep="' + esc(r.srn) + '"><div class="pm-h"><b>' + esc(r.srn) + '</b>' + (r.isShipped ? '<em class="tag ok">Shipped</em>' : '') + (r.style || r.buyer ? '<span class="pm-s">' + esc([r.buyer, r.style].filter(Boolean).join(' · ')) + '</span>' : '<span class="pm-s"></span>') + (r.order ? '<span class="pm-o">Order <b>' + n(r.order) + '</b></span>' : '') + '</div>' +
-        '<div class="pm-g">' + cell('Load', r.loading) + cell('Stitch', r.stitched, r.stitched > r.loading - (r.contractor || 0)) + cell('Endline', r.endPass, r.endPass > r.stitched) +
-        cell('Pack', r.packed, r.packed > r.endPass + (r.contractor || 0)) + cell('Unload', r.unloaded) + cell('Ship', r.shipped) + '</div>' + bar(r) +
-        (r.contractor ? '<div class="pm-ct"><span>Contractor' + (r.contractors ? ' · ' + esc(r.contractors) : '') + ' <i>(stitch / endline not reported)</i></span><b>' + n(r.contractor) + '</b></div>' : '') + '</div>';
-    }).join('');
+    // one row per SRN: a plain table (tap a row: its day-wise report)
+    var num = function (v, bad) { return '<td class="' + (bad ? 'bad' : '') + (+v ? '' : ' z') + '">' + (+v ? n(v) : '–') + '</td>'; };
+    if (rows.length) html += '<div class="pm-tw"><table class="pm-t"><thead><tr><th class="s">SRN</th><th>Load</th><th>Stitch</th><th>End</th><th>Pack</th><th>Unload</th><th>Ship</th></tr></thead><tbody>' +
+      rows.slice(0, 400).map(function (r) {
+        var sub = [r.buyer, r.style].filter(Boolean).join(' · ');
+        return '<tr data-rep="' + esc(r.srn) + '" class="' + (r.isShipped ? 'shipped' : '') + '"><td class="s"><b>' + esc(r.srn.replace(/^SRN/, '')) + '</b>' + (r.isShipped ? '<i class="ok">shipped</i>' : '') +
+          (r.order ? '<em>' + n(r.order) + '</em>' : '') + (sub ? '<small>' + esc(sub) + '</small>' : '') +
+          (r.contractor ? '<small class="ct">Contractor ' + n(r.contractor) + '</small>' : '') + '</td>' +
+          num(r.loading) + num(r.stitched, r.stitched > r.loading - (r.contractor || 0)) + num(r.endPass, r.endPass > r.stitched) +
+          num(r.packed, r.packed > r.endPass + (r.contractor || 0)) + num(r.unloaded) + num(r.shipped) + '</tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="pm-note">Grey number next to the SRN = order qty · red = more than the step before it · contractor stitching / endline is not reported · tap a row for its day-wise report</p>';
     $('#mpms-body').innerHTML = html;
     var inp = $('#pm-q');
     inp.addEventListener('input', function () { P.q = inp.value; var pos = inp.selectionStart; render(); var i2 = $('#pm-q'); i2.focus(); try { i2.setSelectionRange(pos, pos); } catch (e) {} find(); });
