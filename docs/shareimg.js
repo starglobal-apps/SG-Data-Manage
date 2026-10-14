@@ -101,191 +101,295 @@
   S.imgStamp = function () { var d = new Date(), p = function (v) { return ('0' + v).slice(-2); }; return 'SG Data · ' + p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ' · ' + ((S.state.user && S.state.user.name) || ''); };
 })();
 
-// ---------- PDR image: previous day report, master-wise, designed to read well in WhatsApp ----------
+// ---------- Production Output Report image: a dashboard (KPI tiles, charts, detail tables) to share in WhatsApp ----------
 (function () {
   'use strict';
   var S = window.SG;
   var FONT = '-apple-system, Roboto, "Segoe UI", Arial, sans-serif';
-  var NAVY = '#1e3a8a', BLUE = '#2563eb', INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0';
-  function achColor(a) { return a === '' ? MUTED : a >= 100 ? '#15803d' : a >= 85 ? '#b45309' : '#c81e1e'; }
-  function achBg(a) { return a === '' ? '#f1f5f9' : a >= 100 ? '#dcfce7' : a >= 85 ? '#fef3c7' : '#fee2e2'; }
+  var C = { bg: '#f3f4f8', card: '#ffffff', border: '#e3e6ec', ink: '#111827', sub: '#6b7280', grid: '#eef0f4', navy: '#0f2a5f', blue: '#2563eb',
+            plan: '#cbd5e1', good: '#16a34a', mid: '#d97706', bad: '#dc2626', teal: '#0d9488', purple: '#7c3aed', orange: '#ea580c', head: '#f3f5f9' };
+  function achC(a) { return a === '' || a == null ? C.sub : a >= 100 ? C.good : a >= 85 ? C.mid : C.bad; }
   function n(v) { return v === '' || v === null || v === undefined ? '–' : Math.round(+v).toLocaleString('en-IN'); }
   function nm(v) { return String(v || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, ''); }
+  function sl(v) { return String(v || '').replace(/^FAC\d+-/i, ''); }
+  function sum(a, f) { return a.reduce(function (t, x) { return t + (+f(x) || 0); }, 0); }
   function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 
-  // d: m.pdr reply. only: a master's name -> that master; '__packing' -> the packing report; empty -> everything
+  // d: m.pdr reply. only: a master's name -> that master; '__packing' -> finishing; '__cutting' -> cutting; empty -> everything
   S.pdrImage = function (d, only) {
     var mode = only === '__packing' ? 'packing' : only === '__cutting' ? 'cutting' : only ? 'master' : 'all';
-    var masters = mode === 'packing' || mode === 'cutting' ? [] : d.masters.filter(function (m) { return mode === 'all' || m.master === only; });
-    var floors = mode === 'master' || mode === 'cutting' ? [] : (d.packing || []);
-    var cuts = mode === 'all' || mode === 'cutting' ? (d.cutting || []) : [], crows = cuts.reduce(function (a, x) { return a + x.rows.length; }, 0);
-    var Z = 2, W = 1590, pad = 32, rowH = 52, prowH = 46, tw = W - pad * 2;
-    var cols = [
-      { t: 'Supervisor', w: 170, a: 'left' }, { t: 'Line', w: 170, a: 'left' }, { t: 'SRN', w: 112, a: 'left' }, { t: 'Plan MP', w: 80 }, { t: 'Plan output', w: 108 },
-      { t: 'Actual MP', w: 112 }, { t: 'Actual output', w: 130 }, { t: 'End check', w: 92, end: 1 }, { t: 'End pass', w: 92, end: 1 }, { t: 'Variance', w: 96 },
-      { t: 'Hours shift+OT', w: 132 }, { t: 'Achievement', w: tw - 1294 }];
-    var xOf = function (list, k) { var x = pad; for (var i = 0; i < k; i++) x += list[i].w; return x; };
-    var lines = masters.reduce(function (a, m) { return a + m.lines.length; }, 0);
-    // finishing + cutting: one table each; side by side (half width) under the stitching, else full width
+    var masters = mode === 'all' || mode === 'master' ? d.masters.filter(function (m) { return mode === 'all' || m.master === only; }) : [];
+    var floors = mode === 'all' || mode === 'packing' ? (d.packing || []) : [];
+    var cuts = mode === 'all' || mode === 'cutting' ? (d.cutting || []) : [];
+    var lines = [].concat.apply([], masters.map(function (m) { return m.lines; }));
+    var W = 1600, pad = 28, gap = 20, IW = W - pad * 2;
     var mc = document.createElement('canvas').getContext('2d');
-    var wrap = function (s, max) {   // up to 2 lines
-      mc.font = '500 15.5px ' + FONT; s = String(s == null ? '' : s);
+    var wrap = function (s, max, sz) {   // up to 2 lines
+      mc.font = '500 ' + sz + 'px ' + FONT; s = String(s == null ? '' : s);
       if (mc.measureText(s).width <= max) return [s];
       var out = [], a = '';
       s.split(' ').forEach(function (wd) { var t = a ? a + ' ' + wd : wd; if (a && mc.measureText(t).width > max) { out.push(a); a = wd; } else a = t; });
       if (a) out.push(a);
       return out.length > 2 ? [out[0], out.slice(1).join(' ')] : out;
     };
-    var both = mode === 'all' && floors.length && cuts.length, tblW = both ? (tw - 24) / 2 : tw;
-    var build = function (t) {   // column widths for this table width, wrapped cells, row heights
-      var iw = tblW - 16; t.cols.forEach(function (col) { col.w = col.f * iw; });
-      t.rows.forEach(function (r) {
+
+    // ---- totals
+    var T = mode === 'all' ? d.total : { planOut: sum(masters, function (m) { return m.planOut; }), out: sum(masters, function (m) { return m.out; }), mp: sum(masters, function (m) { return m.mp; }), planMp: sum(masters, function (m) { return m.planMp; }), ach: masters[0] ? masters[0].ach : '' };
+    var endChk = sum(lines, function (l) { return l.endChecked; }), endPass = sum(lines, function (l) { return l.endPass; });
+    var fq = sum(floors, function (f) { return f.qty; }), fc = sum(floors, function (f) { return f.cartons; }), fm = sum(floors, function (f) { return f.mp; });
+    var cq = sum(cuts, function (x) { return x.qty; }), nfab = sum(cuts, function (x) { return x.rows.length; });
+
+    // ---- blocks: heights first, then draw
+    var HEAD = 104, KPI = 122, TITLE = 54;
+    var lineRow = 32, lineChartH = TITLE + lines.length * lineRow + 40;
+    var mRow = 40, mChartH = TITLE + masters.length * mRow + 22, donutH = 236;
+    var chartsH = masters.length ? Math.max(lineChartH, mChartH + gap + donutH) : 0;
+    var sRow = 40, stitchH = masters.length ? TITLE + 40 + sum(masters, function (m) { return 36 + m.lines.length * sRow; }) + 40 + 16 : 0;
+    var both = floors.length && cuts.length, halfW = both ? (IW - gap) / 2 : IW;
+    // finishing / cutting: bar chart + table, rows built for the card width
+    var tbl = function (cols, rows, w) {
+      var iw = w - 32; cols.forEach(function (col) { col.w = col.f * iw; });
+      rows.forEach(function (r) {
         var nl = 1;
-        r.cells = r.cells.map(function (v, k) { if (!t.cols[k].wrap || r.kind) return v; var l = wrap(v, t.cols[k].w - 20); nl = Math.max(nl, l.length); return l; });
-        r.h = r.kind === 'sub' ? 40 : Math.max(r.pending ? 52 : 44, nl * 19 + 14 + (r.pending ? 10 : 0));
+        r.cells = r.cells.map(function (v, k) { if (!cols[k].wrap || r.kind) return v; var l = wrap(v, cols[k].w - 20, 14.5); nl = Math.max(nl, l.length); return l; });
+        r.h = r.kind === 'sub' ? 32 : r.kind === 'tot' ? 38 : Math.max(r.pending ? 46 : 36, nl * 18 + 14 + (r.pending ? 10 : 0));
       });
-      t.h = 64 + 42 + t.rows.reduce(function (a, r) { return a + r.h; }, 0) + 10;
-      return t;
+      return { cols: cols, rows: rows, h: 36 + sum(rows, function (r) { return r.h; }) };
     };
     var finT = null, cutT = null;
     if (floors.length) {
-      var fr = [], fq = 0, fc = 0, fm = 0;
+      var fr = [];
       floors.forEach(function (f) {
-        f.rows.forEach(function (r, i) { fr.push({ cells: [i ? '' : f.floor.replace(/^FAC\d+-/, ''), r.srn, r.item || '–', n(r.qty), n(r.cartons), n(r.mp), r.hours || '–'], pending: r.pending, sep: i === 0 && fr.length > 0 }); });
-        if (f.rows.length > 1) fr.push({ cells: ['', 'Floor total', '', n(f.qty), n(f.cartons), n(f.mp), ''], kind: 'sub' });
-        fq += f.qty; fc += f.cartons; fm += f.mp;
+        f.rows.forEach(function (r, i) { fr.push({ cells: [i ? '' : sl(f.floor), r.srn, r.item || '–', n(r.qty), n(r.cartons), n(r.mp), r.hours || '–'], pending: r.pending, sep: i === 0 && fr.length > 0 }); });
+        if (f.rows.length > 1) fr.push({ cells: ['', sl(f.floor) + ' total', '', n(f.qty), n(f.cartons), n(f.mp), ''], kind: 'sub' });
       });
-      fr.push({ cells: ['Total', '', '', n(fq), n(fc), n(fm), ''], kind: 'total' });
-      finT = build({ label: 'FINISHING', title: 'Floor-wise', right: n(fq) + ' pcs  ·  ' + n(fc) + ' cartons', rows: fr,
-        cols: [{ t: 'Floor', f: .15, a: 'left', b: 1, wrap: 1 }, { t: 'SRN', f: .15, a: 'left', b: 1 }, { t: 'Style', f: .25, a: 'left', wrap: 1 }, { t: 'Packed', f: .13, b: 1, c: BLUE }, { t: 'Cartons', f: .11 }, { t: 'MP', f: .1 }, { t: 'Hours', f: .11 }] });
+      fr.push({ cells: ['Total', '', '', n(fq), n(fc), n(fm), ''], kind: 'tot' });
+      finT = tbl([{ t: 'Floor', f: .15, a: 'l', b: 1, wrap: 1 }, { t: 'SRN', f: .15, a: 'l', b: 1 }, { t: 'Style', f: .25, a: 'l', wrap: 1 }, { t: 'Packed', f: .13, b: 1, c: C.purple }, { t: 'Cartons', f: .11 }, { t: 'MP', f: .1 }, { t: 'Hours', f: .11 }], fr, halfW);
+      finT.chartH = floors.length * 30 + 18;
+      finT.h += TITLE + finT.chartH + 14;
     }
     if (cuts.length) {
-      var cr = [], cq0 = 0;
-      cuts.forEach(function (x) { cq0 += x.qty; x.rows.forEach(function (r, i) { cr.push({ cells: [i ? '' : x.srn, r.intent || '–', r.fabric || '–', n(r.qty)], sep: i === 0 && cr.length > 0 }); }); });
-      cr.push({ cells: ['Total', '', cuts.length + ' SRN  ·  ' + crows + (crows > 1 ? ' fabrics' : ' fabric'), n(cq0)], kind: 'total' });
-      cutT = build({ label: 'CUTTING', title: 'Fabric-wise', right: n(cq0) + ' cut', rows: cr,
-        cols: [{ t: 'SRN', f: .17, a: 'left', b: 1 }, { t: 'Intent', f: .18, a: 'left' }, { t: 'Fabric', f: .5, a: 'left', wrap: 1 }, { t: 'Qty', f: .15, b: 1, c: BLUE }] });
+      var cr = [];
+      cuts.forEach(function (x) { x.rows.forEach(function (r, i) { cr.push({ cells: [i ? '' : x.srn, r.intent || '–', r.fabric || '–', n(r.qty)], sep: i === 0 && cr.length > 0 }); }); });
+      cr.push({ cells: ['Total', '', cuts.length + ' SRN · ' + nfab + (nfab > 1 ? ' fabrics' : ' fabric'), n(cq)], kind: 'tot' });
+      cutT = tbl([{ t: 'SRN', f: .17, a: 'l', b: 1 }, { t: 'Intent', f: .18, a: 'l' }, { t: 'Fabric', f: .5, a: 'l', wrap: 1 }, { t: 'Cut qty', f: .15, b: 1, c: C.orange }], cr, halfW);
+      cutT.chartH = cuts.length * 30 + 18;
+      cutT.h += TITLE + cutT.chartH + 14;
     }
-    var tablesH = both ? Math.max(finT.h, cutT.h) + 24 : finT || cutT ? (finT || cutT).h + 24 : 0;
-    var heads = mode === 'all' && masters.length && (finT || cutT) ? 1 : 0;
-    var H = 170 + 140 + masters.length * (64 + 46 + 24) + lines * rowH + heads * 60 + tablesH + 96;
-    var cv = document.createElement('canvas'); cv.width = W * Z; cv.height = H * Z;
+    var bottomH = both ? Math.max(finT.h, cutT.h) : finT ? finT.h : cutT ? cutT.h : 0;
+    var FOOT = 70;
+    var H = HEAD + 24 + KPI + gap + (chartsH ? chartsH + gap : 0) + (stitchH ? stitchH + gap : 0) + (bottomH ? bottomH + gap : 0) + FOOT;
+    var Z = Math.max(1, Math.min(2, Math.floor(Math.sqrt(16000000 / (W * H)) * 100) / 100));   // phone canvas size limit
+
+    var cv = document.createElement('canvas'); cv.width = Math.round(W * Z); cv.height = Math.round(H * Z);
     var c = cv.getContext('2d'); c.scale(Z, Z); c.textBaseline = 'middle';
-    var font = function (sz, w) { c.font = (w || 500) + ' ' + sz + 'px ' + FONT; };
-    var text = function (t, x, y, o) { o = o || {}; font(o.size || 18, o.w); c.fillStyle = o.color || INK; c.textAlign = o.align || 'left'; var s = String(t == null ? '' : t); if (o.max) while (s.length > 1 && c.measureText(s).width > o.max) s = s.slice(0, -2) + '…'; c.fillText(s, x, y); };
-    var card = function (x, y, w, h, r, fill) { c.fillStyle = fill || '#fff'; rr(c, x, y, w, h, r); c.fill(); };
-    c.fillStyle = '#f1f5f9'; c.fillRect(0, 0, W, H);
-    // header band
-    var g = c.createLinearGradient(0, 0, W, 0); g.addColorStop(0, NAVY); g.addColorStop(1, BLUE);
-    c.fillStyle = g; c.fillRect(0, 0, W, 150);
-    var p = d.date.split('-'), dt = new Date(+p[0], +p[1] - 1, +p[2]);
-    var day = dt.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
-    text(mode === 'packing' ? 'Finishing Output Report' : mode === 'cutting' ? 'Cutting Output Report' : 'Production Output Report', pad, 52, { size: 38, w: 800, color: '#fff' });
-    text((mode === 'packing' ? 'Finishing, floor-wise' : mode === 'cutting' ? 'Cutting, fabric-wise' : mode === 'all' ? ['Stitching', 'Endline', floors.length ? 'Finishing' : '', cuts.length ? 'Cutting' : ''].filter(String).join(' · ') : 'Stitching') + ' · FAC' + d.factory + ' · ' + day + (mode === 'master' ? ' · Master: ' + nm(only) : ''), pad, 100, { size: 21, w: 500, color: '#dbeafe' });
-    text('SG Data', W - pad, 52, { size: 20, w: 700, color: '#bfdbfe', align: 'right' });
-    // KPI cards
-    var cards;
-    if (mode === 'cutting') {
-      var cq = cuts.reduce(function (a, x) { return a + x.qty; }, 0);
-      cards = [['Cut qty', n(cq), BLUE], ['SRN', String(cuts.length), INK], ['Fabrics', String(crows), INK]];
-    } else if (mode === 'packing') {
-      var pq = floors.reduce(function (a, f) { return a + f.qty; }, 0), pc = floors.reduce(function (a, f) { return a + f.cartons; }, 0), pm = floors.reduce(function (a, f) { return a + f.mp; }, 0);
-      cards = [['Packed pcs', n(pq), BLUE], ['Cartons', n(pc), INK], ['Floors', String(floors.length), INK], ['Manpower', n(pm), INK]];
-    } else {
-      var t = mode === 'master' ? masters.reduce(function (a, m) { a.planOut += m.planOut; a.out += m.out; a.endPass += m.endPass || 0; return a; }, { planOut: 0, out: 0, endPass: 0 }) : d.total;
-      var ach = mode === 'master' ? (masters[0] ? masters[0].ach : '') : d.total.ach, varT = t.planOut ? t.out - t.planOut : '';
-      cards = [['Plan output', n(t.planOut), INK], ['Actual output', n(t.out), BLUE], ['Endline pass', n(t.endPass || 0), '#15803d'],
-               ['Variance', varT === '' ? '–' : (varT > 0 ? '+' : '') + n(varT), varT === '' ? MUTED : varT < 0 ? '#c81e1e' : '#15803d'], ['Achievement', ach === '' ? '–' : ach + '%', achColor(ach)]];
+    var text = function (t, x, y, o) {
+      o = o || {}; c.font = (o.w || 500) + ' ' + (o.size || 15) + 'px ' + FONT; c.fillStyle = o.color || C.ink; c.textAlign = o.align || 'left';
+      var s = String(t == null ? '' : t); if (o.max) while (s.length > 1 && c.measureText(s).width > o.max) s = s.slice(0, -2) + '…';
+      c.fillText(s, x, y); return c.measureText(s).width;
+    };
+    var card = function (x, y, w, h, title, sub) {
+      c.save(); c.shadowColor = 'rgba(15,23,42,.06)'; c.shadowBlur = 10; c.shadowOffsetY = 2; c.fillStyle = C.card; rr(c, x, y, w, h, 12); c.fill(); c.restore();
+      c.strokeStyle = C.border; c.lineWidth = 1; rr(c, x + .5, y + .5, w - 1, h - 1, 12); c.stroke();
+      if (title) text(title, x + 18, y + 28, { size: 17, w: 700 });
+      if (sub) text(sub, x + w - 18, y + 28, { size: 13, w: 600, color: C.sub, align: 'right', max: w * 0.55 });
+    };
+    var bar = function (x, y, w, h, color) { if (w <= 0) return; c.fillStyle = color; rr(c, x, y, Math.max(w, 3), h, Math.min(3, h / 2)); c.fill(); };
+
+    c.fillStyle = C.bg; c.fillRect(0, 0, W, H);
+    // ---- header
+    var g = c.createLinearGradient(0, 0, W, 0); g.addColorStop(0, C.navy); g.addColorStop(1, '#1d4ed8');
+    c.fillStyle = g; c.fillRect(0, 0, W, HEAD);
+    var p = d.date.split('-'), day = new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+    var title = mode === 'packing' ? 'Finishing Output Report' : mode === 'cutting' ? 'Cutting Output Report' : 'Production Output Report';
+    text(title, pad, 42, { size: 30, w: 800, color: '#fff' });
+    var parts = mode === 'packing' ? ['Finishing'] : mode === 'cutting' ? ['Cutting'] : ['Stitching', 'Endline'].concat(floors.length ? ['Finishing'] : [], cuts.length ? ['Cutting'] : []);
+    text('FAC' + d.factory + '  ·  ' + day + '  ·  ' + parts.join(' · ') + (mode === 'master' ? '  ·  Master: ' + nm(only) : ''), pad, 76, { size: 15, w: 500, color: '#c7d2fe' });
+    text('SG Data', W - pad, 42, { size: 18, w: 800, color: '#fff', align: 'right' });
+    text('Previous day report', W - pad, 74, { size: 13, w: 600, color: '#c7d2fe', align: 'right' });
+    var y = HEAD + 24;
+
+    // ---- KPI tiles
+    var kpis;
+    var varT = T.planOut ? T.out - T.planOut : '';
+    var rate = endChk ? Math.round(endPass / endChk * 1000) / 10 : '';
+    if (mode === 'packing') kpis = [{ l: 'Packed pcs', v: n(fq), c: C.purple }, { l: 'Cartons', v: n(fc), c: C.ink }, { l: 'Floors', v: String(floors.length), c: C.ink, s: sum(floors, function (f) { return f.rows.length; }) + ' SRN' }, { l: 'Manpower', v: n(fm), c: C.ink, s: 'pressman + checker + TC + helper' }];
+    else if (mode === 'cutting') kpis = [{ l: 'Cut qty', v: n(cq), c: C.orange }, { l: 'SRN', v: String(cuts.length), c: C.ink }, { l: 'Fabrics', v: String(nfab), c: C.ink }];
+    else {
+      kpis = [{ l: 'Plan output', v: n(T.planOut), c: C.ink, s: 'plan MP ' + n(T.planMp) },
+              { l: 'Actual output', v: n(T.out), c: C.blue, s: varT === '' ? 'no plan' : (varT >= 0 ? '▲ +' : '▼ ') + n(varT) + ' vs plan', sc: varT === '' ? C.sub : varT < 0 ? C.bad : C.good },
+              { l: 'Achievement', v: T.ach === '' ? '–' : T.ach + '%', c: achC(T.ach), gauge: T.ach },
+              { l: 'Endline pass', v: n(endPass), c: C.teal, s: rate === '' ? 'no endline' : rate + '% of ' + n(endChk) + ' checked' }];
+      if (mode === 'all') kpis.push({ l: 'Finished', v: n(fq), c: C.purple, s: floors.length ? n(fc) + ' cartons' : 'no finishing' }, { l: 'Cut', v: n(cq), c: C.orange, s: cuts.length ? cuts.length + ' SRN · ' + nfab + ' fabrics' : 'no cutting' });
+      else kpis.push({ l: 'Lines', v: String(lines.length), c: C.ink, s: 'actual MP ' + n(T.mp) });
     }
-    var gap = 16, cw = (tw - (cards.length - 1) * gap) / cards.length, y0 = 172;
-    cards.forEach(function (k, i) {
-      var x = pad + i * (cw + gap);
-      c.shadowColor = 'rgba(15,23,42,.08)'; c.shadowBlur = 12; c.shadowOffsetY = 3; card(x, y0, cw, 104, 16); c.shadowColor = 'transparent';
-      text(k[0].toUpperCase(), x + 22, y0 + 32, { size: 15, w: 700, color: MUTED });
-      text(k[1], x + 22, y0 + 72, { size: 34, w: 800, color: k[2] });
+    var kw = (IW - (kpis.length - 1) * 16) / kpis.length;
+    kpis.forEach(function (k, i) {
+      var x = pad + i * (kw + 16);
+      card(x, y, kw, KPI);
+      c.fillStyle = k.c; rr(c, x, y, kw, 5, 2.5); c.fill(); c.fillRect(x + 6, y, kw - 12, 5);
+      text(k.l.toUpperCase(), x + 18, y + 30, { size: 12.5, w: 700, color: C.sub });
+      text(k.v, x + 18, y + 66, { size: 32, w: 800, color: k.c, max: kw - 30 });
+      if (k.gauge !== undefined) {
+        var gw = kw - 36; c.fillStyle = C.grid; rr(c, x + 18, y + 96, gw, 8, 4); c.fill();
+        if (k.gauge !== '') bar(x + 18, y + 96, Math.min(1, k.gauge / 100) * gw, 8, achC(k.gauge));
+      } else if (k.s) text(k.s, x + 18, y + 100, { size: 13, w: 600, color: k.sc || C.sub, max: kw - 30 });
     });
-    var y = y0 + 104 + 30;
-    var section = function (label, title, right, pill, pillCls) {
-      c.fillStyle = '#eef3ff'; rr(c, pad, y, tw, 64, 16); c.fill(); c.fillRect(pad, y + 40, tw, 24);
-      text(label, pad + 22, y + 22, { size: 12, w: 800, color: BLUE });
-      text(title, pad + 22, y + 45, { size: 23, w: 800, color: NAVY, max: 560 });
-      var sx = W - pad - 22, pw = 0;
-      if (pill !== undefined) { font(16, 700); pw = c.measureText(pill).width + 30; c.fillStyle = achBg(pillCls); rr(c, sx - pw, y + 16, pw, 34, 17); c.fill(); text(pill, sx - pw / 2, y + 33, { size: 17, w: 800, color: achColor(pillCls), align: 'center' }); pw += 18; }
-      text(right, sx - pw, y + 33, { size: 17, w: 600, color: MUTED, align: 'right' });
-      y += 64;
-    };
-    var headRow = function (list) {
-      list.forEach(function (col, k) {
-        var x = xOf(list, k);
-        if (col.end) { c.fillStyle = '#ecfdf3'; c.fillRect(x, y, col.w, 46); }
-        text(col.t.toUpperCase(), col.a === 'left' ? x + 18 : x + col.w / 2, y + 23, { size: 12, w: 800, color: col.end ? '#15803d' : MUTED, align: col.a === 'left' ? 'left' : 'center', max: col.w - 10 });
+    y += KPI + gap;
+
+    if (masters.length) {
+      // ---- chart: plan vs actual by line
+      var lw = Math.round((IW - gap) * 0.6), rw = IW - gap - lw, x0 = pad;
+      card(x0, y, lw, chartsH, 'Plan vs actual by line');
+      var lgx = x0 + lw - 18 - text('Actual (colour = achievement)', x0 + lw - 18, y + 28, { size: 12.5, w: 600, color: C.sub, align: 'right' });
+      c.fillStyle = C.blue; c.fillRect(lgx - 18, y + 23, 12, 10);
+      lgx -= 30 + text('Plan', lgx - 30, y + 28, { size: 12.5, w: 600, color: C.sub, align: 'right' });
+      c.fillStyle = C.plan; c.fillRect(lgx - 18, y + 23, 12, 10);
+      var labW = 230, bx = x0 + 18 + labW, bw = lw - labW - 36 - 70, maxV = Math.max(1, Math.max.apply(null, lines.map(function (l) { return Math.max(+l.planOut || 0, +l.out || 0); })));
+      var step = Math.pow(10, Math.floor(Math.log10(maxV))), top = Math.ceil(maxV / step) * step; if (top / step < 3) { step /= 2; top = Math.ceil(maxV / step) * step; }
+      lineRow = Math.min(60, Math.max(32, Math.floor((chartsH - TITLE - 40) / lines.length)));   // use the card's height
+      var cy = y + TITLE, ch = lines.length * lineRow;
+      for (var tv = 0; tv <= top + 1e-9; tv += step) {
+        var gx = bx + tv / top * bw; c.fillStyle = C.grid; c.fillRect(gx, cy, 1, ch);
+        text(n(tv), gx, cy + ch + 14, { size: 11, w: 600, color: C.sub, align: 'center' });
+      }
+      lines.forEach(function (l, i) {
+        var ry = cy + i * lineRow, mid = ry + lineRow / 2, bh = Math.min(16, lineRow * 0.36);
+        text(sl(l.dept), x0 + 18, mid - 7, { size: 13.5, w: 700, max: labW - 10 });
+        text(l.srn + (l.pending ? '  · pending' : ''), x0 + 18, mid + 9, { size: 11, w: 600, color: l.pending ? C.mid : C.sub, max: labW - 10 });
+        if (+l.planOut) { bar(bx, mid - bh * 0.7 - 2, l.planOut / top * bw, bh * 0.7, C.plan); text(n(l.planOut), bx + l.planOut / top * bw + 6, mid - bh * 0.35 - 2, { size: 11, w: 600, color: C.sub }); }
+        var aw = (+l.out || 0) / top * bw; bar(bx, mid + 1, aw, bh, l.ach === '' ? C.blue : achC(l.ach));
+        text(l.endOnly ? 'endline only' : n(l.out), bx + aw + 6, mid + 1 + bh / 2, { size: 12.5, w: 800, color: C.ink });
+        text(l.ach === '' ? '–' : l.ach + '%', x0 + lw - 18, mid, { size: 14, w: 800, color: achC(l.ach), align: 'right' });
       });
-      c.fillStyle = LINE; c.fillRect(pad + 14, y + 45, tw - 28, 1.5);
-      y += 46;
-    };
-    var heading = function (t) { if (mode !== 'all') return; text(t, pad + 4, y + 26, { size: 20, w: 800, color: NAVY }); y += 60; };
-    if (heads) heading('STITCHING · MASTER-WISE');
-    masters.forEach(function (m) {
-      card(pad, y, tw, 64 + 46 + m.lines.length * rowH + 4, 16);
-      section('MASTER', nm(m.master), m.lines.length + (m.lines.length > 1 ? ' lines' : ' line') + '  ·  ' + n(m.out) + ' / ' + n(m.planOut) + ' pcs  ·  end pass ' + n(m.endPass || 0), m.ach === '' ? 'no plan' : m.ach + '%', m.ach);
-      headRow(cols);
-      m.lines.forEach(function (l, i) {
-        if (i % 2) { c.fillStyle = '#f8fafc'; c.fillRect(pad + 8, y, tw - 16, rowH); }
-        c.fillStyle = 'rgba(22,163,74,.06)'; c.fillRect(xOf(cols, 7), y, cols[7].w + cols[8].w, rowH);
-        var cells = [nm(l.supervisor) || '–', l.dept.replace(/^FAC\d+-/, ''), l.srn, n(l.planMp), n(l.planOut), n(l.mp) + (l.mpOt ? ' (+' + l.mpOt + ' OT)' : ''), l.endOnly ? '–' : n(l.out),
-                     n(l.endChecked || 0), n(l.endPass || 0), l.variance === '' ? '–' : (l.variance > 0 ? '+' : '') + n(l.variance), (l.hours || 0) + (l.hoursOt ? ' + ' + l.hoursOt : ''), ''];
-        cols.forEach(function (col, k) {
-          var cx = xOf(cols, k), o = { size: 18, w: k === 1 || k === 6 ? 700 : 500, color: INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 14 };
-          if (k === 9 && l.variance !== '') o.color = l.variance < 0 ? '#c81e1e' : '#15803d';
-          if (k === 5 && l.mpOt) o.size = 16;
-          if (k === 0) { o.size = 16; o.color = '#334155'; }
-          if (k === 8) { o.w = 700; o.color = '#15803d'; }
-          if (k < 11) text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, k === 4 && l.planOut !== '' ? y + rowH / 2 - 6 : y + rowH / 2, o);
-          if (k === 11) {   // achievement: pill + bar
-            var a = l.ach, bw = col.w - 40, bx = cx + 14;
-            c.fillStyle = '#e2e8f0'; rr(c, bx, y + rowH - 14, bw, 6, 3); c.fill();
-            if (a !== '') { c.fillStyle = achColor(a); rr(c, bx, y + rowH - 14, Math.max(6, Math.min(1, a / 100) * bw), 6, 3); c.fill(); }
-            text(a === '' ? (l.endOnly ? 'endline only' : 'no plan') : a + '%', bx + bw / 2, y + 20, { size: 18, w: 800, color: achColor(a), align: 'center' });
-          }
+      // ---- chart: achievement by master + endline donut
+      var rx = x0 + lw + gap, mh = chartsH - donutH - gap;
+      card(rx, y, rw, mh, 'Achievement by master', 'target 100%');
+      var mlab = 170, mbx = rx + 18 + mlab, mbw = rw - mlab - 36 - 62, maxA = Math.max(110, Math.max.apply(null, masters.map(function (m) { return +m.ach || 0; })));
+      masters.forEach(function (m, i) {
+        var ry = y + TITLE + i * mRow;
+        text(nm(m.master), rx + 18, ry + 12, { size: 13.5, w: 700, max: mlab - 10 });
+        text(n(m.out) + ' / ' + n(m.planOut), rx + 18, ry + 28, { size: 11, w: 600, color: C.sub, max: mlab - 10 });
+        c.fillStyle = C.grid; rr(c, mbx, ry + 10, mbw, 16, 4); c.fill();
+        if (m.ach !== '') bar(mbx, ry + 10, Math.min(1, m.ach / maxA) * mbw, 16, achC(m.ach));
+        text(m.ach === '' ? 'no plan' : m.ach + '%', rx + rw - 18, ry + 18, { size: 14, w: 800, color: achC(m.ach), align: 'right' });
+      });
+      var tx100 = mbx + 100 / maxA * mbw; c.strokeStyle = C.ink; c.setLineDash([4, 3]); c.lineWidth = 1.2; c.beginPath(); c.moveTo(tx100, y + TITLE - 4); c.lineTo(tx100, y + TITLE + masters.length * mRow); c.stroke(); c.setLineDash([]);
+      var dy = y + mh + gap;
+      card(rx, dy, rw, donutH, 'Endline · pass rate', n(endChk) + ' checked');
+      var dcx = rx + 120, dcy = dy + TITLE + 84, R = 70;
+      c.lineWidth = 22; c.strokeStyle = endChk ? '#fde2e2' : C.grid; c.beginPath(); c.arc(dcx, dcy, R, 0, Math.PI * 2); c.stroke();
+      if (endChk) { c.strokeStyle = C.teal; c.beginPath(); c.arc(dcx, dcy, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * endPass / endChk); c.stroke(); }
+      text(rate === '' ? '–' : rate + '%', dcx, dcy - 6, { size: 24, w: 800, color: C.teal, align: 'center' });
+      text('pass', dcx, dcy + 18, { size: 12, w: 600, color: C.sub, align: 'center' });
+      [['Checked', n(endChk), C.ink, C.plan], ['Passed', n(endPass), C.teal, C.teal], ['Not passed', n(endChk - endPass), C.bad, '#fca5a5']].forEach(function (r, i) {
+        var ly = dy + TITLE + 34 + i * 42, lx = rx + 240;
+        c.fillStyle = r[3]; rr(c, lx, ly - 6, 12, 12, 3); c.fill();
+        text(r[0], lx + 20, ly, { size: 13.5, w: 600, color: C.sub });
+        text(r[1], rx + rw - 22, ly, { size: 17, w: 800, color: r[2], align: 'right' });
+      });
+      y += chartsH + gap;
+
+      // ---- stitching detail table (matrix: master subtotal, lines, grand total)
+      card(pad, y, IW, stitchH, 'Stitching detail · master-wise', 'plan output = actual man-hours × plan rate of the day');
+      var cols = [{ t: 'Supervisor', w: 186, a: 'l' }, { t: 'Line', w: 150, a: 'l' }, { t: 'SRN', w: 106, a: 'l' }, { t: 'Plan MP', w: 78 }, { t: 'Plan output', w: 112 }, { t: 'Actual MP', w: 108 },
+                  { t: 'Actual output', w: 112 }, { t: 'End check', w: 90 }, { t: 'End pass', w: 90 }, { t: 'Variance', w: 92 }, { t: 'Hours', w: 96 }];
+      var used = sum(cols, function (x) { return x.w; }); cols.push({ t: 'Achievement', w: IW - 32 - used });
+      var xs = [], cx = pad + 16; cols.forEach(function (col) { xs.push(cx); cx += col.w; });
+      var cxOf = function (k) { return cols[k].a === 'l' ? xs[k] + 10 : xs[k] + cols[k].w / 2; };
+      var ty = y + TITLE;
+      c.fillStyle = C.navy; rr(c, pad + 16, ty, IW - 32, 40, 8); c.fill();
+      cols.forEach(function (col, k) { text(col.t.toUpperCase(), cxOf(k), ty + 20, { size: 11.5, w: 800, color: '#fff', align: col.a === 'l' ? 'left' : 'center', max: col.w - 8 }); });
+      ty += 40;
+      var achCell = function (a, ry, h, bold) {
+        var k = 11, bxx = xs[k] + 10, bww = cols[k].w - 86;
+        c.fillStyle = C.grid; rr(c, bxx, ry + h / 2 - 6, bww, 12, 3); c.fill();
+        if (a !== '') bar(bxx, ry + h / 2 - 6, Math.min(1, a / 120) * bww, 12, achC(a));
+        c.fillStyle = C.ink; c.fillRect(bxx + bww * 100 / 120, ry + h / 2 - 9, 1.5, 18);
+        text(a === '' ? '–' : a + '%', xs[k] + cols[k].w - 10, ry + h / 2, { size: bold ? 15 : 14, w: 800, color: achC(a), align: 'right' });
+      };
+      masters.forEach(function (m) {
+        c.fillStyle = '#e8efff'; c.fillRect(pad + 16, ty, IW - 32, 36);
+        var mv = m.planOut ? m.out - m.planOut : '';
+        var mcells = [nm(m.master), m.lines.length + (m.lines.length > 1 ? ' lines' : ' line'), '', n(m.planMp), n(m.planOut), n(m.mp), n(m.out), n(m.endChecked || 0), n(m.endPass || 0), mv === '' ? '–' : (mv > 0 ? '+' : '') + n(mv), ''];
+        mcells.forEach(function (v, k) { text(v, cxOf(k), ty + 18, { size: k === 0 ? 14.5 : 13.5, w: 800, color: k === 9 && mv !== '' ? (mv < 0 ? C.bad : C.good) : k === 8 ? C.teal : C.navy, align: cols[k].a === 'l' ? 'left' : 'center', max: k === 0 ? cols[0].w + cols[1].w - 20 : cols[k].w - 10 }); });
+        achCell(m.ach, ty, 36, true);
+        ty += 36;
+        m.lines.forEach(function (l, i) {
+          if (i % 2) { c.fillStyle = '#fafbfd'; c.fillRect(pad + 16, ty, IW - 32, sRow); }
+          c.fillStyle = C.grid; c.fillRect(pad + 16, ty + sRow - 1, IW - 32, 1);
+          var lv = l.variance;
+          var cells = [nm(l.supervisor) || '–', sl(l.dept), l.srn, n(l.planMp), n(l.planOut), n(l.mp) + (l.mpOt ? ' +' + l.mpOt + ' OT' : ''), l.endOnly ? '–' : n(l.out), n(l.endChecked || 0), n(l.endPass || 0),
+                       lv === '' ? '–' : (lv > 0 ? '+' : '') + n(lv), (l.hours || 0) + (l.hoursOt ? ' + ' + l.hoursOt : '')];
+          cells.forEach(function (v, k) {
+            var o = { size: 14, w: k === 1 || k === 6 ? 700 : 500, color: C.ink, align: cols[k].a === 'l' ? 'left' : 'center', max: cols[k].w - 12 };
+            if (k === 0) { o.size = 13; o.color = '#374151'; }
+            if (k === 8) { o.w = 700; o.color = C.teal; }
+            if (k === 9 && lv !== '') o.color = lv < 0 ? C.bad : C.good;
+            var yy = ty + sRow / 2 - (k === 4 && l.planOut !== '' && S.pdrPlanSrc ? 6 : k === 1 && l.pending ? 6 : 0);
+            text(v, cxOf(k), yy, o);
+          });
+          if (S.pdrPlanSrc && l.planOut !== '') text(S.pdrPlanSrc(l), cxOf(4), ty + sRow - 9, { size: 10, w: 600, color: C.sub, align: 'center', max: cols[4].w - 6 });
+          if (l.pending) text('● waiting approval', cxOf(1), ty + sRow - 9, { size: 10, w: 700, color: C.mid });
+          achCell(l.ach, ty, sRow);
+          ty += sRow;
         });
-        if (l.pending) text('waiting approval', xOf(cols, 1) + 18, y + rowH - 9, { size: 11, w: 700, color: '#b45309' });
-        if (S.pdrPlanSrc && l.planOut !== '') text(S.pdrPlanSrc(l), xOf(cols, 4) + cols[4].w / 2, y + rowH - 8, { size: 11, w: 600, color: MUTED, align: 'center', max: cols[4].w - 6 });
-        y += rowH;
       });
-      y += 4 + 20;
-    });
-    var drawTable = function (x, t) {
-      var w = tblW, yy = y;
-      c.shadowColor = 'rgba(15,23,42,.06)'; c.shadowBlur = 10; c.shadowOffsetY = 2; card(x, yy, w, t.h, 16); c.shadowColor = 'transparent';
-      c.fillStyle = '#eef3ff'; rr(c, x, yy, w, 64, 16); c.fill(); c.fillRect(x, yy + 40, w, 24);
-      text(t.label, x + 20, yy + 22, { size: 12, w: 800, color: BLUE });
-      text(t.title, x + 20, yy + 45, { size: 21, w: 800, color: NAVY, max: w * 0.45 });
-      text(t.right, x + w - 20, yy + 33, { size: 16, w: 700, color: MUTED, align: 'right', max: w * 0.5 });
-      yy += 64;
-      var xs = [], cx = x + 8; t.cols.forEach(function (col) { xs.push(cx); cx += col.w; });
-      var tx = function (k) { return t.cols[k].a === 'left' ? xs[k] + 12 : xs[k] + t.cols[k].w / 2; };
-      t.cols.forEach(function (col, k) { text(col.t.toUpperCase(), tx(k), yy + 21, { size: 11.5, w: 800, color: MUTED, align: col.a === 'left' ? 'left' : 'center', max: col.w - 8 }); });
-      c.fillStyle = LINE; c.fillRect(x + 12, yy + 41, w - 24, 1.5); yy += 42;
+      c.fillStyle = '#dbeafe'; rr(c, pad + 16, ty + 2, IW - 32, 36, 8); c.fill();
+      var tv2 = T.planOut ? T.out - T.planOut : '';
+      ['Total', lines.length + ' lines', '', n(T.planMp), n(T.planOut), n(T.mp), n(T.out), n(endChk), n(endPass), tv2 === '' ? '–' : (tv2 > 0 ? '+' : '') + n(tv2), ''].forEach(function (v, k) {
+        text(v, cxOf(k), ty + 20, { size: 14.5, w: 800, color: k === 9 && tv2 !== '' ? (tv2 < 0 ? C.bad : C.good) : C.navy, align: cols[k].a === 'l' ? 'left' : 'center', max: cols[k].w - 10 });
+      });
+      achCell(T.ach, ty + 2, 36, true);
+      y += stitchH + gap;
+    }
+
+    // ---- finishing / cutting: bar chart + table
+    var block = function (x, w, t, h, ttl, sub, color, bars) {
+      card(x, y, w, h, ttl, sub);
+      var by = y + TITLE, lab = 150, bbx = x + 18 + lab, bbw = w - lab - 36 - 80, mx = Math.max(1, Math.max.apply(null, bars.map(function (b) { return b[1]; })));
+      bars.forEach(function (b, i) {
+        var ry = by + i * 30;
+        text(b[0], x + 18, ry + 14, { size: 13, w: 700, max: lab - 10 });
+        c.fillStyle = C.grid; rr(c, bbx, ry + 6, bbw, 16, 4); c.fill();
+        bar(bbx, ry + 6, b[1] / mx * bbw, 16, color);
+        text(n(b[1]), x + w - 18, ry + 14, { size: 13.5, w: 800, color: color, align: 'right' });
+      });
+      var ty2 = by + t.chartH;
+      var xs2 = [], cx2 = x + 16; t.cols.forEach(function (col) { xs2.push(cx2); cx2 += col.w; });
+      var cxo = function (k) { return t.cols[k].a === 'l' ? xs2[k] + 10 : xs2[k] + t.cols[k].w / 2; };
+      c.fillStyle = C.head; rr(c, x + 16, ty2, w - 32, 36, 8); c.fill();
+      t.cols.forEach(function (col, k) { text(col.t.toUpperCase(), cxo(k), ty2 + 18, { size: 11.5, w: 800, color: C.sub, align: col.a === 'l' ? 'left' : 'center', max: col.w - 8 }); });
+      ty2 += 36;
       t.rows.forEach(function (r) {
-        if (r.kind === 'sub') { c.fillStyle = '#f1f5ff'; c.fillRect(x + 8, yy, w - 16, r.h); }
-        else if (r.kind === 'total') { c.fillStyle = '#dbeafe'; rr(c, x + 8, yy + 2, w - 16, r.h - 4, 8); c.fill(); }
-        else if (r.sep) { c.fillStyle = LINE; c.fillRect(x + 12, yy, w - 24, 1); }
+        if (r.kind === 'sub') { c.fillStyle = '#f5f3ff'; c.fillRect(x + 16, ty2, w - 32, r.h); }
+        else if (r.kind === 'tot') { c.fillStyle = '#dbeafe'; rr(c, x + 16, ty2 + 2, w - 32, r.h - 4, 8); c.fill(); }
+        else if (r.sep) { c.fillStyle = C.border; c.fillRect(x + 16, ty2, w - 32, 1); }
         var up = r.pending ? 5 : 0;
         t.cols.forEach(function (col, k) {
-          var v = r.cells[k], o = { size: 15.5, w: r.kind ? 800 : col.b ? 700 : 500, color: r.kind ? NAVY : col.c || INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 16 };
-          if (Array.isArray(v)) v.forEach(function (ln, li) { text(ln, tx(k), yy + r.h / 2 + (li - (v.length - 1) / 2) * 19 - up, o); });
-          else text(v, tx(k), yy + r.h / 2 - up, o);
+          var v = r.cells[k], o = { size: 14.5, w: r.kind ? 800 : col.b ? 700 : 500, color: r.kind ? C.navy : col.c || C.ink, align: col.a === 'l' ? 'left' : 'center', max: col.w - 14 };
+          if (Array.isArray(v)) v.forEach(function (ln, li) { text(ln, cxo(k), ty2 + r.h / 2 + (li - (v.length - 1) / 2) * 18 - up, o); });
+          else text(v, cxo(k), ty2 + r.h / 2 - up, o);
         });
-        if (r.pending) text('waiting approval', tx(1), yy + r.h - 9, { size: 10.5, w: 700, color: '#b45309' });
-        yy += r.h;
+        if (r.pending) text('● waiting approval', cxo(1), ty2 + r.h - 9, { size: 10, w: 700, color: C.mid });
+        ty2 += r.h;
       });
     };
-    if (both) { drawTable(pad, finT); drawTable(pad + tblW + 24, cutT); }
-    else if (finT || cutT) drawTable(pad, finT || cutT);
-    y += tablesH;
-    if (mode === 'master' || mode === 'all') text('Plan output = actual man-hours × plan rate of the day (learning curve %, 100% after the plan ends, else bulletin SAM) · Achievement = actual ÷ plan · End = endline of that date', pad, H - 58, { size: 13, color: MUTED, max: tw });
-    text(mode === 'cutting' ? 'Cut qty from the cutting sheet, per SRN, intent number and fabric' : mode === 'packing' ? 'Manpower = pressman + checker + thread cutter + helper' : 'MP = production manpower (operator + helper + paster + QC + thread cutter + hand needle)', pad, H - 34, { size: 13, color: MUTED, max: tw - 330 });
-    text(S.imgStamp ? S.imgStamp() : '', W - pad, H - 34, { size: 13, color: MUTED, align: 'right' });
+    if (bottomH) {
+      var bxL = pad;
+      if (finT) { block(bxL, halfW, finT, bottomH, 'Finishing · floor-wise', n(fq) + ' pcs · ' + n(fc) + ' cartons', C.purple, floors.map(function (f) { return [sl(f.floor), f.qty]; })); bxL += halfW + gap; }
+      if (cutT) block(bxL, halfW, cutT, bottomH, 'Cutting · fabric-wise', n(cq) + ' cut · ' + cuts.length + ' SRN', C.orange, cuts.map(function (x) { return [x.srn, x.qty]; }));
+      y += bottomH + gap;
+    }
+
+    // ---- footer
+    var note1 = mode === 'cutting' ? 'Cut qty from the cutting sheet, per SRN, intent number and fabric.' : mode === 'packing' ? 'Finishing manpower = pressman + checker + thread cutter + helper.' :
+                'Plan output = actual man-hours (shift + OT) × plan rate of the day (learning curve %, 100% after the plan ends, else Making Bulletin SAM)  ·  Achievement = actual ÷ plan';
+    var note2 = mode === 'cutting' ? '' : mode === 'packing' ? '● waiting approval = not yet approved, included' :
+                'MP = operator + helper + paster + QC + thread cutter + hand needle' + (floors.length ? '  ·  Finishing MP = pressman + checker + thread cutter + helper' : '') + '  ·  ● waiting approval = included';
+    text(note1, pad, H - 44, { size: 12.5, w: 500, color: C.sub, max: IW });
+    text(note2, pad, H - 22, { size: 12.5, w: 500, color: C.sub, max: IW - 340 });
+    text(S.imgStamp ? S.imgStamp() : '', W - pad, H - 22, { size: 12.5, w: 600, color: C.sub, align: 'right' });
     return cv;
   };
 })();
