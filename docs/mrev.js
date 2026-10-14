@@ -30,8 +30,8 @@
     var d = new Date(); d.setDate(d.getDate() - 1);
     var y = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
     var left = R.items.filter(function (it) { return it.date === y && it.type === 'STITCH'; }).length;
-    return '<div class="card pdr-cta ' + (left ? 'wait' : 'ready') + '"><div><b>PDR · ' + esc(S.fmtDay(y)) + '</b><span>' + (left ? left + ' output of that day still waiting — approve them first' : 'All output of that day approved — make the image and send it') + '</span></div>' +
-      '<button class="btn small ' + (left ? 'ghost' : 'ok') + '" data-pdr="' + y + '">Open PDR</button></div>';
+    return '<div class="card pdr-cta ' + (left ? 'wait' : 'ready') + '"><div><b>Production output · ' + esc(S.fmtDay(y)) + '</b><span>' + (left ? left + ' output of that day still waiting — approve them first' : 'All output of that day approved — make the image and send it') + '</span></div>' +
+      '<button class="btn small ' + (left ? 'ghost' : 'ok') + '" data-pdr="' + y + '">Open report</button></div>';
   }
   function render() {
     if (!R.items.length) { $('#mrev-body').innerHTML = pdrCard() + '<div class="empty">✓ Nothing waiting for approval</div>'; return; }

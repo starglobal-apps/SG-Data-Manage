@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v96';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v97';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -99,7 +99,7 @@
     else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
     else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · pending', false);
     else if (name === 'mpms') setHeader('PMS data', 'FAC' + state.factory + ' · not shipped', false);
-    else if (name === 'mrep') setHeader('Reports', 'FAC' + state.factory + ' · SRN report · PDR', false);
+    else if (name === 'mrep') setHeader('Reports', 'FAC' + state.factory + ' · SRN report · Production output', false);
     else if (name === 'mrev') setHeader('Approve output', 'FAC' + state.factory + ' · waiting for approval', false);
     else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);

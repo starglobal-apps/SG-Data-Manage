@@ -7,7 +7,7 @@
   var P = { srn: '', dept: '', r: null, busy: false, err: '', mode: 'srn', pdate: '', pdr: null, pbusy: false, perr: '' };
   try { P.mode = localStorage.getItem('sg_rep_mode') === 'pdr' ? 'pdr' : 'srn'; } catch (e) {}
   function yesterday() { var d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
-  function seg() { return '<div class="seg mo-seg"><button data-rmode="srn" class="' + (P.mode === 'srn' ? 'on' : '') + '">SRN report</button><button data-rmode="pdr" class="' + (P.mode === 'pdr' ? 'on' : '') + '">PDR · day report</button></div>'; }
+  function seg() { return '<div class="seg mo-seg"><button data-rmode="srn" class="' + (P.mode === 'srn' ? 'on' : '') + '">SRN report</button><button data-rmode="pdr" class="' + (P.mode === 'pdr' ? 'on' : '') + '">Production output</button></div>'; }
 
   // every SRN name (open and shipped) for the picker: from the PMS data on the phone
   function srnList() { var d = S.pd && S.pd.get(); return S.srnNames || (d && d.pms && (d.pms.names || (d.pms.rows || []).map(function (r) { return r.srn; }))) || []; }
@@ -62,7 +62,7 @@
       var t = d.total, pk = d.packing || [];
       if (d.masters.length) {
         html += '<div class="rp-sum"><div><small>Plan</small><b>' + n(t.planOut) + '</b></div><div><small>Actual</small><b>' + n(t.out) + '</b></div><div><small>End pass</small><b class="ach ok">' + n(t.endPass || 0) + '</b></div><div><small>Achieve</small><b class="ach ' + achCls(t.ach) + '">' + (t.ach === '' ? '–' : t.ach + '%') + '</b></div></div>';
-        html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share PDR image · all masters' + (pk.length ? ' + packing' : '') + '</button>';
+        html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share Production Output image · all' + (pk.length ? ' + packing' : '') + '</button>';
       }
       d.masters.forEach(function (m) {
         html += '<div class="pdr-m"><div class="pdr-h"><div><small>Master · end pass ' + n(m.endPass || 0) + '</small><b>' + esc(nm(m.master)) + '</b></div><span class="ach ' + achCls(m.ach) + '">' + (m.ach === '' ? 'no plan' : m.ach + '%') + '</span>' +
@@ -193,7 +193,7 @@
     if (b.id === 'pdr-go') { loadPdr(); return; }
     if (b.dataset.pdrimg !== undefined && P.pdr) {
       var who = b.dataset.pdrimg, label = who === '__packing' ? 'Packing' : nm(who);
-      S.shareImage('PDR · ' + S.fmtDay(P.pdr.date) + (who ? ' · ' + label : ''), S.pdrImage(P.pdr, who || null), 'PDR_FAC' + P.pdr.factory + '_' + P.pdr.date + (who ? '_' + label.replace(/[^A-Za-z0-9]+/g, '') : '') + '.png');
+      S.shareImage('Production Output Report · ' + S.fmtDay(P.pdr.date) + (who ? ' · ' + label : ''), S.pdrImage(P.pdr, who || null), 'ProductionOutput_FAC' + P.pdr.factory + '_' + P.pdr.date + (who ? '_' + label.replace(/[^A-Za-z0-9]+/g, '') : '') + '.png');
       return;
     }
     if (b.id === 'rp-go') { load($('#rp-srn').value); return; }

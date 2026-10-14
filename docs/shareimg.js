@@ -138,7 +138,7 @@
     c.fillStyle = g; c.fillRect(0, 0, W, 150);
     var p = d.date.split('-'), dt = new Date(+p[0], +p[1] - 1, +p[2]);
     var day = dt.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
-    text(mode === 'packing' ? 'Packing · Previous Day Report' : 'PDR · Previous Day Report', pad, 52, { size: 38, w: 800, color: '#fff' });
+    text(mode === 'packing' ? 'Packing Output Report' : 'Production Output Report', pad, 52, { size: 38, w: 800, color: '#fff' });
     text((mode === 'packing' ? 'Packing, floor-wise' : 'Stitching') + ' · FAC' + d.factory + ' · ' + day + (mode === 'master' ? ' · Master: ' + nm(only) : ''), pad, 100, { size: 21, w: 500, color: '#dbeafe' });
     text('SG Data', W - pad, 52, { size: 20, w: 700, color: '#bfdbfe', align: 'right' });
     // KPI cards
