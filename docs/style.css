@@ -790,3 +790,11 @@ body.phone .rp-top .row { align-items: flex-end; gap: 8px; } body.phone .rp-top 
 /* report image preview */
 .si-prev { background: #e5e7eb; border-radius: 10px; padding: 6px; margin: 0 0 8px; max-height: 55vh; overflow: auto; }
 .si-prev img { display: block; width: 100%; height: auto; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.15); background: #fff; }
+/* Report tab: SRN picker that opens while typing */
+.rp-pick { position: relative; }
+.rp-dd { position: absolute; left: 0; right: -64px; top: calc(100% + 4px); z-index: 30; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.14); max-height: 300px; overflow-y: auto; }
+.rp-dd button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; border: 0; border-bottom: 1px solid var(--line); background: #fff; padding: 8px 12px; text-align: left; color: var(--text); }
+.rp-dd button:last-child { border-bottom: 0; } .rp-dd button:active { background: var(--soft); }
+.rp-dd b { font-size: 14.5px; } .rp-dd small { font-size: 11.5px; color: var(--muted); }
+.rp-none { padding: 10px 12px; font-size: 13px; color: var(--muted); }
+.pm-card.shipped { opacity: .85; border-style: dashed; }

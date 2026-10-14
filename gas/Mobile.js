@@ -258,6 +258,16 @@ function unloadingAgg_() {
 // { factory } -> unshipped SRNs (SRN0500 onwards) with loading, stitching, endline pass, packed, unloading, shipped — all from
 // APP SUMMARY (+ the app's output not in the sheet yet); contractor loading shown apart (they report no stitching / endline)
 function mPms_(req, user) {
+  // one copy for everybody (same list on every phone), rebuilt when data changes
+  var fac = str_(req.factory).replace(/^FAC/i, ''), key = 'mpms2:' + fac + ':' + dataVer_();
+  var hit = cacheGetBig_(key); if (hit) return hit;
+  var all = pmsRows_(fac);
+  var res = { ok: true, rows: all.filter(function(r) { return !r.isShipped; }), names: all.map(function(r) { return r.srn; }), unloadError: '' };
+  cachePutBig_(key, res, 300);
+  return res;
+}
+// SRN-wise PMS numbers of the factory (SRN0500 onwards), shipped ones included (isShipped). Newest SRN first.
+function pmsRows_(fac) {
   var L = ledgerLite_(), catOf = {}, contr = {}, contrBy = {};
   mastersRows_().forEach(function(r) { if (str_(r.type) === 'DEPT' && str_(r.extra)) catOf[str_(r.key).toUpperCase()] = str_(r.extra); });
   Object.keys(L.loaded).forEach(function(k) {
@@ -265,19 +275,23 @@ function mPms_(req, user) {
     if ((catOf[party.toUpperCase()] || deptCategory_(party)) !== 'CONTRACTOR') return;
     addTo_(contr, srn, L.loaded[k]); (contrBy[srn] = contrBy[srn] || {})[party] = 1;
   });
-  var fac = str_(req.factory).replace(/^FAC/i, ''), rows = [];
+  var rows = [];
   Object.keys(L.pms).forEach(function(srn) {
     var m = srn.match(/^SRN0*(\d+)/); if (!m || +m[1] < 500) return;    // only SRN0500 onwards
     var p = L.pms[srn], info = L.srnInfo[srn] || {};
-    if (/^shipped$/i.test(str_(p.status))) return;                       // shipped orders are not shown
-    if (fac && info.factory && info.factory !== fac) return;               // only this factory's SRNs
-    var r = { srn: srn, style: info.item || '', buyer: info.buyer || '', order: p.order, status: p.status,
-              loading: num_(L.loadedSrn[srn]), contractor: num_(contr[srn]), contractors: Object.keys(contrBy[srn] || {}).join(', '),
-              stitched: num_(p.stitched), endPass: num_(L.endPassSrn[srn]), packed: num_(L.packed[srn]), unloaded: num_(p.unloaded), shipped: num_(p.shipped) };
-    if (r.loading || r.stitched || r.endPass || r.packed) rows.push(r);
+    if (fac && info.factory && String(info.factory).replace(/\D/g, '') !== fac) return;   // only this factory's SRNs
+    rows.push({ srn: srn, style: info.item || '', buyer: info.buyer || '', order: p.order, status: p.status, isShipped: /^shipped$/i.test(str_(p.status)),
+                loading: num_(L.loadedSrn[srn]), contractor: num_(contr[srn]), contractors: Object.keys(contrBy[srn] || {}).join(', '),
+                stitched: num_(p.stitched), endPass: num_(L.endPassSrn[srn]), packed: num_(L.packed[srn]), unloaded: num_(p.unloaded), shipped: num_(p.shipped) });
   });
   rows.sort(function(a, b) { return b.srn.localeCompare(a.srn); });
-  return { ok: true, rows: rows, unloadError: '' };
+  return rows;
+}
+// PMS search: { factory, q } -> SRNs whose name contains q, shipped ones too (up to 40)
+function mPmsFind_(req, user) {
+  var fac = str_(req.factory).replace(/^FAC/i, ''), q = str_(req.q).toUpperCase().replace(/\s+/g, '');
+  if (q.length < 2) return { ok: true, rows: [] };
+  return { ok: true, rows: pmsRows_(fac).filter(function(r) { return r.srn.indexOf(q) >= 0 || (r.style + ' ' + r.buyer).toUpperCase().indexOf(q) >= 0; }).slice(0, 40) };
 }
 
 // A line's Final attendance of a date as the app has it: { roles: {role: count}, add: [ATT_DAILY rows], evs: [events], none }.

@@ -6,15 +6,44 @@
   var S = window.SG, $ = S.$, esc = S.esc, state = S.state, icon = S.icon;
   var P = { srn: '', dept: '', r: null, busy: false, err: '' };
 
-  function srnList() { var d = S.pd && S.pd.get(); return ((d && d.pms && d.pms.rows) || []).map(function (r) { return r.srn; }); }
+  // every SRN name (open and shipped) for the picker: from the PMS data on the phone
+  function srnList() { var d = S.pd && S.pd.get(); return S.srnNames || (d && d.pms && (d.pms.names || (d.pms.rows || []).map(function (r) { return r.srn; }))) || []; }
+  function styleOf(srn) { var d = S.pd && S.pd.get(), r = ((d && d.pms && d.pms.rows) || []).filter(function (x) { return x.srn === srn; })[0]; return r ? [r.style, r.buyer].filter(Boolean).join(' · ') : ''; }
+  // SRNs matching what is typed: "630" -> SRN0630, SRN0630A, SRN1630 …; the closest number first
+  function matches(q) {
+    q = String(q || '').toUpperCase().replace(/\s+/g, ''); if (!q) return [];
+    var digits = q.replace(/^SRN/, '');
+    return srnList().filter(function (s) { return s.indexOf(q) >= 0 || s.replace(/^SRN0*/, '').indexOf(digits.replace(/^0+/, '')) === 0 || s.indexOf(digits) >= 0; })
+      .sort(function (a, b) { var na = a.replace(/^SRN0*/, ''), nb = b.replace(/^SRN0*/, ''), d0 = digits.replace(/^0+/, ''); return (nb.indexOf(d0) === 0) - (na.indexOf(d0) === 0) || b.localeCompare(a); }).slice(0, 30);
+  }
+  // what the server finds for the typed text (open + shipped SRNs), added to the phone's own list
+  var extra = { q: '', list: [] }, findT = null;
+  function serverFind(q) {
+    clearTimeout(findT); if (q.length < 2) return;
+    findT = setTimeout(function () {
+      S.api('m.pmsFind', { factory: state.factory, q: q }, { quiet: true, silent: true }).then(function (r) {
+        extra = { q: q, list: (r.rows || []).map(function (x) { return x.srn; }) };
+        var i = $('#rp-srn'); if (i && i.value.trim() === q && document.activeElement === i) showDd(q, true);
+      }).catch(function () {});
+    }, 300);
+  }
+  function showDd(q, fromServer) {
+    var dd = $('#rp-dd'); if (!dd) return;
+    var list = matches(q);
+    if (extra.q === q) extra.list.forEach(function (s) { if (list.indexOf(s) < 0) list.push(s); });
+    if (!fromServer) serverFind(q);
+    if (!q) { dd.hidden = true; return; }
+    if (!list.length) { dd.innerHTML = '<div class="rp-none">' + (q.length >= 2 && !fromServer && extra.q !== q ? 'Looking for "' + esc(q) + '"…' : 'No SRN with "' + esc(q) + '"') + '</div>'; dd.hidden = false; return; }
+    dd.innerHTML = list.map(function (s) { var st = styleOf(s); return '<button type="button" data-pick="' + esc(s) + '"><b>' + esc(s) + '</b>' + (st ? '<small>' + esc(st) + '</small>' : '') + '</button>'; }).join('');
+    dd.hidden = false;
+  }
   function n(v) { return (Math.round(+v || 0)).toLocaleString('en-IN'); }
 
   S.tabs.mrep = function () { render(); };
 
   function render() {
     var r = P.r, html = '<div class="card rp-top"><div class="row"><div class="field"><label>SRN</label>' +
-      '<input id="rp-srn" type="text" list="rp-srns" autocomplete="off" inputmode="text" placeholder="Type or pick SRN" value="' + esc(P.srn) + '">' +
-      '<datalist id="rp-srns">' + srnList().map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist></div>' +
+      '<div class="rp-pick"><input id="rp-srn" type="text" autocomplete="off" inputmode="text" placeholder="Type SRN number, e.g. 630" value="' + esc(P.srn) + '"><div id="rp-dd" class="rp-dd" hidden></div></div></div>' +
       '<button class="btn" id="rp-go" style="flex:0 0 auto;margin:0">Show</button></div></div>';
     if (P.busy) html += '<div class="empty">Loading the report…</div>';
     else if (P.err) html += '<div class="empty">' + esc(P.err) + '</div>';
@@ -93,12 +122,18 @@
     return t.join('\n');
   }
 
+  // the list opens only while typing (never on a plain tap in the box)
+  $('#tab-mrep').addEventListener('input', function (e) { if (e.target.id === 'rp-srn') showDd(e.target.value.trim()); });
+  document.addEventListener('click', function (e) { var dd = $('#rp-dd'); if (dd && !dd.hidden && !e.target.closest('.rp-pick')) dd.hidden = true; });
   $('#tab-mrep').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.pick) { $('#rp-dd').hidden = true; load(b.dataset.pick); return; }
     if (b.id === 'rp-go') { load($('#rp-srn').value); return; }
     if (b.dataset.rpl) { load(P.srn, b.dataset.rpl); return; }
     if (b.id === 'rp-wa' && P.r) S.shareImage('Making Output Report', reportImage(P.r), 'Making_' + S.shortLine(P.r.dept).replace(/[^A-Za-z0-9-]+/g, '') + '_' + P.r.srn + '_' + S.todayStr() + '.png');
   });
-  $('#tab-mrep').addEventListener('change', function (e) { if (e.target.id === 'rp-srn' && e.target.value) load(e.target.value); });
-  $('#tab-mrep').addEventListener('keydown', function (e) { if (e.target.id === 'rp-srn' && e.key === 'Enter') { e.preventDefault(); load(e.target.value); } });
+  $('#tab-mrep').addEventListener('keydown', function (e) {
+    if (e.target.id !== 'rp-srn' || e.key !== 'Enter') return;
+    e.preventDefault(); var m = matches(e.target.value.trim()); load(m.length === 1 ? m[0] : e.target.value);
+  });
 })();

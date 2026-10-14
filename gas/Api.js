@@ -81,6 +81,7 @@ function routes_() {
     'm.att':          mAtt_,
     'm.out':          mOut_,
     'm.pms':          mPms_,
+    'm.pmsFind':      mPmsFind_,
     'm.attUpd':       mAttUpd_,
     'm.attSync':      mAttSync_,
     'm.outSave':      mOutSave_,

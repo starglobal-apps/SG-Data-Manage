@@ -358,4 +358,10 @@ check('shift output of L3 already ' + (finSt[0] || 'none') + ': L3 OT output is 
 var otSave = call('rec1', 'm.outSave', { rid: 'ots18', date: TODAY, factory: '666', dept: L3, shift: 'OT', slot: '21-22', srn: 'SRN0620A', qty: 30, other: 0, floor: '', allowOver: true, reason: '' });
 var ds18 = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.date === TODAY && r.dept === L3 && r.type === 'STITCH');
 check('OT output saves and goes for approval; the shift row keeps its status', otSave.ok && ds18.some(r => r.shift === 'OT' && r.status === 'Submitted') && ds18.filter(r => (r.shift || 'Final') === 'Final').map(r => r.status).join() === finSt.join(), [otSave.message, ds18.map(r => (r.shift || 'Final') + ':' + r.status)]);
+// ========== 19. PMS: one list for everybody, every unshipped SRN; search finds shipped ones ==========
+var pm1 = call('rec1', 'm.pms', { factory: '666' }), pm2 = call('rec2', 'm.pms', { factory: '666' });
+check('PMS: same list for every user, names include every SRN of the list', pm1.ok && JSON.stringify(pm1.rows.map(r => r.srn)) === JSON.stringify(pm2.rows.map(r => r.srn)) && pm1.rows.every(r => pm1.names.indexOf(r.srn) >= 0) && pm1.rows.every(r => !r.isShipped), [pm1.message, pm1.rows.length, pm1.names.length]);
+var pf = call('rec1', 'm.pmsFind', { factory: '666', q: '620' });
+check('PMS search by number: finds SRN0620A', pf.ok && pf.rows.some(r => r.srn === 'SRN0620A'), [pf.message, pf.rows.map(r => r.srn)]);
+check('PMS search needs 2+ characters', call('rec1', 'm.pmsFind', { factory: '666', q: '6' }).rows.length === 0);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);
