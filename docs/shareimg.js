@@ -119,17 +119,56 @@
     var masters = mode === 'packing' || mode === 'cutting' ? [] : d.masters.filter(function (m) { return mode === 'all' || m.master === only; });
     var floors = mode === 'master' || mode === 'cutting' ? [] : (d.packing || []);
     var cuts = mode === 'all' || mode === 'cutting' ? (d.cutting || []) : [], crows = cuts.reduce(function (a, x) { return a + x.rows.length; }, 0);
-    var heads = mode === 'all' ? (cuts.length ? 1 : 0) + (masters.length && (cuts.length || floors.length) ? 1 : 0) + (floors.length ? 1 : 0) : 0;
     var Z = 2, W = 1590, pad = 32, rowH = 52, prowH = 46, tw = W - pad * 2;
     var cols = [
       { t: 'Supervisor', w: 170, a: 'left' }, { t: 'Line', w: 170, a: 'left' }, { t: 'SRN', w: 112, a: 'left' }, { t: 'Plan MP', w: 80 }, { t: 'Plan output', w: 108 },
       { t: 'Actual MP', w: 112 }, { t: 'Actual output', w: 130 }, { t: 'End check', w: 92, end: 1 }, { t: 'End pass', w: 92, end: 1 }, { t: 'Variance', w: 96 },
       { t: 'Hours shift+OT', w: 132 }, { t: 'Achievement', w: tw - 1294 }];
-    var pcols = [{ t: 'SRN', w: 180, a: 'left' }, { t: 'Style', w: 360, a: 'left' }, { t: 'Packed pcs', w: 180 }, { t: 'Cartons', w: 150 }, { t: 'Manpower', w: 150 }, { t: 'Hours', w: 150 }, { t: 'Supervisor', w: tw - 1170, a: 'left' }];
-    var ccols = [{ t: 'Intent number', w: 260, a: 'left' }, { t: 'Fabric name', w: tw - 500, a: 'left' }, { t: 'Cut qty', w: 240 }];
     var xOf = function (list, k) { var x = pad; for (var i = 0; i < k; i++) x += list[i].w; return x; };
-    var lines = masters.reduce(function (a, m) { return a + m.lines.length; }, 0), prows = floors.reduce(function (a, f) { return a + f.rows.length; }, 0);
-    var H = 170 + 140 + masters.length * (64 + 46 + 24) + lines * rowH + floors.length * (64 + 46 + 24) + prows * prowH + cuts.length * (64 + 46 + 24) + crows * prowH + heads * 60 + 96;
+    var lines = masters.reduce(function (a, m) { return a + m.lines.length; }, 0);
+    // finishing + cutting: one table each; side by side (half width) under the stitching, else full width
+    var mc = document.createElement('canvas').getContext('2d');
+    var wrap = function (s, max) {   // up to 2 lines
+      mc.font = '500 15.5px ' + FONT; s = String(s == null ? '' : s);
+      if (mc.measureText(s).width <= max) return [s];
+      var out = [], a = '';
+      s.split(' ').forEach(function (wd) { var t = a ? a + ' ' + wd : wd; if (a && mc.measureText(t).width > max) { out.push(a); a = wd; } else a = t; });
+      if (a) out.push(a);
+      return out.length > 2 ? [out[0], out.slice(1).join(' ')] : out;
+    };
+    var both = mode === 'all' && floors.length && cuts.length, tblW = both ? (tw - 24) / 2 : tw;
+    var build = function (t) {   // column widths for this table width, wrapped cells, row heights
+      var iw = tblW - 16; t.cols.forEach(function (col) { col.w = col.f * iw; });
+      t.rows.forEach(function (r) {
+        var nl = 1;
+        r.cells = r.cells.map(function (v, k) { if (!t.cols[k].wrap || r.kind) return v; var l = wrap(v, t.cols[k].w - 20); nl = Math.max(nl, l.length); return l; });
+        r.h = r.kind === 'sub' ? 40 : Math.max(r.pending ? 52 : 44, nl * 19 + 14 + (r.pending ? 10 : 0));
+      });
+      t.h = 64 + 42 + t.rows.reduce(function (a, r) { return a + r.h; }, 0) + 10;
+      return t;
+    };
+    var finT = null, cutT = null;
+    if (floors.length) {
+      var fr = [], fq = 0, fc = 0, fm = 0;
+      floors.forEach(function (f) {
+        f.rows.forEach(function (r, i) { fr.push({ cells: [i ? '' : f.floor.replace(/^FAC\d+-/, ''), r.srn, r.item || '–', n(r.qty), n(r.cartons), n(r.mp), r.hours || '–'], pending: r.pending, sep: i === 0 && fr.length > 0 }); });
+        if (f.rows.length > 1) fr.push({ cells: ['', 'Floor total', '', n(f.qty), n(f.cartons), n(f.mp), ''], kind: 'sub' });
+        fq += f.qty; fc += f.cartons; fm += f.mp;
+      });
+      fr.push({ cells: ['Total', '', '', n(fq), n(fc), n(fm), ''], kind: 'total' });
+      finT = build({ label: 'FINISHING', title: 'Floor-wise', right: n(fq) + ' pcs  ·  ' + n(fc) + ' cartons', rows: fr,
+        cols: [{ t: 'Floor', f: .15, a: 'left', b: 1, wrap: 1 }, { t: 'SRN', f: .15, a: 'left', b: 1 }, { t: 'Style', f: .25, a: 'left', wrap: 1 }, { t: 'Packed', f: .13, b: 1, c: BLUE }, { t: 'Cartons', f: .11 }, { t: 'MP', f: .1 }, { t: 'Hours', f: .11 }] });
+    }
+    if (cuts.length) {
+      var cr = [], cq0 = 0;
+      cuts.forEach(function (x) { cq0 += x.qty; x.rows.forEach(function (r, i) { cr.push({ cells: [i ? '' : x.srn, r.intent || '–', r.fabric || '–', n(r.qty)], sep: i === 0 && cr.length > 0 }); }); });
+      cr.push({ cells: ['Total', '', cuts.length + ' SRN  ·  ' + crows + (crows > 1 ? ' fabrics' : ' fabric'), n(cq0)], kind: 'total' });
+      cutT = build({ label: 'CUTTING', title: 'Fabric-wise', right: n(cq0) + ' cut', rows: cr,
+        cols: [{ t: 'SRN', f: .17, a: 'left', b: 1 }, { t: 'Intent', f: .18, a: 'left' }, { t: 'Fabric', f: .5, a: 'left', wrap: 1 }, { t: 'Qty', f: .15, b: 1, c: BLUE }] });
+    }
+    var tablesH = both ? Math.max(finT.h, cutT.h) + 24 : finT || cutT ? (finT || cutT).h + 24 : 0;
+    var heads = mode === 'all' && masters.length && (finT || cutT) ? 1 : 0;
+    var H = 170 + 140 + masters.length * (64 + 46 + 24) + lines * rowH + heads * 60 + tablesH + 96;
     var cv = document.createElement('canvas'); cv.width = W * Z; cv.height = H * Z;
     var c = cv.getContext('2d'); c.scale(Z, Z); c.textBaseline = 'middle';
     var font = function (sz, w) { c.font = (w || 500) + ' ' + sz + 'px ' + FONT; };
@@ -141,8 +180,8 @@
     c.fillStyle = g; c.fillRect(0, 0, W, 150);
     var p = d.date.split('-'), dt = new Date(+p[0], +p[1] - 1, +p[2]);
     var day = dt.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
-    text(mode === 'packing' ? 'Packing Output Report' : mode === 'cutting' ? 'Cutting Output Report' : 'Production Output Report', pad, 52, { size: 38, w: 800, color: '#fff' });
-    text((mode === 'packing' ? 'Packing, floor-wise' : mode === 'cutting' ? 'Cutting, fabric-wise' : mode === 'all' ? ['Stitching', 'Endline', floors.length ? 'Packing' : '', cuts.length ? 'Cutting' : ''].filter(String).join(' · ') : 'Stitching') + ' · FAC' + d.factory + ' · ' + day + (mode === 'master' ? ' · Master: ' + nm(only) : ''), pad, 100, { size: 21, w: 500, color: '#dbeafe' });
+    text(mode === 'packing' ? 'Finishing Output Report' : mode === 'cutting' ? 'Cutting Output Report' : 'Production Output Report', pad, 52, { size: 38, w: 800, color: '#fff' });
+    text((mode === 'packing' ? 'Finishing, floor-wise' : mode === 'cutting' ? 'Cutting, fabric-wise' : mode === 'all' ? ['Stitching', 'Endline', floors.length ? 'Finishing' : '', cuts.length ? 'Cutting' : ''].filter(String).join(' · ') : 'Stitching') + ' · FAC' + d.factory + ' · ' + day + (mode === 'master' ? ' · Master: ' + nm(only) : ''), pad, 100, { size: 21, w: 500, color: '#dbeafe' });
     text('SG Data', W - pad, 52, { size: 20, w: 700, color: '#bfdbfe', align: 'right' });
     // KPI cards
     var cards;
@@ -185,7 +224,7 @@
       y += 46;
     };
     var heading = function (t) { if (mode !== 'all') return; text(t, pad + 4, y + 26, { size: 20, w: 800, color: NAVY }); y += 60; };
-    if (masters.length && (cuts.length || floors.length)) heading('STITCHING · MASTER-WISE');
+    if (heads) heading('STITCHING · MASTER-WISE');
     masters.forEach(function (m) {
       card(pad, y, tw, 64 + 46 + m.lines.length * rowH + 4, 16);
       section('MASTER', nm(m.master), m.lines.length + (m.lines.length > 1 ? ' lines' : ' line') + '  ·  ' + n(m.out) + ' / ' + n(m.planOut) + ' pcs  ·  end pass ' + n(m.endPass || 0), m.ach === '' ? 'no plan' : m.ach + '%', m.ach);
@@ -215,37 +254,35 @@
       });
       y += 4 + 20;
     });
-    if (floors.length) {
-      heading('PACKING · FLOOR-WISE');
-      floors.forEach(function (f) {
-        card(pad, y, tw, 64 + 46 + f.rows.length * prowH + 4, 16);
-        section('FLOOR', f.floor.replace(/^FAC\d+-/, ''), f.rows.length + ' SRN  ·  ' + n(f.qty) + ' pcs  ·  ' + n(f.cartons) + ' cartons');
-        headRow(pcols);
-        f.rows.forEach(function (r, i) {
-          if (i % 2) { c.fillStyle = '#f8fafc'; c.fillRect(pad + 8, y, tw - 16, prowH); }
-          var cells = [r.srn, r.item || '–', n(r.qty), n(r.cartons), n(r.mp), r.hours || '–', nm(r.supervisor) || '–'];
-          pcols.forEach(function (col, k) { var cx = xOf(pcols, k); text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + prowH / 2, { size: 18, w: k === 0 || k === 2 ? 700 : 500, color: k === 2 ? BLUE : INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 14 }); });
-          if (r.pending) text('waiting approval', xOf(pcols, 0) + 18, y + prowH - 7, { size: 11, w: 700, color: '#b45309' });
-          y += prowH;
+    var drawTable = function (x, t) {
+      var w = tblW, yy = y;
+      c.shadowColor = 'rgba(15,23,42,.06)'; c.shadowBlur = 10; c.shadowOffsetY = 2; card(x, yy, w, t.h, 16); c.shadowColor = 'transparent';
+      c.fillStyle = '#eef3ff'; rr(c, x, yy, w, 64, 16); c.fill(); c.fillRect(x, yy + 40, w, 24);
+      text(t.label, x + 20, yy + 22, { size: 12, w: 800, color: BLUE });
+      text(t.title, x + 20, yy + 45, { size: 21, w: 800, color: NAVY, max: w * 0.45 });
+      text(t.right, x + w - 20, yy + 33, { size: 16, w: 700, color: MUTED, align: 'right', max: w * 0.5 });
+      yy += 64;
+      var xs = [], cx = x + 8; t.cols.forEach(function (col) { xs.push(cx); cx += col.w; });
+      var tx = function (k) { return t.cols[k].a === 'left' ? xs[k] + 12 : xs[k] + t.cols[k].w / 2; };
+      t.cols.forEach(function (col, k) { text(col.t.toUpperCase(), tx(k), yy + 21, { size: 11.5, w: 800, color: MUTED, align: col.a === 'left' ? 'left' : 'center', max: col.w - 8 }); });
+      c.fillStyle = LINE; c.fillRect(x + 12, yy + 41, w - 24, 1.5); yy += 42;
+      t.rows.forEach(function (r) {
+        if (r.kind === 'sub') { c.fillStyle = '#f1f5ff'; c.fillRect(x + 8, yy, w - 16, r.h); }
+        else if (r.kind === 'total') { c.fillStyle = '#dbeafe'; rr(c, x + 8, yy + 2, w - 16, r.h - 4, 8); c.fill(); }
+        else if (r.sep) { c.fillStyle = LINE; c.fillRect(x + 12, yy, w - 24, 1); }
+        var up = r.pending ? 5 : 0;
+        t.cols.forEach(function (col, k) {
+          var v = r.cells[k], o = { size: 15.5, w: r.kind ? 800 : col.b ? 700 : 500, color: r.kind ? NAVY : col.c || INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 16 };
+          if (Array.isArray(v)) v.forEach(function (ln, li) { text(ln, tx(k), yy + r.h / 2 + (li - (v.length - 1) / 2) * 19 - up, o); });
+          else text(v, tx(k), yy + r.h / 2 - up, o);
         });
-        y += 4 + 20;
+        if (r.pending) text('waiting approval', tx(1), yy + r.h - 9, { size: 10.5, w: 700, color: '#b45309' });
+        yy += r.h;
       });
-    }
-    if (cuts.length) {
-      heading('CUTTING · FABRIC-WISE');
-      cuts.forEach(function (x) {
-        card(pad, y, tw, 64 + 46 + x.rows.length * prowH + 4, 16);
-        section('SRN', x.srn + (x.style ? ' · ' + x.style : ''), x.rows.length + (x.rows.length > 1 ? ' fabrics' : ' fabric') + '  ·  ' + n(x.qty) + ' cut');
-        headRow(ccols);
-        x.rows.forEach(function (r, i) {
-          if (i % 2) { c.fillStyle = '#f8fafc'; c.fillRect(pad + 8, y, tw - 16, prowH); }
-          var cells = [r.intent || '–', r.fabric || '–', n(r.qty)];
-          ccols.forEach(function (col, k) { var cx = xOf(ccols, k); text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + prowH / 2, { size: 18, w: k === 2 ? 800 : 500, color: k === 2 ? BLUE : INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 24 }); });
-          y += prowH;
-        });
-        y += 4 + 20;
-      });
-    }
+    };
+    if (both) { drawTable(pad, finT); drawTable(pad + tblW + 24, cutT); }
+    else if (finT || cutT) drawTable(pad, finT || cutT);
+    y += tablesH;
     if (mode === 'master' || mode === 'all') text('Plan output = actual man-hours × plan rate of the day (learning curve %, 100% after the plan ends, else bulletin SAM) · Achievement = actual ÷ plan · End = endline of that date', pad, H - 58, { size: 13, color: MUTED, max: tw });
     text(mode === 'cutting' ? 'Cut qty from the cutting sheet, per SRN, intent number and fabric' : mode === 'packing' ? 'Manpower = pressman + checker + thread cutter + helper' : 'MP = production manpower (operator + helper + paster + QC + thread cutter + hand needle)', pad, H - 34, { size: 13, color: MUTED, max: tw - 330 });
     text(S.imgStamp ? S.imgStamp() : '', W - pad, H - 34, { size: 13, color: MUTED, align: 'right' });

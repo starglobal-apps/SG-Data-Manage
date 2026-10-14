@@ -78,28 +78,34 @@
               '<td class="ach ' + achCls(l.ach) + '">' + (l.ach === '' ? '–' : l.ach + '%') + '</td></tr>';
           }).join('') + '</tbody></table></div>';
       });
-      if (pk.length) {
-        var pq = pk.reduce(function (a, f) { return a + f.qty; }, 0), pc = pk.reduce(function (a, f) { return a + f.cartons; }, 0);
-        html += '<div class="pdr-sec"><b>Packing · floor-wise</b><span>' + n(pq) + ' pcs · ' + n(pc) + ' cartons</span><button class="btn small ghost" data-pdrimg="__packing">Image</button></div>';
+      if (pk.length) {   // finishing: one table, floor by floor
+        var pq = 0, pc = 0, pm = 0, prow = '';
         pk.forEach(function (f) {
-          html += '<div class="pdr-m"><div class="pdr-h"><div><small>Floor</small><b>' + esc(S.shortLine(f.floor)) + '</b></div><span class="ach ok">' + n(f.qty) + ' pcs</span></div>' +
-            '<table class="pdr-t"><thead><tr><th class="l">SRN · style</th><th>Packed</th><th>Cartons</th><th>MP</th><th>Hours</th></tr></thead><tbody>' +
-            f.rows.map(function (r) {
-              return '<tr><td class="l"><b>' + esc(r.srn) + '</b><small>' + esc(r.item || '') + (r.supervisor ? ' · ' + esc(nm(r.supervisor)) : '') + (r.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
-                '<td><b>' + n(r.qty) + '</b></td><td>' + n(r.cartons) + '</td><td>' + n(r.mp) + '</td><td>' + (r.hours || '–') + '</td></tr>';
-            }).join('') + '</tbody></table></div>';
+          pq += f.qty; pc += f.cartons; pm += f.mp;
+          f.rows.forEach(function (r, i) {
+            prow += '<tr' + (i === 0 ? ' class="grp"' : '') + '><td class="l">' + (i === 0 ? '<em class="sup">' + esc(S.shortLine(f.floor)) + '</em>' : '') + '<b>' + esc(r.srn) + '</b><small>' + esc(r.item || '') + (r.supervisor ? ' · ' + esc(nm(r.supervisor)) : '') + (r.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
+              '<td><b>' + n(r.qty) + '</b></td><td>' + n(r.cartons) + '</td><td>' + n(r.mp) + '</td><td>' + (r.hours || '–') + '</td></tr>';
+          });
+          if (f.rows.length > 1) prow += '<tr class="sub"><td class="l">' + esc(S.shortLine(f.floor)) + ' total</td><td>' + n(f.qty) + '</td><td>' + n(f.cartons) + '</td><td>' + n(f.mp) + '</td><td></td></tr>';
         });
+        prow += '<tr class="tot"><td class="l">Total</td><td>' + n(pq) + '</td><td>' + n(pc) + '</td><td>' + n(pm) + '</td><td></td></tr>';
+        html += '<div class="pdr-sec"><b>Finishing · floor-wise</b><span>' + n(pq) + ' pcs · ' + n(pc) + ' cartons</span><button class="btn small ghost" data-pdrimg="__packing">Image</button></div>' +
+          '<div class="pdr-m"><table class="pdr-t"><thead><tr><th class="l">Floor · SRN · style</th><th>Packed</th><th>Ctn</th><th>MP</th><th>Hrs</th></tr></thead><tbody>' + prow + '</tbody></table></div>';
       }
-      if (cu.length) {
-        var cq = cu.reduce(function (a, x) { return a + x.qty; }, 0);
-        html += '<div class="pdr-sec"><b>Cutting · fabric-wise</b><span>' + n(cq) + ' cut · ' + cu.length + ' SRN</span><button class="btn small ghost" data-pdrimg="__cutting">Image</button></div>';
+      if (cu.length) {   // cutting: one table, SRN · intent · fabric · qty
+        var cq = 0, crow = '', nf = 0;
         cu.forEach(function (x) {
-          html += '<div class="pdr-m"><div class="pdr-h"><div><small>SRN</small><b>' + esc(x.srn) + (x.style ? ' · ' + esc(x.style) : '') + '</b></div><span class="ach ok">' + n(x.qty) + '</span></div>' +
-            '<table class="pdr-t"><thead><tr><th class="l" style="width:72%">Fabric · intent number</th><th>Cut qty</th></tr></thead><tbody>' +
-            x.rows.map(function (r) { return '<tr><td class="l"><b style="font-size:12px;font-weight:600">' + esc(r.fabric || '–') + '</b><small>' + esc(r.intent || '') + '</small></td><td><b>' + n(r.qty) + '</b></td></tr>'; }).join('') + '</tbody></table></div>';
+          cq += x.qty;
+          x.rows.forEach(function (r, i) {
+            nf++;
+            crow += '<tr' + (i === 0 ? ' class="grp"' : '') + '><td class="l">' + (i === 0 ? '<b>' + esc(x.srn) + '</b>' : '') + '<small>' + esc(r.intent || '') + '</small></td><td class="l fab">' + esc(r.fabric || '–') + '</td><td><b>' + n(r.qty) + '</b></td></tr>';
+          });
         });
+        crow += '<tr class="tot"><td class="l">Total</td><td class="l fab">' + cu.length + ' SRN · ' + nf + (nf > 1 ? ' fabrics' : ' fabric') + '</td><td>' + n(cq) + '</td></tr>';
+        html += '<div class="pdr-sec"><b>Cutting · fabric-wise</b><span>' + n(cq) + ' cut · ' + cu.length + ' SRN</span><button class="btn small ghost" data-pdrimg="__cutting">Image</button></div>' +
+          '<div class="pdr-m"><table class="pdr-t cut"><thead><tr><th class="l">SRN · intent</th><th class="l fab">Fabric</th><th>Qty</th></tr></thead><tbody>' + crow + '</tbody></table></div>';
       }
-      html += '<p class="hint" style="margin:6px 2px">Plan output = the people who actually worked × their hours × the plan rate of that day (learning curve %; 100% after the plan ends; no plan: Making Bulletin SAM) · MP = planned / actual production manpower (operator, helper, paster, QC, thread cutter, hand needle) · hours = shift + OT · achievement = actual ÷ plan output · End pass = endline passed that day, of the pieces checked' + (pk.length ? ' · Packing MP = pressman + checker + thread cutter + helper' : '') + '</p>';
+      html += '<p class="hint" style="margin:6px 2px">Plan output = the people who actually worked × their hours × the plan rate of that day (learning curve %; 100% after the plan ends; no plan: Making Bulletin SAM) · MP = planned / actual production manpower (operator, helper, paster, QC, thread cutter, hand needle) · hours = shift + OT · achievement = actual ÷ plan output · End pass = endline passed that day, of the pieces checked' + (pk.length ? ' · Finishing MP = pressman + checker + thread cutter + helper' : '') + '</p>';
     }
     $('#mrep-body').innerHTML = html;
   }
