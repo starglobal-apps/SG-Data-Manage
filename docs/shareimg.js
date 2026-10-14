@@ -122,7 +122,7 @@
     var floors = mode === 'all' || mode === 'packing' ? (d.packing || []) : [];
     var cuts = mode === 'all' || mode === 'cutting' ? (d.cutting || []) : [];
     var lines = [].concat.apply([], masters.map(function (m) { return m.lines; }));
-    var W = 1600, pad = 28, gap = 20, IW = W - pad * 2;
+    var W, pad = 28, gap = 20, IW;   // portrait: square or 3:4
     var mc = document.createElement('canvas').getContext('2d');
     var wrap = function (s, max, sz) {   // up to 2 lines
       mc.font = '500 ' + sz + 'px ' + FONT; s = String(s == null ? '' : s);
@@ -139,43 +139,57 @@
     var fq = sum(floors, function (f) { return f.qty; }), fc = sum(floors, function (f) { return f.cartons; }), fm = sum(floors, function (f) { return f.mp; });
     var cq = sum(cuts, function (x) { return x.qty; }), nfab = sum(cuts, function (x) { return x.rows.length; });
 
-    // ---- blocks: heights first, then draw
-    var HEAD = 104, KPI = 122, TITLE = 54;
-    var sRow = 40, stitchH = masters.length ? TITLE + 40 + sum(masters, function (m) { return 36 + m.lines.length * sRow; }) + 40 + 16 : 0;
-    var both = floors.length && cuts.length, halfW = both ? (IW - gap) / 2 : IW;
-    // finishing / cutting: bar chart + table, rows built for the card width
-    var tbl = function (cols, rows, w) {
-      var iw = w - 32; cols.forEach(function (col) { col.w = col.f * iw; });
-      rows.forEach(function (r) {
-        var nl = 1;
-        r.cells = r.cells.map(function (v, k) { if (!cols[k].wrap || r.kind) return v; var l = wrap(v, cols[k].w - 20, 14.5); nl = Math.max(nl, l.length); return l; });
-        r.h = r.kind === 'sub' ? 32 : r.kind === 'tot' ? 38 : Math.max(r.pending ? 46 : 36, nl * 18 + 14 + (r.pending ? 10 : 0));
-      });
-      return { cols: cols, rows: rows, h: 36 + sum(rows, function (r) { return r.h; }) };
+    var FOOT, H, HEAD, KPI, KPIH, TITLE, both, bottomH, cutT, finT, grow, halfW, kCols, kCount, kRows, mH, measure, nRows, sRow, stitchH, target, tbl;
+    var plan = function (Wv) {   // layout for this width (heights first, then draw)
+      W = Wv; IW = W - pad * 2;
+      // ---- blocks: heights first, then draw
+      HEAD = 104, KPI = 122, TITLE = 54;
+      kCount = mode === 'packing' ? 4 : mode === 'cutting' ? 3 : mode === 'all' ? 6 : 5, kCols = kCount > 4 ? 3 : kCount, kRows = Math.ceil(kCount / kCols), KPIH = kRows * KPI + (kRows - 1) * 16;
+      sRow = 40, mH = 36, stitchH = 0;
+      both = floors.length && cuts.length, halfW = IW;   // finishing and cutting one under the other
+      // finishing / cutting: bar chart + table, rows built for the card width
+      tbl = function (cols, rows, w) {
+        var iw = w - 32; cols.forEach(function (col) { col.w = col.f * iw; });
+        rows.forEach(function (r) {
+          var nl = 1;
+          r.cells = r.cells.map(function (v, k) { if (!cols[k].wrap || r.kind) return v; var l = wrap(v, cols[k].w - 20, 14.5); nl = Math.max(nl, l.length); return l; });
+          r.h = r.kind === 'sub' ? 32 : r.kind === 'tot' ? 38 : Math.max(r.pending ? 46 : 36, nl * 18 + 14 + (r.pending ? 10 : 0));
+        });
+        return { cols: cols, rows: rows, h: 36 + sum(rows, function (r) { return r.h; }) };
+      };
+      finT = null, cutT = null;
+      if (floors.length) {
+        var fr = [];
+        floors.forEach(function (f) {
+          f.rows.forEach(function (r, i) { fr.push({ cells: [i ? '' : sl(f.floor), r.srn, r.item || '–', n(r.qty), n(r.cartons), n(r.mp), r.hours || '–'], pending: r.pending, sep: i === 0 && fr.length > 0 }); });
+          if (f.rows.length > 1) fr.push({ cells: ['', sl(f.floor) + ' total', '', n(f.qty), n(f.cartons), n(f.mp), ''], kind: 'sub' });
+        });
+        fr.push({ cells: ['Total', '', '', n(fq), n(fc), n(fm), ''], kind: 'tot' });
+        finT = tbl([{ t: 'Floor', f: .15, a: 'l', b: 1, wrap: 1 }, { t: 'SRN', f: .15, a: 'l', b: 1 }, { t: 'Style', f: .25, a: 'l', wrap: 1 }, { t: 'Packed', f: .13, b: 1, c: C.purple }, { t: 'Cartons', f: .11 }, { t: 'MP', f: .1 }, { t: 'Hours', f: .11 }], fr, halfW);
+      }
+      if (cuts.length) {
+        var cr = [];
+        cuts.forEach(function (x) { x.rows.forEach(function (r, i) { cr.push({ cells: [i ? '' : x.srn, r.intent || '–', r.fabric || '–', n(r.qty)], sep: i === 0 && cr.length > 0 }); }); });
+        cr.push({ cells: ['Total', '', cuts.length + ' SRN · ' + nfab + (nfab > 1 ? ' fabrics' : ' fabric'), n(cq)], kind: 'tot' });
+        cutT = tbl([{ t: 'SRN', f: .17, a: 'l', b: 1 }, { t: 'Intent', f: .18, a: 'l' }, { t: 'Fabric', f: .5, a: 'l', wrap: 1 }, { t: 'Cut qty', f: .15, b: 1, c: C.orange }], cr, halfW);
+      }
+      FOOT = 70, bottomH, H;
+      measure = function () {
+        stitchH = masters.length ? TITLE + 40 + sum(masters, function (m) { return mH + m.lines.length * sRow; }) + 40 + 16 : 0;
+        [finT, cutT].forEach(function (t) { if (t) t.h = TITLE + 14 + 36 + sum(t.rows, function (r) { return r.h; }); });
+        bottomH = (finT ? finT.h : 0) + (cutT ? cutT.h : 0) + (both ? gap : 0);
+        H = HEAD + 24 + KPIH + gap + (stitchH ? stitchH + gap : 0) + (bottomH ? bottomH + gap : 0) + FOOT;
+      };
+      measure();
+      // square, else 3:4; the rows get a little taller to fill it (the footer stays at the bottom)
+      target = H <= W ? W : H <= Math.round(W * 4 / 3) ? Math.round(W * 4 / 3) : H;
+      nRows = lines.length + masters.length + (finT ? finT.rows.length : 0) + (cutT ? cutT.rows.length : 0);
+      grow = nRows ? Math.min(14, Math.floor((target - H) / nRows)) : 0;
+      if (grow > 0) { sRow += grow; mH += grow; [finT, cutT].forEach(function (t) { if (t) t.rows.forEach(function (r) { r.h += grow; }); }); measure(); }
+      H = Math.max(H, target);
     };
-    var finT = null, cutT = null;
-    if (floors.length) {
-      var fr = [];
-      floors.forEach(function (f) {
-        f.rows.forEach(function (r, i) { fr.push({ cells: [i ? '' : sl(f.floor), r.srn, r.item || '–', n(r.qty), n(r.cartons), n(r.mp), r.hours || '–'], pending: r.pending, sep: i === 0 && fr.length > 0 }); });
-        if (f.rows.length > 1) fr.push({ cells: ['', sl(f.floor) + ' total', '', n(f.qty), n(f.cartons), n(f.mp), ''], kind: 'sub' });
-      });
-      fr.push({ cells: ['Total', '', '', n(fq), n(fc), n(fm), ''], kind: 'tot' });
-      finT = tbl([{ t: 'Floor', f: .15, a: 'l', b: 1, wrap: 1 }, { t: 'SRN', f: .15, a: 'l', b: 1 }, { t: 'Style', f: .25, a: 'l', wrap: 1 }, { t: 'Packed', f: .13, b: 1, c: C.purple }, { t: 'Cartons', f: .11 }, { t: 'MP', f: .1 }, { t: 'Hours', f: .11 }], fr, halfW);
-      finT.chartH = 0;
-      finT.h += TITLE + 14;
-    }
-    if (cuts.length) {
-      var cr = [];
-      cuts.forEach(function (x) { x.rows.forEach(function (r, i) { cr.push({ cells: [i ? '' : x.srn, r.intent || '–', r.fabric || '–', n(r.qty)], sep: i === 0 && cr.length > 0 }); }); });
-      cr.push({ cells: ['Total', '', cuts.length + ' SRN · ' + nfab + (nfab > 1 ? ' fabrics' : ' fabric'), n(cq)], kind: 'tot' });
-      cutT = tbl([{ t: 'SRN', f: .17, a: 'l', b: 1 }, { t: 'Intent', f: .18, a: 'l' }, { t: 'Fabric', f: .5, a: 'l', wrap: 1 }, { t: 'Cut qty', f: .15, b: 1, c: C.orange }], cr, halfW);
-      cutT.chartH = 0;
-      cutT.h += TITLE + 14;
-    }
-    var bottomH = both ? Math.max(finT.h, cutT.h) : finT ? finT.h : cutT ? cutT.h : 0;
-    var FOOT = 70;
-    var H = HEAD + 24 + KPI + gap + (stitchH ? stitchH + gap : 0) + (bottomH ? bottomH + gap : 0) + FOOT;
+    plan(1200);
+    if (H > Math.round(1200 * 4 / 3)) plan(Math.ceil(H * 3 / 4 / 10) * 10);   // more rows: wider, still 3:4
     var Z = Math.max(1, Math.min(2, Math.floor(Math.sqrt(16000000 / (W * H)) * 100) / 100));   // phone canvas size limit
 
     var cv = document.createElement('canvas'); cv.width = Math.round(W * Z); cv.height = Math.round(H * Z);
@@ -206,7 +220,7 @@
     var y = HEAD + 24;
 
     // ---- KPI tiles
-    var kpis;
+    var kpis, y0k = y;
     var varT = T.planOut ? T.out - T.planOut : '';
     var rate = endChk ? Math.round(endPass / endChk * 1000) / 10 : '';
     if (mode === 'packing') kpis = [{ l: 'Packed pcs', v: n(fq), c: C.purple }, { l: 'Cartons', v: n(fc), c: C.ink }, { l: 'Floors', v: String(floors.length), c: C.ink, s: sum(floors, function (f) { return f.rows.length; }) + ' SRN' }, { l: 'Manpower', v: n(fm), c: C.ink, s: 'pressman + checker + TC + helper' }];
@@ -219,24 +233,23 @@
       if (mode === 'all') kpis.push({ l: 'Packed pcs', v: n(fq), c: C.purple, s: floors.length ? n(fc) + ' cartons' : 'no finishing' }, { l: 'Total cut pcs', v: n(cq), c: C.orange, s: cuts.length ? cuts.length + ' SRN · ' + nfab + ' fabrics' : 'no cutting' });
       else kpis.push({ l: 'Achievement', v: T.ach === '' ? '–' : T.ach + '%', c: achC(T.ach), s: lines.length + (lines.length > 1 ? ' lines' : ' line') + ' · actual MP ' + n(T.mp) });
     }
-    var kw = (IW - (kpis.length - 1) * 16) / kpis.length;
+    var kw = (IW - (kCols - 1) * 16) / kCols;
     kpis.forEach(function (k, i) {
-      var x = pad + i * (kw + 16);
+      var x = pad + (i % kCols) * (kw + 16), y = y0k + Math.floor(i / kCols) * (KPI + 16);
       card(x, y, kw, KPI);
       c.fillStyle = k.c; rr(c, x, y, kw, 5, 2.5); c.fill(); c.fillRect(x + 6, y, kw - 12, 5);
       text(k.l.toUpperCase(), x + 18, y + 30, { size: 12.5, w: 700, color: C.sub });
       text(k.v, x + 18, y + 66, { size: 32, w: 800, color: k.c, max: kw - 30 });
       if (k.s) text(k.s, x + 18, y + 100, { size: 13, w: 600, color: k.sc || C.sub, max: kw - 30 });
     });
-    y += KPI + gap;
+    y += KPIH + gap;
 
     if (masters.length) {
       // ---- stitching detail table (matrix: master subtotal, lines, grand total)
       card(pad, y, IW, stitchH, 'Stitching detail · master-wise', 'plan output = actual man-hours × plan rate of the day');
-      var cols = [{ t: 'Supervisor', w: 186, a: 'l' }, { t: 'Line', w: 150, a: 'l' }, { t: 'SRN', w: 106, a: 'l' }, { t: 'Plan MP', w: 78 }, { t: 'Plan output', w: 112 }, { t: 'Actual MP', w: 108 },
-                  { t: 'Actual output', w: 112 }, { t: 'End check', w: 90 }, { t: 'End pass', w: 90 }, { t: 'Variance', w: 92 }, { t: 'Hours', w: 96 }];
-      var used = sum(cols, function (x) { return x.w; }); cols.push({ t: 'Achievement', w: IW - 32 - used });
-      var extra = cols[11].w - 150; if (extra > 0) { cols[11].w = 150; cols.forEach(function (col, k) { if (k < 11) col.w += extra * col.w / used; }); }
+      var cols = [{ t: 'Supervisor', w: 186, a: 'l' }, { t: 'Line', w: 150, a: 'l' }, { t: 'SRN', w: 106, a: 'l' }, { t: 'Plan MP', w: 78 }, { t: 'Plan out', w: 112 }, { t: 'Act MP', w: 108 },
+                  { t: 'Actual', w: 112 }, { t: 'End chk', w: 90 }, { t: 'End pass', w: 90 }, { t: 'Var', w: 92 }, { t: 'Hours', w: 96 }, { t: 'Ach %', w: 130 }];
+      var fk = (IW - 32) / sum(cols, function (x) { return x.w; }); cols.forEach(function (col) { col.w *= fk; });
       var xs = [], cx = pad + 16; cols.forEach(function (col) { xs.push(cx); cx += col.w; });
       var cxOf = function (k) { return cols[k].a === 'l' ? xs[k] + 10 : xs[k] + cols[k].w / 2; };
       var ty = y + TITLE;
@@ -250,12 +263,12 @@
         text(label, cx0, ry + h / 2, { size: bold ? 15 : 14, w: 800, color: achC(a), align: 'center' });
       };
       masters.forEach(function (m) {
-        c.fillStyle = '#e8efff'; c.fillRect(pad + 16, ty, IW - 32, 36);
+        c.fillStyle = '#e8efff'; c.fillRect(pad + 16, ty, IW - 32, mH);
         var mv = m.planOut ? m.out - m.planOut : '';
         var mcells = [nm(m.master), m.lines.length + (m.lines.length > 1 ? ' lines' : ' line'), '', n(m.planMp), n(m.planOut), n(m.mp), n(m.out), n(m.endChecked || 0), n(m.endPass || 0), mv === '' ? '–' : (mv > 0 ? '+' : '') + n(mv), ''];
-        mcells.forEach(function (v, k) { text(v, cxOf(k), ty + 18, { size: k === 0 ? 14.5 : 13.5, w: 800, color: k === 9 && mv !== '' ? (mv < 0 ? C.bad : C.good) : k === 8 ? C.teal : C.navy, align: cols[k].a === 'l' ? 'left' : 'center', max: k === 0 ? cols[0].w + cols[1].w - 20 : cols[k].w - 10 }); });
-        achCell(m.ach, ty, 36, true);
-        ty += 36;
+        mcells.forEach(function (v, k) { text(v, cxOf(k), ty + mH / 2, { size: k === 0 ? 14.5 : 13.5, w: 800, color: k === 9 && mv !== '' ? (mv < 0 ? C.bad : C.good) : k === 8 ? C.teal : C.navy, align: cols[k].a === 'l' ? 'left' : 'center', max: k === 0 ? cols[0].w + cols[1].w - 20 : cols[k].w - 10 }); });
+        achCell(m.ach, ty, mH, true);
+        ty += mH;
         m.lines.forEach(function (l, i) {
           if (i % 2) { c.fillStyle = '#fafbfd'; c.fillRect(pad + 16, ty, IW - 32, sRow); }
           c.fillStyle = C.grid; c.fillRect(pad + 16, ty + sRow - 1, IW - 32, 1);
@@ -311,16 +324,15 @@
     };
     if (bottomH) {
       var bxL = pad;
-      if (finT) { block(bxL, halfW, finT, bottomH, 'Finishing · floor-wise', n(fq) + ' pcs · ' + n(fc) + ' cartons', C.purple); bxL += halfW + gap; }
-      if (cutT) block(bxL, halfW, cutT, bottomH, 'Cutting · fabric-wise', n(cq) + ' cut · ' + cuts.length + ' SRN', C.orange);
-      y += bottomH + gap;
+      if (finT) { block(bxL, halfW, finT, finT.h, 'Finishing · floor-wise', n(fq) + ' pcs · ' + n(fc) + ' cartons', C.purple); y += finT.h + gap; }
+      if (cutT) { block(bxL, halfW, cutT, cutT.h, 'Cutting · fabric-wise', n(cq) + ' cut · ' + cuts.length + ' SRN', C.orange); y += cutT.h + gap; }
     }
 
     // ---- footer
     var note1 = mode === 'cutting' ? 'Cut qty from the cutting sheet, per SRN, intent number and fabric.' : mode === 'packing' ? 'Finishing manpower = pressman + checker + thread cutter + helper.' :
                 'Plan output = actual man-hours (shift + OT) × plan rate of the day (learning curve %, 100% after the plan ends, else Making Bulletin SAM)  ·  Achievement = actual ÷ plan';
     var note2 = mode === 'cutting' ? '' : mode === 'packing' ? '● waiting approval = not yet approved, included' :
-                'MP = operator + helper + paster + QC + thread cutter + hand needle' + (floors.length ? '  ·  Finishing MP = pressman + checker + thread cutter + helper' : '') + '  ·  ● waiting approval = included';
+                'MP = operator + helper + paster + QC + TC + hand needle' + (floors.length ? '  ·  Finishing MP = pressman + checker + TC + helper' : '') + '  ·  ● = waiting approval';
     text(note1, pad, H - 44, { size: 12.5, w: 500, color: C.sub, max: IW });
     text(note2, pad, H - 22, { size: 12.5, w: 500, color: C.sub, max: IW - 340 });
     text(S.imgStamp ? S.imgStamp() : '', W - pad, H - 22, { size: 12.5, w: 600, color: C.sub, align: 'right' });
