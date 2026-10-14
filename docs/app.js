@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v106';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v107';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 

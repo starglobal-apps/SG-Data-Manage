@@ -131,7 +131,7 @@
     var day = wk ? dOf(d.from).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' }) + ' – ' + dOf(d.to).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
                  : dOf(d.date).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
 
-    var W = 900, X = 20, IW = W - X * 2, c = null, y = 0;
+    var W = 750, X = 16, IW = W - X * 2, c = null, y = 0;   // narrow: text stays big on a phone
     var mc = document.createElement('canvas').getContext('2d');
     var setFont = function (ctx, o) { ctx.font = (o.w || 500) + ' ' + (o.size || 19) + 'px ' + FONT; };
     var fit = function (s, o, max) { setFont(mc, o); s = String(s == null ? '' : s); if (max) while (s.length > 1 && mc.measureText(s).width > max) s = s.slice(0, -2) + '…'; return s; };
@@ -173,22 +173,22 @@
       // stitching: one row per line — the day (or week) and the overall (every day of that line on that SRN up to the last date)
       if (masters.length) {
         section('Stitching', (wk ? 'week · ' : '') + n(T.out) + ' / ' + n(T.planOut) + ' pcs');
-        var cols = layout([{ t: 'Line · SRN', w: 250, a: 'l' }, { t: 'Act MP', w: 70 }, { t: 'Plan', w: 82 }, { t: 'Actual', w: 82 }, { t: 'Var', w: 78 }, { t: 'End pass', w: 80 },
+        var cols = layout([{ t: 'Line · SRN', w: 236, a: 'l' }, { t: 'Act MP', w: 64 }, { t: 'Plan', w: 82 }, { t: 'Actual', w: 82 }, { t: 'Var', w: 78 }, { t: 'End pass', w: 80 },
                            { t: 'Plan', w: 84, ov: 1 }, { t: 'Actual', w: 84, ov: 1 }, { t: 'Var', w: 80, ov: 1 }]);
         var ovX = cols[6].x, ovW = X + IW - ovX;
         // group labels + column names
         rect(ovX, y, ovW, 58, C.ov);
         text(wk ? 'WEEK' : 'DAY', cols[1].x + (ovX - cols[1].x) / 2, y + 14, { size: 13, w: 800, color: C.head, align: 'center' });
         text('OVERALL' + (wk ? ' (till Sat)' : ''), ovX + ovW / 2, y + 14, { size: 13, w: 800, color: C.ovHead, align: 'center' });
-        cols.forEach(function (col) { text(col.t, cx(col), y + 42, { size: 14, w: 700, color: col.ov ? C.ovHead : C.sub, align: col.a === 'l' ? 'left' : 'center', max: col.w - 8 }); });
+        cols.forEach(function (col) { text(col.t, cx(col), y + 42, { size: 13, w: 700, color: col.ov ? C.ovHead : C.sub, align: col.a === 'l' ? 'left' : 'center', max: col.w - 8 }); });
         y += 58; rect(X, y, IW, 2, C.line);
         var row = function (vals, h, o) {
           rect(ovX, y, ovW, h, C.ov);
           if (o.fill) rect(X, y, ovX - X, h, o.fill);
           vals.forEach(function (v, i) {
             if (i === 0) return;
-            var col = cols[i], st = { size: o.bold ? 19 : 19, w: o.bold || i === 3 || i === 7 ? 800 : 500, color: i === 4 ? vc(o.v1) : i === 8 ? vc(o.v2) : C.ink, align: 'center', max: col.w - 6 };
-            if (i === 4 || i === 8) st.w = 800;
+            var col = cols[i], st = { size: 19, w: o.bold ? 700 : i === 3 || i === 7 ? 700 : 500, color: i === 4 ? vc(o.v1) : i === 8 ? vc(o.v2) : C.ink, align: 'center', max: col.w - 6 };
+            if (i === 4 || i === 8) st.w = 700;
             text(v, cx(col), y + h / 2 + 1, st);
           });
           y += h; rect(X, y, IW, 1, C.line);
@@ -197,12 +197,12 @@
           var mv = m.planOut ? m.out - m.planOut : '', mov = m.ovPlan ? m.ovOut - m.ovPlan : '';
           var y0 = y;
           row(['', n(sum(m.lines, function (l) { return l.mp; })), n(m.planOut), n(m.out), sg(mv), n(m.endPass || 0), n(m.ovPlan), n(m.ovOut), sg(mov)], 42, { bold: 1, fill: C.soft, v1: mv, v2: mov });
-          text(nm(m.master), cx(cols[0]), y0 + 22, { size: 19, w: 800, max: cols[0].w - 12 });
+          text(nm(m.master), cx(cols[0]), y0 + 22, { size: 17, w: 800, max: cols[0].w - 12 });
           m.lines.forEach(function (l) {
             var y1 = y;
             row(['', n(l.mp) + (l.mpOt ? '+' + l.mpOt : ''), n(l.planOut), l.endOnly ? '–' : n(l.out), sg(l.variance), n(l.endPass || 0), n(l.ovPlan), l.endOnly ? '–' : n(l.ovOut), sg(l.ovVar)], 54, { v1: l.variance, v2: l.ovVar });
-            text(sl(l.dept) + (l.pending ? ' ●' : ''), cx(cols[0]), y1 + 19, { size: 19, w: 700, max: cols[0].w - 12 });
-            text(l.srn + (nm(l.supervisor) ? ' · ' + nm(l.supervisor) : ''), cx(cols[0]), y1 + 40, { size: 14, w: 500, color: C.sub, max: cols[0].w - 12 });
+            text(sl(l.dept) + (l.pending ? ' ●' : ''), cx(cols[0]), y1 + 19, { size: 20, w: 700, max: cols[0].w - 12 });
+            text(l.srn + (nm(l.supervisor) ? ' · ' + nm(l.supervisor) : ''), cx(cols[0]), y1 + 40, { size: 15, w: 500, color: C.sub, max: cols[0].w - 12 });
           });
         });
         rect(X, y, IW, 3, C.head); y += 3;
