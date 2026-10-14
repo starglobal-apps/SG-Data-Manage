@@ -57,22 +57,38 @@
     if (P.pbusy) html += '<div class="empty">Making the day report…</div>';
     else if (P.perr) html += '<div class="empty">' + esc(P.perr) + '</div>';
     else if (!d) html += '<div class="empty">Pick a date (yesterday is set) and press Show.</div>';
-    else if (!d.masters.length) html += '<div class="empty">No stitching output on ' + esc(S.fmtDay(d.date)) + '</div>';
+    else if (!d.masters.length && !(d.packing || []).length) html += '<div class="empty">No stitching output or packing on ' + esc(S.fmtDay(d.date)) + '</div>';
     else {
-      var t = d.total;
-      html += '<div class="rp-sum"><div><small>Plan</small><b>' + n(t.planOut) + '</b></div><div><small>Actual</small><b>' + n(t.out) + '</b></div><div><small>Achieve</small><b class="ach ' + achCls(t.ach) + '">' + (t.ach === '' ? '–' : t.ach + '%') + '</b></div></div>';
-      html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share PDR image · all masters</button>';
+      var t = d.total, pk = d.packing || [];
+      if (d.masters.length) {
+        html += '<div class="rp-sum"><div><small>Plan</small><b>' + n(t.planOut) + '</b></div><div><small>Actual</small><b>' + n(t.out) + '</b></div><div><small>End pass</small><b class="ach ok">' + n(t.endPass || 0) + '</b></div><div><small>Achieve</small><b class="ach ' + achCls(t.ach) + '">' + (t.ach === '' ? '–' : t.ach + '%') + '</b></div></div>';
+        html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share PDR image · all masters' + (pk.length ? ' + packing' : '') + '</button>';
+      }
       d.masters.forEach(function (m) {
-        html += '<div class="pdr-m"><div class="pdr-h"><div><small>Master</small><b>' + esc(nm(m.master)) + '</b></div><span class="ach ' + achCls(m.ach) + '">' + (m.ach === '' ? 'no plan' : m.ach + '%') + '</span>' +
+        html += '<div class="pdr-m"><div class="pdr-h"><div><small>Master · end pass ' + n(m.endPass || 0) + '</small><b>' + esc(nm(m.master)) + '</b></div><span class="ach ' + achCls(m.ach) + '">' + (m.ach === '' ? 'no plan' : m.ach + '%') + '</span>' +
           '<button class="btn small ghost" data-pdrimg="' + esc(m.master) + '">Image</button></div>' +
-          '<table class="pdr-t"><thead><tr><th class="l">Supervisor · line · SRN</th><th>Plan</th><th>Actual</th><th>Var</th><th>Ach</th></tr></thead><tbody>' +
+          '<table class="pdr-t"><thead><tr><th class="l">Supervisor · line · SRN</th><th>Plan</th><th>Actual</th><th class="end">End pass</th><th>Var</th><th>Ach</th></tr></thead><tbody>' +
           m.lines.map(function (l) {
-            return '<tr><td class="l">' + (l.supervisor ? '<em class="sup">' + esc(nm(l.supervisor)) + '</em>' : '') + '<b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + '/' + l.mp + (l.mpOt ? '+' + l.mpOt + 'OT' : '') + ' · ' + l.hours + (l.hoursOt ? '+' + l.hoursOt : '') + ' h · plan ' + esc(planSrc(l)) + (l.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
-              '<td>' + (l.planOut === '' ? '–' : n(l.planOut)) + '</td><td><b>' + n(l.out) + '</b></td><td class="' + (l.variance !== '' && l.variance < 0 ? 'neg' : '') + '">' + (l.variance === '' ? '–' : (l.variance > 0 ? '+' : '') + n(l.variance)) + '</td>' +
+            return '<tr><td class="l">' + (l.supervisor ? '<em class="sup">' + esc(nm(l.supervisor)) + '</em>' : '') + '<b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + (l.endOnly ? ' · endline only' : ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + '/' + l.mp + (l.mpOt ? '+' + l.mpOt + 'OT' : '') + ' · ' + l.hours + (l.hoursOt ? '+' + l.hoursOt : '') + ' h · plan ' + esc(planSrc(l))) + (l.pending || l.endPending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
+              '<td>' + (l.planOut === '' ? '–' : n(l.planOut)) + '</td><td><b>' + (l.endOnly ? '–' : n(l.out)) + '</b></td>' +
+              '<td class="end"><b>' + n(l.endPass || 0) + '</b><small>of ' + n(l.endChecked || 0) + '</small></td>' +
+              '<td class="' + (l.variance !== '' && l.variance < 0 ? 'neg' : '') + '">' + (l.variance === '' ? '–' : (l.variance > 0 ? '+' : '') + n(l.variance)) + '</td>' +
               '<td class="ach ' + achCls(l.ach) + '">' + (l.ach === '' ? '–' : l.ach + '%') + '</td></tr>';
           }).join('') + '</tbody></table></div>';
       });
-      html += '<p class="hint" style="margin:6px 2px">Plan output = the people who actually worked × their hours × the plan rate of that day (learning curve %; 100% after the plan ends; no plan: Making Bulletin SAM) · MP = planned / actual production manpower (operator, helper, paster, QC, thread cutter, hand needle) · hours = shift + OT · achievement = actual ÷ plan output</p>';
+      if (pk.length) {
+        var pq = pk.reduce(function (a, f) { return a + f.qty; }, 0), pc = pk.reduce(function (a, f) { return a + f.cartons; }, 0);
+        html += '<div class="pdr-sec"><b>Packing · floor-wise</b><span>' + n(pq) + ' pcs · ' + n(pc) + ' cartons</span><button class="btn small ghost" data-pdrimg="__packing">Image</button></div>';
+        pk.forEach(function (f) {
+          html += '<div class="pdr-m"><div class="pdr-h"><div><small>Floor</small><b>' + esc(S.shortLine(f.floor)) + '</b></div><span class="ach ok">' + n(f.qty) + ' pcs</span></div>' +
+            '<table class="pdr-t"><thead><tr><th class="l">SRN · style</th><th>Packed</th><th>Cartons</th><th>MP</th><th>Hours</th></tr></thead><tbody>' +
+            f.rows.map(function (r) {
+              return '<tr><td class="l"><b>' + esc(r.srn) + '</b><small>' + esc(r.item || '') + (r.supervisor ? ' · ' + esc(nm(r.supervisor)) : '') + (r.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
+                '<td><b>' + n(r.qty) + '</b></td><td>' + n(r.cartons) + '</td><td>' + n(r.mp) + '</td><td>' + (r.hours || '–') + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+        });
+      }
+      html += '<p class="hint" style="margin:6px 2px">Plan output = the people who actually worked × their hours × the plan rate of that day (learning curve %; 100% after the plan ends; no plan: Making Bulletin SAM) · MP = planned / actual production manpower (operator, helper, paster, QC, thread cutter, hand needle) · hours = shift + OT · achievement = actual ÷ plan output · End pass = endline passed that day, of the pieces checked' + (pk.length ? ' · Packing MP = pressman + checker + thread cutter + helper' : '') + '</p>';
     }
     $('#mrep-body').innerHTML = html;
   }
@@ -176,8 +192,8 @@
     if (b.dataset.rmode) { P.mode = b.dataset.rmode; try { localStorage.setItem('sg_rep_mode', P.mode); } catch (er) {} render(); return; }
     if (b.id === 'pdr-go') { loadPdr(); return; }
     if (b.dataset.pdrimg !== undefined && P.pdr) {
-      var who = b.dataset.pdrimg;
-      S.shareImage('PDR · ' + S.fmtDay(P.pdr.date) + (who ? ' · ' + nm(who) : ''), S.pdrImage(P.pdr, who || null), 'PDR_FAC' + P.pdr.factory + '_' + P.pdr.date + (who ? '_' + nm(who).replace(/[^A-Za-z0-9]+/g, '') : '') + '.png');
+      var who = b.dataset.pdrimg, label = who === '__packing' ? 'Packing' : nm(who);
+      S.shareImage('PDR · ' + S.fmtDay(P.pdr.date) + (who ? ' · ' + label : ''), S.pdrImage(P.pdr, who || null), 'PDR_FAC' + P.pdr.factory + '_' + P.pdr.date + (who ? '_' + label.replace(/[^A-Za-z0-9]+/g, '') : '') + '.png');
       return;
     }
     if (b.id === 'rp-go') { load($('#rp-srn').value); return; }

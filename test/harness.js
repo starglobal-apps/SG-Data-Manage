@@ -392,4 +392,21 @@ cacheDelBig_('plan_agg'); try { CacheService.getScriptCache().remove('plan_agg#t
 var pdr3 = call('admin', 'm.pdr', { factory: '666', date: TODAY });
 var pl3 = [].concat.apply([], pdr3.masters.map(m => m.lines)).filter(l => l.dept === L3 && l.srn === 'SRN0620A')[0];
 check('PDR without a line plan: bulletin SAM × learning curve × man-hours (like the hourly target)', pl3 && pl3.planFrom === 'sam' && pl3.sam === 20 && pl3.lc === 100 && pl3.planOut === Math.round(pl3.manhours * 60 / 20), pl3);
+// ========== 22. PDR: endline (checked / pass) after the actual output, and floor-wise packing ==========
+seed(SOURCE_IDS.ENDLINE, 'Quality Endline data', [['h'], ['h'],
+  ['13-Oct-2026', 'FAC666', TODAY, 'SRN0620A', 'TOTE', L1, 'Ground', 'Q1', 8, 100, 95, 5],
+  ['13-Oct-2026', 'FAC666', TODAY, 'SRN0620A', 'TOTE', L2, 'Ground', 'Q2', 8, 50, 48, 2],
+  ['13-Oct-2026', 'FAC117', TODAY, 'SRN0620A', 'TOTE', L1, 'Ground', 'Q3', 8, 999, 999, 0]]);
+var PK = [['ts', 'srn', 'date', 'x', 'qty', 'ctn', 'pcs', 'x', 'factory', 'x', 'x', 'x', 'x', 'press', 'sup', 'chk', 'tc', 'help', 'hrs', 'x', 'x', 'x', 'floor', 'item']];
+PK.push(['t', 'SRN0620A', TODAY, '', 300, 10, 30, '', '666', '', '', '', '', 2, 'SG00505-Pack Sup', 3, 1, 2, 8, '', '', '', 'FAC666-Packing Ground', 'TOTE']);
+PK.push(['t', 'SRN0620A', TODAY, '', 200, 7, 30, '', '666', '', '', '', '', 2, 'SG00505-Pack Sup', 3, 1, 2, 4, '', '', '', 'FAC666-Packing Ground', 'TOTE']);
+PK.push(['t', 'SRN0621A', TODAY, '', 120, 4, 30, '', '666', '', '', '', '', 1, '', 1, 0, 1, 8, '', '', '', 'FAC666-Packing First', 'BAG']);
+seed(SOURCE_IDS.PACKING, 'Finishing_Res', PK);
+var pdr4 = call('admin', 'm.pdr', { factory: '666', date: TODAY });
+var l4 = [].concat.apply([], pdr4.masters.map(m => m.lines));
+var e1 = l4.filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0], e2 = l4.filter(l => l.dept === L2 && l.srn === 'SRN0620A')[0];
+check('PDR endline: checked / pass on the line (other factory left out)', e1 && e1.endChecked === 100 && e1.endPass === 95, e1);
+check('PDR endline of a line without stitching that day: listed too', e2 && e2.endOnly && e2.endPass === 48 && pdr4.total.endPass === 143, [e2, pdr4.total]);
+var pk = pdr4.packing || [], gr = pk.filter(f => f.floor === 'FAC666-Packing Ground')[0];
+check('PDR packing floor-wise: per floor and SRN, pcs + cartons added, manpower, hours, supervisor', pk.length === 2 && gr && gr.qty === 500 && gr.cartons === 17 && gr.rows[0].mp === 8 && gr.rows[0].hours === 8 && gr.rows[0].supervisor === 'Pack Sup', pk);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

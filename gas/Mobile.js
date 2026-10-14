@@ -917,5 +917,79 @@ function mPdr_(req, user) {
     return m;
   }).sort(function(a, b) { return a.master === '—' ? 1 : b.master === '—' ? -1 : a.master.localeCompare(b.master); });
   tot.ach = tot.pOut ? Math.round(tot.aOut * 1000 / tot.pOut) / 10 : '';
-  return { ok: true, date: date, factory: factory, masters: list, total: tot };
+  // 4) endline of that date per line / SRN (checked, pass) — after the actual output
+  var end = pdrEndline_(factory, date), lineOf = {};
+  list.forEach(function(m) { m.lines.forEach(function(l) { lineOf[l.dept + '|' + l.srn] = l; l.endChecked = 0; l.endPass = 0; }); });
+  Object.keys(end).forEach(function(k) {
+    var e = end[k], l = lineOf[k];
+    if (!l) {   // endline of a line / SRN without stitching output that day: under the master of that line, else '—'
+      var mm = list.filter(function(m) { return m.lines.some(function(x) { return x.dept === e.dept; }); })[0];
+      if (!mm) { mm = list.filter(function(m) { return m.master === '—'; })[0]; if (!mm) { mm = { master: '—', lines: [], planOut: 0, out: 0, planMp: 0, mp: 0, ach: '' }; list.push(mm); } }
+      l = { dept: e.dept, srn: e.srn, supervisor: '', planMp: '', planOut: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, out: 0, variance: '', ach: '', pending: false, planFrom: '', lc: '', manhours: 0, endChecked: 0, endPass: 0, endOnly: true };
+      mm.lines.push(l); lineOf[k] = l;
+    }
+    l.endChecked += e.checked; l.endPass += e.pass; if (e.pending) l.endPending = true;
+  });
+  list.forEach(function(m) { m.endChecked = m.lines.reduce(function(a, l) { return a + l.endChecked; }, 0); m.endPass = m.lines.reduce(function(a, l) { return a + l.endPass; }, 0); });
+  tot.endChecked = list.reduce(function(a, m) { return a + m.endChecked; }, 0); tot.endPass = list.reduce(function(a, m) { return a + m.endPass; }, 0);
+  // 5) packing of that date, floor-wise
+  var packing = pdrPacking_(factory, date);
+  return { ok: true, date: date, factory: factory, masters: list, total: tot, packing: packing };
+}
+
+// a target sheet's rows as {field: value} (header-less read, minRow on)
+function pdrRows_(T) {
+  var col = {}; Object.keys(T.cols).forEach(function(c) { col[T.cols[c]] = +c - 1; });
+  var maxC = Math.max.apply(null, Object.keys(T.cols).map(Number));
+  var v = Sheets.Spreadsheets.Values.get(srcId_(T.srcKey), a1_(T.sheet, T.minRow, 1, maxC), { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || [];
+  return v.map(function(r) { var o = {}; Object.keys(col).forEach(function(f) { o[f] = r[col[f]]; }); return o; });
+}
+function pdrFacOk_(v, factory) { var d = str_(v).replace(/\D/g, ''); return !d || d === factory; }
+// { 'dept|SRN': { dept, srn, checked, pass, pending } } — the endline sheet (production date) + app endline still waiting
+function pdrEndline_(factory, date) {
+  var out = {};
+  var add = function(dept, srn, checked, pass, pending) {
+    dept = str_(dept); srn = str_(srn).toUpperCase(); if (!dept || !srn) return;
+    var k = dept + '|' + srn, o = out[k] = out[k] || { dept: dept, srn: srn, checked: 0, pass: 0, pending: false };
+    o.checked += num_(checked); o.pass += num_(pass); if (pending) o.pending = true;
+  };
+  try {
+    pdrRows_(CFG.FINAL_TARGETS.ENDLINE).forEach(function(r) {
+      if (dateKey_(r.date || r.entryDate) !== date || !pdrFacOk_(r.factoryName, factory)) return;
+      add(r.dept, r.srn, r.checked, r.pass);
+    });
+  } catch (e) {}
+  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.type) !== 'ENDLINE' || (str_(r.factory) && str_(r.factory) !== factory)) return;
+    var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved') return;
+    var p = parseJsonObj_(r.payload); add(r.dept, r.srn || p.srn, p.checked, p.pass, true);
+  });
+  return out;
+}
+// [{ floor, rows: [{ srn, item, qty, cartons, mp, hours, supervisor, pending }], qty, cartons, mp }] — the packing sheet + app packing waiting
+function pdrPacking_(factory, date) {
+  var nm = function(v) { return str_(v).replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '').trim(); };
+  var by = {};
+  var add = function(floor, srn, x) {
+    floor = str_(floor) || '—'; srn = str_(srn).toUpperCase(); if (!srn) return;
+    var f = by[floor] = by[floor] || {}, o = f[srn] = f[srn] || { srn: srn, item: '', qty: 0, cartons: 0, mp: 0, hours: 0, supervisor: '', pending: false };
+    o.qty += num_(x.qty); o.cartons += num_(x.cartons); o.mp = Math.max(o.mp, num_(x.mp)); o.hours = Math.max(o.hours, num_(x.hours));
+    if (!o.item && x.item) o.item = str_(x.item); if (!o.supervisor && x.supervisor) o.supervisor = nm(x.supervisor); if (x.pending) o.pending = true;
+  };
+  try {
+    pdrRows_(CFG.FINAL_TARGETS.PACKING).forEach(function(r) {
+      if (dateKey_(r.date) !== date || !pdrFacOk_(r.factory, factory)) return;
+      add(r.floor, r.srn, { qty: r.qty, cartons: r.cartons, mp: num_(r.pressman) + num_(r.checker) + num_(r.threadcutter) + num_(r.helper), hours: r.hours, supervisor: r.supervisor, item: r.item });
+    });
+  } catch (e) {}
+  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.type) !== 'PACKING' || (str_(r.factory) && str_(r.factory) !== factory)) return;
+    var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved') return;
+    var p = parseJsonObj_(r.payload);
+    add(p.floor || r.dept, r.srn || p.srn, { qty: p.qty, cartons: p.cartons, mp: num_(p.pressman) + num_(p.checker) + num_(p.threadcutter) + num_(p.helper), hours: p.hours, supervisor: p.supervisor, item: p.item, pending: true });
+  });
+  return Object.keys(by).sort().map(function(fl) {
+    var rows = Object.keys(by[fl]).sort().map(function(s) { return by[fl][s]; });
+    return { floor: fl, rows: rows, qty: rows.reduce(function(a, x) { return a + x.qty; }, 0), cartons: rows.reduce(function(a, x) { return a + x.cartons; }, 0), mp: rows.reduce(function(a, x) { return a + x.mp; }, 0) };
+  });
 }

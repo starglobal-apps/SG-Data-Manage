@@ -783,7 +783,7 @@ body.phone .nt-btns { display: flex; gap: 5px; flex: none; } body.phone .nt-btns
 body.phone .rp-top .row { align-items: flex-end; gap: 8px; } body.phone .rp-top label { margin-top: 0; }
 .rp-head { display: flex; align-items: baseline; gap: 8px; margin: 2px 2px 6px; } .rp-head b { font-size: 16px; } .rp-head span { font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-lines { margin: 0 0 6px; } .rp-lines button small { display: block; font-size: 10.5px; font-weight: 500; }
-.rp-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 8px; }
+.rp-sum { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; margin: 0 0 8px; }
 .rp-sum div { background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; text-align: center; }
 .rp-sum small { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; } .rp-sum b { font-size: 17px; } .rp-sum b.bad { color: var(--bad); }
 .pm-card[data-rep] { cursor: pointer; } .pm-card[data-rep]:active { background: var(--soft); }
@@ -824,8 +824,10 @@ span.ach.ok { background: #dcfce7; } span.ach.mid { background: #fef3c7; } span.
 .pdr-t { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
 .pdr-t th { font-size: 9.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--line); }
 .pdr-t td { font-size: 12.5px; padding: 6px 4px; text-align: right; border-top: 1px solid #eef1f5; vertical-align: top; }
-.pdr-t .l { text-align: left; width: 44%; padding-left: 10px; } .pdr-t td.l b { font-size: 13px; display: block; } .pdr-t td.l small { display: block; font-size: 10.5px; color: var(--muted); line-height: 1.3; } .pdr-t td.l i { color: var(--warn); font-style: normal; font-weight: 600; }
+.pdr-t .l { text-align: left; width: 38%; padding-left: 10px; } .pdr-t td.l b { font-size: 13px; display: block; } .pdr-t td.l small { display: block; font-size: 10.5px; color: var(--muted); line-height: 1.3; } .pdr-t td.l i { color: var(--warn); font-style: normal; font-weight: 600; }
 .pdr-t td.neg { color: var(--bad); }
+.pdr-t .end { background: #f0fdf4; color: #15803d; } .pdr-t th:last-child, .pdr-t td:last-child { padding-right: 8px; } .pdr-t td.ach { font-size: 11.5px; } .pdr-t td.end small { display: block; font-size: 10px; color: var(--muted); }
+.pdr-sec { display: flex; align-items: center; gap: 8px; margin: 14px 2px 8px; } .pdr-sec b { font-size: 15px; color: #1e3a8a; } .pdr-sec span { flex: 1; font-size: 12px; color: var(--muted); } .pdr-sec .btn.small { margin: 0; min-height: 28px; padding: 3px 10px; }
 .rp-sum b.ach.ok { color: #15803d; } .rp-sum b.ach.mid { color: #b45309; } .rp-sum b.ach.low { color: #c81e1e; }
 /* Approve tab: yesterday's PDR card */
 .pdr-cta { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-left: 3px solid var(--warn); }
