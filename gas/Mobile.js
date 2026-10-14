@@ -874,45 +874,60 @@ function mPdr_(req, user) {
     if (x.ot) { o.mpOt += x.mp; o.hoursOt = Math.max(o.hoursOt, x.hours); } else { o.mp += x.mp; o.hours = Math.max(o.hours, x.hours); }
     o.out += x.out; o.sheetPlan += x.plan; o.manhours += x.mp * x.hours; if (x.pending) o.pending = true;
   };
+  // every day of each line / SRN up to the date (for the overall: since the line started the SRN)
+  var hist = {};
+  var addHist = function(dept, srn, d, mh, out, plan) { var k = dept + '|' + srn, h = hist[k] = hist[k] || {}, x = h[d] = h[d] || { manhours: 0, out: 0, plan: 0 }; x.manhours += mh; x.out += out; x.plan += plan; };
   // 1) the main stitching sheet
   var v = Sheets.Spreadsheets.Values.get(srcId_(T.srcKey), "'" + T.sheet + "'!A" + T.minRow + ':AB', { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || [];
   v.forEach(function(r) {
     var g = function(f) { return col[f] === undefined ? '' : r[col[f]]; };
-    if (dateKey_(g('date')) !== date || !str_(g('dept'))) return;
+    var d = dateKey_(g('date')); if (d > date || !str_(g('dept'))) return;
     var mp = num_(g('manpower')) + num_(g('r1')) + num_(g('r2')) + num_(g('r3')) + num_(g('r4')) + num_(g('r5'));
-    add(str_(g('dept')), str_(g('srn')).toUpperCase(), { ot: /OT|night/i.test(str_(g('shift'))), mp: mp, hours: num_(g('hours')), out: num_(g('output')), plan: num_(g('plan')), master: g('master'), sup: g('supervisor') });
+    addHist(str_(g('dept')), str_(g('srn')).toUpperCase(), d, mp * num_(g('hours')), num_(g('output')), num_(g('plan')));
+    if (d === date) add(str_(g('dept')), str_(g('srn')).toUpperCase(), { ot: /OT|night/i.test(str_(g('shift'))), mp: mp, hours: num_(g('hours')), out: num_(g('output')), plan: num_(g('plan')), master: g('master'), sup: g('supervisor') });
   });
-  // 2) output of that date still in the app (waiting / approved, not in the sheet yet)
+  // 2) output still in the app (waiting / approved, not in the sheet yet)
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
-    if (str_(r.date) !== date || str_(r.type) !== 'STITCH' || (str_(r.factory) && str_(r.factory) !== factory)) return;
+    if (!isDateStr_(str_(r.date)) || str_(r.date) > date || str_(r.type) !== 'STITCH' || (str_(r.factory) && str_(r.factory) !== factory)) return;
     var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved') return;
     var p = parseJsonObj_(r.payload);
     var mp = (p.operators !== undefined ? num_(p.operators) : num_(p.manpower)) + num_(p.r1) + num_(p.r2) + num_(p.r3) + num_(p.r4) + num_(p.r5);
-    add(str_(r.dept), str_(r.srn).toUpperCase(), { ot: (str_(r.shift) || 'Final') !== 'Final', mp: mp, hours: num_(p.hours), out: num_(p.output), plan: num_(p.plan), master: p.incharge, sup: p.supervisor, pending: true });
+    addHist(str_(r.dept), str_(r.srn).toUpperCase(), str_(r.date), mp * num_(p.hours), num_(p.output), num_(p.plan));
+    if (str_(r.date) === date) add(str_(r.dept), str_(r.srn).toUpperCase(), { ot: (str_(r.shift) || 'Final') !== 'Final', mp: mp, hours: num_(p.hours), out: num_(p.output), plan: num_(p.plan), master: p.incharge, sup: p.supervisor, pending: true });
   });
   // 3) plan of the day (production plan: day plan qty + planned manpower); else the plan written on the sheet rows
-  var masters = {};
+  var masters = {}, samMem = {};
+  // plan output for the people who actually worked: rate of that day (learning curve; 100% after the plan ended) × man-hours
+  // no plan for the line: the Making Bulletin (SAM, all manpower types) like the hourly target — man-hours × 60 ÷ SAM,
+  // with the SRN's learning curve of that day when another line's plan has it (else 100%); else the plan written on the sheet
+  var dayPlan = function(d, dept, srn, manhours, sheetPlan) {
+    var pl = planOf_(d, dept, srn), sm = null, smLc = '';
+    if (!(pl && pl.rate)) { if (!(srn in samMem)) { try { samMem[srn] = samOf_(srn); } catch (e) { samMem[srn] = null; } } sm = samMem[srn]; if (sm && sm.sam > 0) smLc = planLcOfSrn_(d, srn) || 100; }
+    var planOut = pl && pl.rate ? Math.round(pl.rate * manhours) : sm && sm.sam > 0 && manhours ? Math.round(manhours * 60 / sm.sam * smLc / 100) : Math.round(sheetPlan);
+    return { pl: pl, sm: sm, smLc: smLc, planOut: planOut };
+  };
   Object.keys(by).forEach(function(k) {
-    // plan output for the people who actually worked: rate of that day (learning curve; 100% after the plan ended) × man-hours
-    // no plan for the line: the Making Bulletin (SAM, all manpower types) like the hourly target — man-hours × 60 ÷ SAM,
-    // with the SRN's learning curve of that day when another line's plan has it (else 100%)
-    var o = by[k], pl = planOf_(date, o.dept, o.srn), sm = null, smLc = '';
-    if (!(pl && pl.rate)) { try { sm = samOf_(o.srn); } catch (e) {} if (sm && sm.sam > 0) smLc = planLcOfSrn_(date, o.srn) || 100; }
-    var planOut = pl && pl.rate ? Math.round(pl.rate * o.manhours) : sm && sm.sam > 0 && o.manhours ? Math.round(o.manhours * 60 / sm.sam * smLc / 100) : Math.round(o.sheetPlan);
+    var o = by[k], dp = dayPlan(date, o.dept, o.srn, o.manhours, o.sheetPlan), pl = dp.pl, sm = dp.sm, smLc = dp.smLc, planOut = dp.planOut;
+    // overall: every day of this line on this SRN up to the date
+    var ov = { plan: 0, out: 0, days: 0, from: '' };
+    Object.keys(hist[k] || {}).forEach(function(d) { var x = hist[k][d]; ov.plan += dayPlan(d, o.dept, o.srn, x.manhours, x.plan).planOut; ov.out += x.out; ov.days++; if (!ov.from || d < ov.from) ov.from = d; });
     var line = { dept: o.dept, srn: o.srn, supervisor: o.supervisor, planMp: pl && pl.mp ? Math.round(pl.mp) : '', planOut: planOut || '', mp: o.mp, mpOt: o.mpOt, hours: o.hours, hoursOt: o.hoursOt,
                  out: o.out, variance: planOut ? o.out - planOut : '', ach: planOut ? Math.round(o.out * 1000 / planOut) / 10 : '', pending: o.pending,
-                 planFrom: pl && pl.rate ? (pl.after ? 'after' : 'plan') : sm && sm.sam > 0 && o.manhours ? 'sam' : (planOut ? 'sheet' : ''), lc: pl && pl.rate ? pl.lc : smLc, sam: sm && sm.sam > 0 ? sm.sam : '', manhours: Math.round(o.manhours * 10) / 10 };
+                 planFrom: pl && pl.rate ? (pl.after ? 'after' : 'plan') : sm && sm.sam > 0 && o.manhours ? 'sam' : (planOut ? 'sheet' : ''), lc: pl && pl.rate ? pl.lc : smLc, sam: sm && sm.sam > 0 ? sm.sam : '', manhours: Math.round(o.manhours * 10) / 10,
+                 ovPlan: ov.plan || '', ovOut: ov.out, ovVar: ov.plan ? ov.out - ov.plan : '', ovDays: ov.days, ovFrom: ov.from };
     var mk = o.master || '—', m = masters[mk.toLowerCase()] = masters[mk.toLowerCase()] || { master: mk, lines: [] };
     m.lines.push(line);
   });
-  var tot = { planOut: 0, out: 0, planMp: 0, mp: 0 };
+  var tot = { planOut: 0, out: 0, planMp: 0, mp: 0, ovPlan: 0, ovOut: 0 };
   var list = Object.keys(masters).map(function(k) {
     var m = masters[k];
     m.lines.sort(function(a, b) { return a.dept.localeCompare(b.dept) || a.srn.localeCompare(b.srn); });
     m.planOut = m.lines.reduce(function(a, l) { return a + num_(l.planOut); }, 0); m.out = m.lines.reduce(function(a, l) { return a + l.out; }, 0);
     m.planMp = m.lines.reduce(function(a, l) { return a + num_(l.planMp); }, 0); m.mp = m.lines.reduce(function(a, l) { return a + l.mp; }, 0);
+    m.ovPlan = m.lines.reduce(function(a, l) { return a + num_(l.ovPlan); }, 0); m.ovOut = m.lines.reduce(function(a, l) { return a + num_(l.ovOut); }, 0);
     var planned = m.lines.filter(function(l) { return l.planOut; }), pOut = planned.reduce(function(a, l) { return a + num_(l.planOut); }, 0), aOut = planned.reduce(function(a, l) { return a + l.out; }, 0);
     m.ach = pOut ? Math.round(aOut * 1000 / pOut) / 10 : '';
+    tot.ovPlan += m.ovPlan; tot.ovOut += m.ovOut;
     tot.planOut += m.planOut; tot.out += m.out; tot.planMp += m.planMp; tot.mp += m.mp; tot.pOut = (tot.pOut || 0) + pOut; tot.aOut = (tot.aOut || 0) + aOut;
     return m;
   }).sort(function(a, b) { return a.master === '—' ? 1 : b.master === '—' ? -1 : a.master.localeCompare(b.master); });
@@ -925,16 +940,20 @@ function mPdr_(req, user) {
     if (!l) {   // endline of a line / SRN without stitching output that day: under the master of that line, else '—'
       var mm = list.filter(function(m) { return m.lines.some(function(x) { return x.dept === e.dept; }); })[0];
       if (!mm) { mm = list.filter(function(m) { return m.master === '—'; })[0]; if (!mm) { mm = { master: '—', lines: [], planOut: 0, out: 0, planMp: 0, mp: 0, ach: '' }; list.push(mm); } }
-      l = { dept: e.dept, srn: e.srn, supervisor: '', planMp: '', planOut: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, out: 0, variance: '', ach: '', pending: false, planFrom: '', lc: '', manhours: 0, endChecked: 0, endPass: 0, endOnly: true };
+      l = { dept: e.dept, srn: e.srn, supervisor: '', planMp: '', planOut: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, out: 0, variance: '', ach: '', pending: false, planFrom: '', lc: '', manhours: 0, endChecked: 0, endPass: 0, endOnly: true, ovPlan: '', ovOut: 0, ovVar: '', ovDays: 0, ovFrom: '' };
       mm.lines.push(l); lineOf[k] = l;
     }
     l.endChecked += e.checked; l.endPass += e.pass; if (e.pending) l.endPending = true;
   });
   list.forEach(function(m) { m.endChecked = m.lines.reduce(function(a, l) { return a + l.endChecked; }, 0); m.endPass = m.lines.reduce(function(a, l) { return a + l.endPass; }, 0); });
   tot.endChecked = list.reduce(function(a, m) { return a + m.endChecked; }, 0); tot.endPass = list.reduce(function(a, m) { return a + m.endPass; }, 0);
-  // 5) packing of that date, floor-wise
+  // endline of that date line-wise (checked, pass, fail) for its own table
+  var endline = Object.keys(end).map(function(k) { var e = end[k]; return { dept: e.dept, srn: e.srn, checked: e.checked, pass: e.pass, fail: e.reject, pending: e.pending }; })
+    .sort(function(a, b) { return a.dept.localeCompare(b.dept) || a.srn.localeCompare(b.srn); });
+  tot.endFail = endline.reduce(function(a, e) { return a + e.fail; }, 0);
+  // 5) packing of that date, floor-wise (cutting: pdrCutting_, not in the report for now)
   var packing = pdrPacking_(factory, date);
-  return { ok: true, date: date, factory: factory, masters: list, total: tot, packing: packing, cutting: pdrCutting_(factory, date) };
+  return { ok: true, date: date, factory: factory, masters: list, total: tot, endline: endline, packing: packing };
 }
 
 // a target sheet's rows as {field: value} (header-less read, minRow on)
@@ -948,21 +967,22 @@ function pdrFacOk_(v, factory) { var d = str_(v).replace(/\D/g, ''); return !d |
 // { 'dept|SRN': { dept, srn, checked, pass, pending } } — the endline sheet (production date) + app endline still waiting
 function pdrEndline_(factory, date) {
   var out = {};
-  var add = function(dept, srn, checked, pass, pending) {
+  var add = function(dept, srn, checked, pass, pending, reject) {
     dept = str_(dept); srn = str_(srn).toUpperCase(); if (!dept || !srn) return;
-    var k = dept + '|' + srn, o = out[k] = out[k] || { dept: dept, srn: srn, checked: 0, pass: 0, pending: false };
+    var k = dept + '|' + srn, o = out[k] = out[k] || { dept: dept, srn: srn, checked: 0, pass: 0, reject: 0, hasReject: false, pending: false };
     o.checked += num_(checked); o.pass += num_(pass); if (pending) o.pending = true;
+    if (str_(reject) !== '') { o.reject += num_(reject); o.hasReject = true; } else o.reject += Math.max(0, num_(checked) - num_(pass));
   };
   try {
     pdrRows_(CFG.FINAL_TARGETS.ENDLINE).forEach(function(r) {
       if (dateKey_(r.date || r.entryDate) !== date || !pdrFacOk_(r.factoryName, factory)) return;
-      add(r.dept, r.srn, r.checked, r.pass);
+      add(r.dept, r.srn, r.checked, r.pass, false, r.reject);
     });
   } catch (e) {}
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
     if (str_(r.date) !== date || str_(r.type) !== 'ENDLINE' || (str_(r.factory) && str_(r.factory) !== factory)) return;
     var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved') return;
-    var p = parseJsonObj_(r.payload); add(r.dept, r.srn || p.srn, p.checked, p.pass, true);
+    var p = parseJsonObj_(r.payload); add(r.dept, r.srn || p.srn, p.checked, p.pass, true, p.reject !== undefined ? p.reject : p.fail);
   });
   return out;
 }

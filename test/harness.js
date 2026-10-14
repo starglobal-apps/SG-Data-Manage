@@ -420,9 +420,19 @@ md.data[2][11] = JSON.stringify([TD[2] + '-' + MON + '-' + TD[0], 'SRN0620A', 'C
 md.data[3][11] = JSON.stringify([TD[2] + '/' + TD[1] + '/' + TD[0], 'SRN0620A', 'CA2', 'Lining', 250]);
 md.data[4] = md.data[4] || []; md.data[4][11] = JSON.stringify([TD[2] + '-' + MON + '-' + TD[0], 'SRN0620A', 'CA1', 'Poly Quilted', 100]);
 md.data[5] = md.data[5] || []; md.data[5][11] = JSON.stringify(['01-Jan-2020', 'SRN0620A', 'CA9', 'Old', 999]);
-var pdr5 = call('admin', 'm.pdr', { factory: '666', date: TODAY }), cut = pdr5.cutting || [];
-check('report cutting of the date: SRN-wise, fabric rows added up (other dates left out)', cut.length === 1 && cut[0].srn === 'SRN0620A' && cut[0].qty === 950 && cut[0].rows.length === 2 && cut[0].rows[0].fabric === 'Poly Quilted' && cut[0].rows[0].qty === 700 && cut[0].rows[0].intent === 'CA1', cut);
+var cut = pdrCutting_('666', TODAY);
+check('cutting of the date (kept for later, not in the report): SRN-wise, fabric rows added up (other dates left out)', cut.length === 1 && cut[0].srn === 'SRN0620A' && cut[0].qty === 950 && cut[0].rows.length === 2 && cut[0].rows[0].fabric === 'Poly Quilted' && cut[0].rows[0].qty === 700 && cut[0].rows[0].intent === 'CA1', cut);
 seed(SOURCE_IDS.CUTTING, 'cutting data_R', [['Timestamps', 'Date', 'SRN', 'Intent', 'Fabric', 'Qty'], ['t', '13-Oct-2026', 'SRN0620A', 'CA1', 'Poly', 600], ['', '28/05/2026', 'SRN0610A', 'CA2', 'Foam', 250]]);
 var keepK = md.data[2][10], ci = importCutting_();
 check('cutting-only import: header + rows in col L, other columns untouched', /2 rows/.test(ci) && md.data[0][11] === 'Cutting Data' && JSON.parse(md.data[2][11])[3] === 'Poly' && JSON.parse(md.data[3][11])[1] === 'SRN0610A' && !md.data[4][11] && md.data[2][10] === keepK, [ci, md.data[0][11], md.data[2][11]]);
+// ========== 24. report: overall per line / SRN (every day up to the date) and the endline table ==========
+var YD = fmtDate_(new Date(new Date(TODAY + 'T12:00:00').getTime() - 86400000)), YDs = YD.split('-').reverse().join('/');
+var pdr6a = call('admin', 'm.pdr', { factory: '666', date: TODAY }), la = [].concat.apply([], pdr6a.masters.map(m => m.lines)).filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0];
+var DR = []; DR[0] = YDs; DR[2] = L1; DR[3] = 'SRN0620A'; DR[5] = 'Final'; DR[6] = 10; DR[7] = 8; DR[8] = 150; DR[12] = 0; dataSh.data.push(DR);
+var DR2 = DR.slice(); DR2[0] = '01/01/2099'; DR2[8] = 999; dataSh.data.push(DR2);   // after the report date: left out
+var pdr6 = call('admin', 'm.pdr', { factory: '666', date: TODAY }), lb = [].concat.apply([], pdr6.masters.map(m => m.lines)).filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0];
+check('overall: the day before adds its output, a later date does not', la && lb && lb.ovOut === la.ovOut + 150 && lb.ovDays === la.ovDays + 1 && lb.ovFrom === YD && lb.out === la.out, [la && [la.ovOut, la.ovDays], lb && [lb.ovOut, lb.ovDays, lb.ovFrom]]);
+check('overall plan and variance: plan of each day (from its man-hours), variance = actual - plan', lb && lb.ovPlan > la.ovPlan && lb.ovVar === lb.ovOut - lb.ovPlan && pdr6.total.ovOut >= lb.ovOut, lb);
+var el = pdr6.endline || [], el1 = el.filter(e => e.dept === L1)[0];
+check('endline table: line-wise checked / pass / fail (reject column), no cutting in the reply', el.length === 2 && el1 && el1.checked === 100 && el1.pass === 95 && el1.fail === 5 && pdr6.total.endFail === 7 && !('cutting' in pdr6), el);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);
