@@ -81,7 +81,7 @@
       var why = low ? '<input class="mor-why" data-why="' + esc(x.id) + '" placeholder="Reason (optional)" value="' + esc(x.remark || '') + '">' : esc(x.remark || '');
       html += '<tr class="' + (pend ? 'mor-pend' : x.src === 'app' ? 'mor-app' : '') + '">' + cell(esc(x.date ? S.fmtDay(x.date) : '')) + cell(x.shift === 'OT' ? 'OT' : x.shift ? 'Shift' : '') +
         cell(n(x.plan)) + cell(x.src === 'loading' ? '' : n(x.actual)) + cell(n(x.total)) + cell(n(x.variance), x.variance > 0 ? 'bad' : '') + cell(why) +
-        cell(n(x.op)) + cell(n(x.r1)) + cell(n(x.r2)) + cell(n(x.r4)) + cell(n(x.r3)) + cell(n(x.r5)) + cell(n(x.hours)) + cell(esc(x.challan || '')) + cell(n(x.load)) + cell(n(x.loadTotal)) + '</tr>';
+        cell(n(x.op)) + cell(n(x.r1)) + cell(n(x.r2)) + cell(n(x.r4)) + cell(n(x.r3)) + cell(n(x.r5)) + cell(n(x.hours)) + cell(esc(x.challan || '')) + cell(n(x.load)) + cell(x.load ? n(x.loadTotal) : '') + '</tr>';
     });
     return html + '</table></div>';
   };

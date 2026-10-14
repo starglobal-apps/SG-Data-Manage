@@ -46,12 +46,12 @@ function parseRange(ss, a1) {
 }
 function trimRows(rows) { rows = rows.map(r => { var i = r.length; while (i > 0 && (r[i - 1] === '' || r[i - 1] === null || r[i - 1] === undefined)) i--; return r.slice(0, i); }); while (rows.length && !rows[rows.length - 1].length) rows.pop(); return rows; }
 var Sheets = { Spreadsheets: {
-  get(id, opts) { var ss = ssById(id); return { sheets: ss.sheets.map(s => ({ properties: { title: s.name, sheetId: s.id }, data: [] })) }; },
-  batchUpdate(body, id) { var ss = ssById(id); (body.requests || []).forEach(q => { if (q.deleteDimension) { var g = q.deleteDimension.range, sh = ss.sheets.find(s => s.id === g.sheetId); for (var i = g.endIndex - 1; i >= g.startIndex; i--) sh.data.splice(i, 1); } }); return {}; },
+  get(id, opts) { var ss = ssById(id); return { sheets: ss.sheets.map(s => ({ properties: { title: s.name, sheetId: s.id, gridProperties: { rowCount: s.maxRows } }, data: [] })) }; },
+  batchUpdate(body, id) { var ss = ssById(id); (body.requests || []).forEach(q => { if (q.appendDimension) { ss.sheets.find(s => s.id === q.appendDimension.sheetId).maxRows += q.appendDimension.length; return; } if (q.deleteDimension) { var g = q.deleteDimension.range, sh = ss.sheets.find(s => s.id === g.sheetId); for (var i = g.endIndex - 1; i >= g.startIndex; i--) sh.data.splice(i, 1); } }); return {}; },
   Values: {
     get(id, range, opts) { var p = parseRange(ssById(id), range), r2 = p.r2 || p.sh.getLastRow(), out = []; for (var r = p.r1; r <= r2; r++) { var row = p.sh.data[r - 1] || [], o = []; for (var c = p.c1; c <= p.c2; c++) { var v = row[c - 1]; if (v instanceof Date) v = (opts && opts.valueRenderOption === 'UNFORMATTED_VALUE') ? fmt(v, 'yyyy-MM-dd') : fmt(v, 'dd-MMM-yyyy'); o.push(v === undefined || v === null ? '' : v); } out.push(o); } return { values: trimRows(out) }; },
     batchGet(id, opts) { return { valueRanges: opts.ranges.map(r => Sheets.Spreadsheets.Values.get(id, r, opts)) }; },
-    update(body, id, range, opts) { var p = parseRange(ssById(id), range); body.values.forEach((row, i) => { var rr = p.sh.data[p.r1 - 1 + i] = p.sh.data[p.r1 - 1 + i] || []; row.forEach((v, j) => { if (v !== null) rr[p.c1 - 1 + j] = v; }); }); return {}; },
+    update(body, id, range, opts) { var p = parseRange(ssById(id), range); if (p.r1 - 1 + body.values.length > p.sh.maxRows) throw new Error('Range (' + range + ') exceeds grid limits. Max rows: ' + p.sh.maxRows); body.values.forEach((row, i) => { var rr = p.sh.data[p.r1 - 1 + i] = p.sh.data[p.r1 - 1 + i] || []; row.forEach((v, j) => { if (v !== null) rr[p.c1 - 1 + j] = v; }); }); return {}; },
     batchUpdate(body, id) { (body.data || []).forEach(d => Sheets.Spreadsheets.Values.update({ values: d.values }, id, d.range, {})); return {}; },
     batchClear(body, id) { (body.ranges || []).forEach(r => { var p = parseRange(ssById(id), r), r2 = p.r2 || p.sh.getLastRow(); for (var x = p.r1; x <= r2; x++) { var row = p.sh.data[x - 1]; if (row) for (var c = p.c1; c <= p.c2; c++) row[c - 1] = ''; } }); return {}; },
     append(body, id, range, opts) { var p = parseRange(ssById(id), range); var r = p.sh.getLastRow() + 1; body.values.forEach((row, i) => { var rr = p.sh.data[r - 1 + i] = []; row.forEach((v, j) => rr[p.c1 - 1 + j] = v); }); return {}; }
@@ -332,4 +332,21 @@ check('srn report: bad SRN refused', call('rec1', 'm.srnReport', { factory: '666
 var anyRev = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.type === 'STITCH')[0];
 var rv = call('admin', 'm.reviewReport', { id: anyRev.id });
 check('admin review report still works on the shared builder', rv.ok && rv.head && rv.head.line === anyRev.dept && Array.isArray(rv.rows) && call('rec1', 'm.reviewReport', { id: anyRev.id }).ok === false, [rv.message]);
+// ========== 17. the main sheet has no empty rows: rows are added; approved rows that did not reach it are sent again ==========
+var dataSh = ssById(ATTID).getSheetByName('Data');
+var pendRows = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.type === 'STITCH' && (r.status === 'Submitted'));
+if (!pendRows.length) { call('rec1', 'm.outSave', { rid: 'full1', date: TODAY, factory: '666', dept: L3, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 5, other: 0, floor: 'Second', allowOver: true, reason: '' }); pendRows = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.type === 'STITCH' && r.status === 'Submitted'); }
+var target = pendRows[0];
+dataSh.maxRows = dataSh.getLastRow();   // sheet full: not one empty row
+var before17 = dataSh.getLastRow();
+var apFull = call('admin', 'm.reviewDecide', { ids: [target.id], decision: 'approve', remark: '', reasons: {} });
+var st17 = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.id === target.id)[0].status;
+check('sheet without empty rows: rows added, output written, row Sent', apFull.ok && apFull.sent === 1 && st17 === 'Sent' && dataSh.getLastRow() > before17 && dataSh.maxRows > before17, [apFull, st17, before17, dataSh.getLastRow(), dataSh.maxRows]);
+// an Approved row left behind (send failed earlier) goes in the background (m.warm), once
+var left = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.type === 'STITCH' && r.status === 'Sent')[0];
+setField_(CFG.TABS.DAY_SUMMARY, left._row, 'status', 'Approved'); invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+var rowsBefore = dataSh.getLastRow();
+var w1 = call('rec2', 'm.warm', {}), afterW1 = dataSh.getLastRow();
+var w2 = call('rec2', 'm.warm', {}), afterW2 = dataSh.getLastRow();
+check('approved row left behind: sent by m.warm, only once', w1.ok && w1.resent === 1 && afterW1 > rowsBefore && readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.id === left.id)[0].status === 'Sent' && (w2.resent || 0) === 0 && afterW2 === afterW1, [w1, w2, rowsBefore, afterW1, afterW2]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

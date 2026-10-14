@@ -356,15 +356,16 @@ function reviewSend_(req, user) {
   var skipped = items.filter(function(r) { return str_(r.status) !== 'Approved'; }).map(function(r) { return str_(r.dept) + ' ' + str_(r.srn) + ': ' + str_(r.status); });
   if (!ready.length) return { ok: false, error: 'NONE', message: 'Koi Approved row nahi', skipped: skipped };
 
-  var byTarget = {};
-  ready.forEach(function(r) {
-    var fin = finalRow_(r, parseJsonObj_(r.payload));
-    if (!fin) return;
-    (byTarget[fin.target] = byTarget[fin.target] || []).push({ r: r, rows: fin.rows });
-  });
-
-  var log = [], sentIds = [];
+  var byTarget = {}, log = [], sentIds = [], rowOf = {};
   withLock_(function() {
+    // fresh status inside the lock: an approval and the background resend never both write the same row
+    var now = {}; readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) { now[str_(r.id)] = r; });
+    ready = ready.filter(function(r) { var f = now[str_(r.id)]; if (f) rowOf[str_(r.id)] = f._row; return f && str_(f.status) === 'Approved'; });
+    ready.forEach(function(r) {
+      var fin = finalRow_(r, parseJsonObj_(r.payload));
+      if (!fin) return;
+      (byTarget[fin.target] = byTarget[fin.target] || []).push({ r: r, rows: fin.rows });
+    });
     // attendance edited in the app that was first typed into the sheet: remove those old rows, then append the new ones
     ready.forEach(function(r) {
       if (str_(r.type) !== 'ATT') return;
@@ -393,7 +394,8 @@ function reviewSend_(req, user) {
     var cs = head.indexOf('status') + 1, cb = head.indexOf('reviewed_by') + 1, ca = head.indexOf('reviewed_at') + 1, stamp = nowStr_();
     ready.forEach(function(r) {
       if (sentIds.indexOf(str_(r.id)) < 0) return;
-      sh.getRange(r._row, cs).setValue('Sent'); sh.getRange(r._row, cb).setValue(userName_(user)); sh.getRange(r._row, ca).setValue(stamp);
+      var row = rowOf[str_(r.id)] || r._row;
+      sh.getRange(row, cs).setValue('Sent'); sh.getRange(row, cb).setValue(userName_(user)); sh.getRange(row, ca).setValue(stamp);
     });
   });
   cacheDelBig_('hist_agg'); cacheDelBig_('hist_agg2'); cacheDelBig_('app_agg'); invalidateDaily_(CFG.TABS.DAY_SUMMARY);
@@ -442,6 +444,13 @@ function appendFinal_(T, rows) {
   var vals = got.values || [];
   while (used > 0 && (!vals[used - 1] || vals[used - 1][0] === '' || vals[used - 1][0] === null)) used--;
   var startRow = T.minRow + used;
+  // the sheet has no empty rows left (a write past its last row fails): add rows first, with some spare
+  try {
+    var meta = Sheets.Spreadsheets.get(id, { fields: 'sheets(properties(title,sheetId,gridProperties(rowCount)))' });
+    var sp = (meta.sheets || []).filter(function(s) { return s.properties && s.properties.title === T.sheet; })[0];
+    var have = sp && sp.properties.gridProperties ? num_(sp.properties.gridProperties.rowCount) : 0, need = startRow + rows.length - 1;
+    if (have && have < need) Sheets.Spreadsheets.batchUpdate({ requests: [{ appendDimension: { sheetId: sp.properties.sheetId, dimension: 'ROWS', length: need - have + 200 } }] }, id);
+  } catch (e) {}
 
   var colNums = Object.keys(T.cols).map(Number).sort(function(a, b) { return a - b; });
   var minC = colNums[0], maxC = colNums[colNums.length - 1];
@@ -493,3 +502,12 @@ function diagFinalTargets(onlyKey) {
 }
 
 function diagAttOT() { return diagFinalTargets('ATT_OT'); }
+
+// Approved rows that did not reach the main sheet (e.g. the sheet had no empty rows at that moment) are sent again in
+// the background (m.warm). reviewSend_ re-checks every status under the lock, so nothing is written twice.
+function resendApproved_() {
+  var ids = readTab_(CFG.TABS.DAY_SUMMARY).filter(function(r) { return str_(r.status) === 'Approved'; }).map(function(r) { return str_(r.id); });
+  if (!ids.length) return 0;
+  var s = reviewSend_({ ids: ids }, { user_id: 'auto', name: 'auto-send', role: 'Admin' });
+  return s && s.ok ? s.sent || 0 : 0;
+}

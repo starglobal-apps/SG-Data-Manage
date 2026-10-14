@@ -58,7 +58,7 @@
       var p = (x.date || '').split('-'), d = p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0].slice(2) : x.date;
       rows.push({ fill: x.src === 'app' ? '#eef3ff' : '', boldCols: [4], colors: { 5: x.variance > 0 ? '#c81e1e' : '' },
         cells: [d, x.shift === 'OT' ? 'OT' : x.shift ? 'Shift' : '', v(x.plan), x.src === 'loading' ? '' : v(x.actual), v(x.total), v(x.variance), x.remark || '',
-                v(x.op), v(x.r1), v(x.r2), v(x.r4), v(x.r3), v(x.r5), v(x.hours), x.challan || '', v(x.load), v(x.loadTotal)] });
+                v(x.op), v(x.r1), v(x.r2), v(x.r4), v(x.r3), v(x.r5), v(x.hours), x.challan || '', v(x.load), x.load ? v(x.loadTotal) : ''] });
     });
     return S.tableImage({
       title: 'Making Output Report', sub: [h.factory, S.shortLine(r.dept), r.srn].join(' · '),

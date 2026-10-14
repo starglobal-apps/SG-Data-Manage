@@ -213,7 +213,8 @@ function mWarm_(req, user) {
   } finally { SWR_REFRESH_ = false; c.remove('warm_running'); }
   // data sent to the main sheets: bring it into MASTER DATA and clean the app copies (was a trigger)
   var imp = ''; try { imp = runDueImport_(); } catch (e) { imp = 'import error ' + e; }
-  return { ok: true, ms: Date.now() - t, imported: !!imp };
+  var resent = 0; try { resent = resendApproved_(); } catch (e) {}   // approved output that did not reach the main sheet yet
+  return { ok: true, ms: Date.now() - t, imported: !!imp || resent > 0, resent: resent };
 }
 
 // ---------- phone PMS tab: every unshipped order with the numbers the recorder needs to fill data right ----------
