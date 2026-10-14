@@ -854,3 +854,62 @@ function mReviewEdit_(req, user) {
   if (dec && dec.ok) { dec.attChanged = attChanged; dec.attError = attErr; dec.id = str_(nr.id); }
   return dec;
 }
+
+// ---------- PDR: previous day report, master-wise (phone Report tab) ----------
+// { factory, date } -> every stitching line / SRN of that date grouped by master (incharge): plan manpower + plan output
+// (production plan of the day), actual manpower (operators + the other production roles, shift) + actual output (shift +
+// OT), working hours "shift + OT", variance and achievement %. Data: the main stitching sheet, plus output still waiting
+// in the app (pending). Read-only.
+function mPdr_(req, user) {
+  var factory = str_(req.factory).replace(/^FAC/i, '') || '666', date = str_(req.date);
+  if (!isDateStr_(date)) return fail_('DATE', 'Select a date');
+  var T = CFG.FINAL_TARGETS[factory === '117' ? 'STITCH_117' : 'STITCH_666'], col = {};
+  Object.keys(T.cols).forEach(function(c) { col[T.cols[c]] = +c - 1; });
+  var nm = function(v) { return str_(v).replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '').trim(); };
+  var by = {};
+  var add = function(dept, srn, x) {
+    var k = dept + '|' + srn, o = by[k] = by[k] || { dept: dept, srn: srn, master: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, out: 0, sheetPlan: 0, pending: false };
+    if (!o.master && x.master) o.master = nm(x.master);
+    if (x.ot) { o.mpOt += x.mp; o.hoursOt = Math.max(o.hoursOt, x.hours); } else { o.mp += x.mp; o.hours = Math.max(o.hours, x.hours); }
+    o.out += x.out; o.sheetPlan += x.plan; if (x.pending) o.pending = true;
+  };
+  // 1) the main stitching sheet
+  var v = Sheets.Spreadsheets.Values.get(srcId_(T.srcKey), "'" + T.sheet + "'!A" + T.minRow + ':AB', { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || [];
+  v.forEach(function(r) {
+    var g = function(f) { return col[f] === undefined ? '' : r[col[f]]; };
+    if (dateKey_(g('date')) !== date || !str_(g('dept'))) return;
+    var mp = num_(g('manpower')) + num_(g('r1')) + num_(g('r2')) + num_(g('r3')) + num_(g('r4')) + num_(g('r5'));
+    add(str_(g('dept')), str_(g('srn')).toUpperCase(), { ot: /OT|night/i.test(str_(g('shift'))), mp: mp, hours: num_(g('hours')), out: num_(g('output')), plan: num_(g('plan')), master: g('master') });
+  });
+  // 2) output of that date still in the app (waiting / approved, not in the sheet yet)
+  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.type) !== 'STITCH' || (str_(r.factory) && str_(r.factory) !== factory)) return;
+    var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved') return;
+    var p = parseJsonObj_(r.payload);
+    var mp = (p.operators !== undefined ? num_(p.operators) : num_(p.manpower)) + num_(p.r1) + num_(p.r2) + num_(p.r3) + num_(p.r4) + num_(p.r5);
+    add(str_(r.dept), str_(r.srn).toUpperCase(), { ot: (str_(r.shift) || 'Final') !== 'Final', mp: mp, hours: num_(p.hours), out: num_(p.output), plan: num_(p.plan), master: p.incharge, pending: true });
+  });
+  // 3) plan of the day (production plan: day plan qty + planned manpower); else the plan written on the sheet rows
+  var masters = {};
+  Object.keys(by).forEach(function(k) {
+    var o = by[k], pl = planOf_(date, o.dept, o.srn);
+    var planOut = pl && pl.qty ? Math.round(pl.qty) : Math.round(o.sheetPlan);
+    var line = { dept: o.dept, srn: o.srn, planMp: pl && pl.mp ? Math.round(pl.mp) : '', planOut: planOut || '', mp: o.mp, mpOt: o.mpOt, hours: o.hours, hoursOt: o.hoursOt,
+                 out: o.out, variance: planOut ? o.out - planOut : '', ach: planOut ? Math.round(o.out * 1000 / planOut) / 10 : '', pending: o.pending, planFrom: pl && pl.qty ? 'plan' : (planOut ? 'sheet' : '') };
+    var mk = o.master || '—', m = masters[mk.toLowerCase()] = masters[mk.toLowerCase()] || { master: mk, lines: [] };
+    m.lines.push(line);
+  });
+  var tot = { planOut: 0, out: 0, planMp: 0, mp: 0 };
+  var list = Object.keys(masters).map(function(k) {
+    var m = masters[k];
+    m.lines.sort(function(a, b) { return a.dept.localeCompare(b.dept) || a.srn.localeCompare(b.srn); });
+    m.planOut = m.lines.reduce(function(a, l) { return a + num_(l.planOut); }, 0); m.out = m.lines.reduce(function(a, l) { return a + l.out; }, 0);
+    m.planMp = m.lines.reduce(function(a, l) { return a + num_(l.planMp); }, 0); m.mp = m.lines.reduce(function(a, l) { return a + l.mp; }, 0);
+    var planned = m.lines.filter(function(l) { return l.planOut; }), pOut = planned.reduce(function(a, l) { return a + num_(l.planOut); }, 0), aOut = planned.reduce(function(a, l) { return a + l.out; }, 0);
+    m.ach = pOut ? Math.round(aOut * 1000 / pOut) / 10 : '';
+    tot.planOut += m.planOut; tot.out += m.out; tot.planMp += m.planMp; tot.mp += m.mp; tot.pOut = (tot.pOut || 0) + pOut; tot.aOut = (tot.aOut || 0) + aOut;
+    return m;
+  }).sort(function(a, b) { return a.master === '—' ? 1 : b.master === '—' ? -1 : a.master.localeCompare(b.master); });
+  tot.ach = tot.pOut ? Math.round(tot.aOut * 1000 / tot.pOut) / 10 : '';
+  return { ok: true, date: date, factory: factory, masters: list, total: tot };
+}

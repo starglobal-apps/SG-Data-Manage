@@ -4,7 +4,10 @@
 (function () {
   'use strict';
   var S = window.SG, $ = S.$, esc = S.esc, state = S.state, icon = S.icon;
-  var P = { srn: '', dept: '', r: null, busy: false, err: '' };
+  var P = { srn: '', dept: '', r: null, busy: false, err: '', mode: 'srn', pdate: '', pdr: null, pbusy: false, perr: '' };
+  try { P.mode = localStorage.getItem('sg_rep_mode') === 'pdr' ? 'pdr' : 'srn'; } catch (e) {}
+  function yesterday() { var d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function seg() { return '<div class="seg mo-seg"><button data-rmode="srn" class="' + (P.mode === 'srn' ? 'on' : '') + '">SRN report</button><button data-rmode="pdr" class="' + (P.mode === 'pdr' ? 'on' : '') + '">PDR · day report</button></div>'; }
 
   // every SRN name (open and shipped) for the picker: from the PMS data on the phone
   function srnList() { var d = S.pd && S.pd.get(); return S.srnNames || (d && d.pms && (d.pms.names || (d.pms.rows || []).map(function (r) { return r.srn; }))) || []; }
@@ -41,8 +44,46 @@
 
   S.tabs.mrep = function () { render(); };
 
+  // ---- PDR: previous day report, master-wise (image to share by hand)
+  function nm(v) { return String(v || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, ''); }
+  function achCls(a) { return a === '' ? '' : a >= 100 ? 'ok' : a >= 85 ? 'mid' : 'low'; }
+  function renderPdr() {
+    if (!P.pdate) P.pdate = yesterday();
+    var d = P.pdr, html = seg() + '<div class="card rp-top"><div class="row"><div class="field"><label>Date</label><input type="date" id="pdr-date" value="' + esc(P.pdate) + '" max="' + S.todayStr() + '"></div>' +
+      '<button class="btn" id="pdr-go" style="flex:0 0 auto;margin:0">Show</button></div></div>';
+    if (P.pbusy) html += '<div class="empty">Making the day report…</div>';
+    else if (P.perr) html += '<div class="empty">' + esc(P.perr) + '</div>';
+    else if (!d) html += '<div class="empty">Pick a date (yesterday is set) and press Show.</div>';
+    else if (!d.masters.length) html += '<div class="empty">No stitching output on ' + esc(S.fmtDay(d.date)) + '</div>';
+    else {
+      var t = d.total;
+      html += '<div class="rp-sum"><div><small>Plan</small><b>' + n(t.planOut) + '</b></div><div><small>Actual</small><b>' + n(t.out) + '</b></div><div><small>Achieve</small><b class="ach ' + achCls(t.ach) + '">' + (t.ach === '' ? '–' : t.ach + '%') + '</b></div></div>';
+      html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share PDR image · all masters</button>';
+      d.masters.forEach(function (m) {
+        html += '<div class="pdr-m"><div class="pdr-h"><div><small>Master</small><b>' + esc(nm(m.master)) + '</b></div><span class="ach ' + achCls(m.ach) + '">' + (m.ach === '' ? 'no plan' : m.ach + '%') + '</span>' +
+          '<button class="btn small ghost" data-pdrimg="' + esc(m.master) + '">Image</button></div>' +
+          '<table class="pdr-t"><thead><tr><th class="l">Line · SRN</th><th>Plan</th><th>Actual</th><th>Var</th><th>Ach</th></tr></thead><tbody>' +
+          m.lines.map(function (l) {
+            return '<tr><td class="l"><b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + '/' + l.mp + (l.mpOt ? '+' + l.mpOt + 'OT' : '') + ' · ' + l.hours + (l.hoursOt ? '+' + l.hoursOt : '') + ' h' + (l.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
+              '<td>' + (l.planOut === '' ? '–' : n(l.planOut)) + '</td><td><b>' + n(l.out) + '</b></td><td class="' + (l.variance !== '' && l.variance < 0 ? 'neg' : '') + '">' + (l.variance === '' ? '–' : (l.variance > 0 ? '+' : '') + n(l.variance)) + '</td>' +
+              '<td class="ach ' + achCls(l.ach) + '">' + (l.ach === '' ? '–' : l.ach + '%') + '</td></tr>';
+          }).join('') + '</tbody></table></div>';
+      });
+      html += '<p class="hint" style="margin:6px 2px">MP = planned / actual production manpower (operator, helper, paster, QC, thread cutter, hand needle) · hours = shift + OT · achievement = actual ÷ plan output</p>';
+    }
+    $('#mrep-body').innerHTML = html;
+  }
+  function loadPdr() {
+    var el = $('#pdr-date'); if (el && el.value) P.pdate = el.value;
+    P.pbusy = true; P.perr = ''; renderPdr();
+    S.api('m.pdr', { factory: state.factory, date: P.pdate }, { quiet: true })
+      .then(function (d) { P.pdr = d; P.pbusy = false; renderPdr(); })
+      .catch(function (e) { P.pbusy = false; P.perr = e.message; P.pdr = null; renderPdr(); });
+  }
+
   function render() {
-    var r = P.r, html = '<div class="card rp-top"><div class="row"><div class="field"><label>SRN</label>' +
+    if (P.mode === 'pdr') { renderPdr(); return; }
+    var r = P.r, html = seg() + '<div class="card rp-top"><div class="row"><div class="field"><label>SRN</label>' +
       '<div class="rp-pick"><input id="rp-srn" type="text" autocomplete="off" inputmode="text" placeholder="Type SRN number, e.g. 630" value="' + esc(P.srn) + '"><div id="rp-dd" class="rp-dd" hidden></div></div></div>' +
       '<button class="btn" id="rp-go" style="flex:0 0 auto;margin:0">Show</button></div></div>';
     if (P.busy) html += '<div class="empty">Loading the report…</div>';
@@ -128,6 +169,13 @@
   $('#tab-mrep').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
     if (b.dataset.pick) { $('#rp-dd').hidden = true; load(b.dataset.pick); return; }
+    if (b.dataset.rmode) { P.mode = b.dataset.rmode; try { localStorage.setItem('sg_rep_mode', P.mode); } catch (er) {} render(); return; }
+    if (b.id === 'pdr-go') { loadPdr(); return; }
+    if (b.dataset.pdrimg !== undefined && P.pdr) {
+      var who = b.dataset.pdrimg;
+      S.shareImage('PDR · ' + S.fmtDay(P.pdr.date) + (who ? ' · ' + nm(who) : ''), S.pdrImage(P.pdr, who || null), 'PDR_FAC' + P.pdr.factory + '_' + P.pdr.date + (who ? '_' + nm(who).replace(/[^A-Za-z0-9]+/g, '') : '') + '.png');
+      return;
+    }
     if (b.id === 'rp-go') { load($('#rp-srn').value); return; }
     if (b.dataset.rpl) { load(P.srn, b.dataset.rpl); return; }
     if (b.id === 'rp-wa' && P.r) S.shareImage('Making Output Report', reportImage(P.r), 'Making_' + S.shortLine(P.r.dept).replace(/[^A-Za-z0-9-]+/g, '') + '_' + P.r.srn + '_' + S.todayStr() + '.png');

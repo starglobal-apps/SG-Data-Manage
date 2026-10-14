@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v92';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v93';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -99,7 +99,7 @@
     else if (name === 'matt') setHeader('Attendance', 'FAC' + state.factory + ' · ' + fmtDay(state.date), false);
     else if (name === 'mout') setHeader('Output · stitching', 'FAC' + state.factory + ' · pending', false);
     else if (name === 'mpms') setHeader('PMS data', 'FAC' + state.factory + ' · not shipped', false);
-    else if (name === 'mrep') setHeader('SRN report', 'FAC' + state.factory + ' · day-wise', false);
+    else if (name === 'mrep') setHeader('Reports', 'FAC' + state.factory + ' · SRN report · PDR', false);
     else if (name === 'mrev') setHeader('Approve output', 'FAC' + state.factory + ' · waiting for approval', false);
     else if (name === 'target') setHeader('Hourly target', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · attendance × SAM', false);
     else if (name === 'grid') setHeader('Aaj ke ghante', 'FAC' + state.factory + ' · ' + fmtDay(state.date) + ' · cell tap = bharo', false);
@@ -129,7 +129,7 @@
   // Worker first (when set); when it cannot be reached or crashes, the call goes to Apps Script directly and the Worker
   // is skipped for 10 min. A save that is not safe to send twice (no rid) is never re-sent automatically.
   // calls that only read (same list as READ_ACTIONS in cloudflare/src/index.js): safe to send to Apps Script after the Worker failed
-  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|pmsFind|outDay|reviewReport|srnReport|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent|push\.(sub|unsub|key|status|test))$/;
+  var READ_CALLS = /^(ping|login|me|masters|m\.(all|att|out|pms|pmsFind|outDay|reviewReport|srnReport|pdr|warm)|att\.(get|status|prev|today)|orders\.active|hourly\.(get|day|rows)|hour\.get|factory\.today|line\.today|review\.(count|list)|users\.(recorders|list)|staff\.list|pms\.get|report\.(check|line|packing|srn|endline)|target\.get|defects\.list|manpower\.get|audit\.recent|push\.(sub|unsub|key|status|test))$/;
   function workerOn() { if (!WORKER_URL) return false; var t = 0; try { t = +localStorage.getItem('sg_wdown') || 0; } catch (e) {} return Date.now() - t > 120000; }   // after a failure: Apps Script direct for 2 min
   function workerDown() { try { localStorage.setItem('sg_wdown', String(Date.now())); } catch (e) {} }
   function directPost(body, text, attempt, mob, again) {
