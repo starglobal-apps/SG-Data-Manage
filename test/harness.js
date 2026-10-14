@@ -372,4 +372,24 @@ check('PDR: masters with their lines, output from the main sheet + pending app o
 check('PDR: achievement % = actual / plan output', allLines.every(l => l.planOut === '' || Math.abs(l.ach - Math.round(l.out * 1000 / l.planOut) / 10) < 0.01) && (pdr.total.out === allLines.reduce((a, l) => a + l.out, 0)), pdr.total);
 check('PDR: each line carries its supervisor', allLines.every(l => typeof l.supervisor === 'string') && allLines.some(l => l.supervisor), allLines.map(l => l.supervisor));
 check('PDR: bad date refused', call('rec1', 'm.pdr', { factory: '666', date: 'x' }).ok === false);
+// ========== 21. plan: learning curve (col P) and 100% after the plan's last day; PDR plan = rate × actual man-hours ==========
+check('learning curve values: "60%", 0.6, 60, blank', planLc_('60%') === 60 && planLc_(0.6) === 60 && planLc_(60) === 60 && planLc_('') === 100);
+var D0 = (function () { var d = new Date(TODAY + 'T00:00:00'); d.setDate(d.getDate() - 2); return d.toISOString().slice(0, 10); })();
+md.data[3] = []; md.data[3][10] = JSON.stringify(['ts', 'SRN0620A', 'TOTE', L3, D0.split('-').reverse().join('/'), 'Mon', 100, 0, '{}', 10, '{}', 10, 10, 100, '', '50%']);
+cacheDelBig_('plan_agg'); try { CacheService.getScriptCache().remove('plan_agg#t'); } catch (e) {}
+var pD0 = planOf_(D0, L3, 'SRN0620A'), pAfter = planOf_(TODAY, L3, 'SRN0620A'), pL1 = planOf_(TODAY, L1, 'SRN0620A');
+check('plan day at 50%: rate of the day 1.0, full rate 2.0', pD0 && Math.abs(pD0.rate - 1) < 1e-9 && pD0.lc === 50 && Math.abs(pD0.rate100 - 2) < 1e-9, pD0);
+check('after the last plan day: 100% of the rate (2.0)', pAfter && pAfter.after === true && pAfter.lc === 100 && Math.abs(pAfter.rate - 2) < 1e-9, pAfter);
+check('no plan before the plan starts / other SRN', planOf_(D0, L1, 'SRN0620A') === null && planOf_(TODAY, L3, 'SRN9999X') === null);
+var pdr2 = call('admin', 'm.pdr', { factory: '666', date: TODAY });
+var lines2 = [].concat.apply([], pdr2.masters.map(m => m.lines));
+var pl1 = lines2.filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0], pl2 = lines2.filter(l => l.dept === L3 && l.srn === 'SRN0620A')[0];
+check('PDR plan output = rate of the day × actual production man-hours (L1, plan day)', pl1 && pl1.planFrom === 'plan' && pl1.planOut === Math.round(pL1.rate * pl1.manhours), [pl1, pL1 && pL1.rate]);
+check('PDR after the plan ended (L3): 100% rate × man-hours', pl2 && pl2.planFrom === 'after' && pl2.lc === 100 && pl2.planOut === Math.round(2 * pl2.manhours), pl2);
+// no plan for the line: Making Bulletin SAM (20 min for SRN0620A) × the SRN's learning curve that day (L1 plan: 100%)
+md.data[3][10] = JSON.stringify(['ts', 'SRN0999Z', 'X', L3, D0.split('-').reverse().join('/'), 'Mon', 100, 0, '{}', 10, '{}', 10, 10, 100, '', '50%']);
+cacheDelBig_('plan_agg'); try { CacheService.getScriptCache().remove('plan_agg#t'); } catch (e) {}
+var pdr3 = call('admin', 'm.pdr', { factory: '666', date: TODAY });
+var pl3 = [].concat.apply([], pdr3.masters.map(m => m.lines)).filter(l => l.dept === L3 && l.srn === 'SRN0620A')[0];
+check('PDR without a line plan: bulletin SAM × learning curve × man-hours (like the hourly target)', pl3 && pl3.planFrom === 'sam' && pl3.sam === 20 && pl3.lc === 100 && pl3.planOut === Math.round(pl3.manhours * 60 / 20), pl3);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

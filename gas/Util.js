@@ -212,7 +212,7 @@ function invalidateDaily_(name) { delete DAILY_MEM_[name]; cacheDelBig_('daily:'
 function bumpData_() { try { CacheService.getScriptCache().put('data_ver', String(Date.now()) + Math.random(), 21600); } catch (e) {} }
 function dataVer_() { try { return CacheService.getScriptCache().get('data_ver') || '0'; } catch (e) { return '0'; } }
 function clearAllCaches_() {
-  ['loading_agg', 'hist_agg', 'hist_agg2', 'app_agg', 'masters_rows', 'users_rows', 'hist_qc', 'defects_master', 'sheet_att', 'sheet_att2', 'orders_agg', 'unload_agg', 'bulletin_sam'].forEach(cacheDelBig_);
+  ['loading_agg', 'hist_agg', 'hist_agg2', 'app_agg', 'masters_rows', 'users_rows', 'hist_qc', 'defects_master', 'sheet_att', 'sheet_att2', 'orders_agg', 'unload_agg', 'bulletin_sam', 'plan_agg'].forEach(cacheDelBig_);
   Object.keys(CFG.TABS).forEach(function(k) { invalidateDaily_(CFG.TABS[k]); });
 }
 

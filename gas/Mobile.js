@@ -868,11 +868,11 @@ function mPdr_(req, user) {
   var nm = function(v) { return str_(v).replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '').trim(); };
   var by = {};
   var add = function(dept, srn, x) {
-    var k = dept + '|' + srn, o = by[k] = by[k] || { dept: dept, srn: srn, master: '', supervisor: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, out: 0, sheetPlan: 0, pending: false };
+    var k = dept + '|' + srn, o = by[k] = by[k] || { dept: dept, srn: srn, master: '', supervisor: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, manhours: 0, out: 0, sheetPlan: 0, pending: false };
     if (!o.master && x.master) o.master = nm(x.master);
     if (!o.supervisor && x.sup) o.supervisor = nm(x.sup);
     if (x.ot) { o.mpOt += x.mp; o.hoursOt = Math.max(o.hoursOt, x.hours); } else { o.mp += x.mp; o.hours = Math.max(o.hours, x.hours); }
-    o.out += x.out; o.sheetPlan += x.plan; if (x.pending) o.pending = true;
+    o.out += x.out; o.sheetPlan += x.plan; o.manhours += x.mp * x.hours; if (x.pending) o.pending = true;
   };
   // 1) the main stitching sheet
   var v = Sheets.Spreadsheets.Values.get(srcId_(T.srcKey), "'" + T.sheet + "'!A" + T.minRow + ':AB', { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || [];
@@ -893,10 +893,15 @@ function mPdr_(req, user) {
   // 3) plan of the day (production plan: day plan qty + planned manpower); else the plan written on the sheet rows
   var masters = {};
   Object.keys(by).forEach(function(k) {
-    var o = by[k], pl = planOf_(date, o.dept, o.srn);
-    var planOut = pl && pl.qty ? Math.round(pl.qty) : Math.round(o.sheetPlan);
+    // plan output for the people who actually worked: rate of that day (learning curve; 100% after the plan ended) × man-hours
+    // no plan for the line: the Making Bulletin (SAM, all manpower types) like the hourly target — man-hours × 60 ÷ SAM,
+    // with the SRN's learning curve of that day when another line's plan has it (else 100%)
+    var o = by[k], pl = planOf_(date, o.dept, o.srn), sm = null, smLc = '';
+    if (!(pl && pl.rate)) { try { sm = samOf_(o.srn); } catch (e) {} if (sm && sm.sam > 0) smLc = planLcOfSrn_(date, o.srn) || 100; }
+    var planOut = pl && pl.rate ? Math.round(pl.rate * o.manhours) : sm && sm.sam > 0 && o.manhours ? Math.round(o.manhours * 60 / sm.sam * smLc / 100) : Math.round(o.sheetPlan);
     var line = { dept: o.dept, srn: o.srn, supervisor: o.supervisor, planMp: pl && pl.mp ? Math.round(pl.mp) : '', planOut: planOut || '', mp: o.mp, mpOt: o.mpOt, hours: o.hours, hoursOt: o.hoursOt,
-                 out: o.out, variance: planOut ? o.out - planOut : '', ach: planOut ? Math.round(o.out * 1000 / planOut) / 10 : '', pending: o.pending, planFrom: pl && pl.qty ? 'plan' : (planOut ? 'sheet' : '') };
+                 out: o.out, variance: planOut ? o.out - planOut : '', ach: planOut ? Math.round(o.out * 1000 / planOut) / 10 : '', pending: o.pending,
+                 planFrom: pl && pl.rate ? (pl.after ? 'after' : 'plan') : sm && sm.sam > 0 && o.manhours ? 'sam' : (planOut ? 'sheet' : ''), lc: pl && pl.rate ? pl.lc : smLc, sam: sm && sm.sam > 0 ? sm.sam : '', manhours: Math.round(o.manhours * 10) / 10 };
     var mk = o.master || '—', m = masters[mk.toLowerCase()] = masters[mk.toLowerCase()] || { master: mk, lines: [] };
     m.lines.push(line);
   });

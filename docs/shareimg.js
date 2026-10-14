@@ -121,7 +121,7 @@
       { t: 'Actual output', w: 122 }, { t: 'Variance', w: 104 }, { t: 'Hours shift+OT', w: 130 }, { t: 'Achievement', w: W - pad * 2 - 1152 }];
     var tw = W - pad * 2;
     var lines = masters.reduce(function (a, m) { return a + m.lines.length; }, 0);
-    var H = 170 + 140 + masters.length * (64 + 46 + 20) + lines * rowH + 70;
+    var H = 170 + 140 + masters.length * (64 + 46 + 20) + lines * rowH + 92;
     var cv = document.createElement('canvas'); cv.width = W * Z; cv.height = H * Z;
     var c = cv.getContext('2d'); c.scale(Z, Z); c.textBaseline = 'middle';
     var font = function (sz, w) { c.font = (w || 500) + ' ' + sz + 'px ' + FONT; };
@@ -176,7 +176,7 @@
           if (k === 7 && l.variance !== '') o.color = l.variance < 0 ? '#c81e1e' : '#15803d';
           if (k === 5 && l.mpOt) o.size = 16;
           if (k === 0) { o.size = 16; o.color = '#334155'; }
-          if (k < 9) text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + rowH / 2, o);
+          if (k < 9) text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, k === 4 && l.planOut !== '' ? y + rowH / 2 - 6 : y + rowH / 2, o);
           if (k === 9) {   // achievement: pill + bar
             var a = l.ach, bw = col.w - 40, bx = cx + 14;
             c.fillStyle = '#e2e8f0'; rr(c, bx, y + rowH - 14, bw, 6, 3); c.fill();
@@ -186,12 +186,14 @@
           cx += col.w;
         });
         if (l.pending) text('waiting approval', pad + 18 + 180, y + rowH - 9, { size: 11, w: 700, color: '#b45309' });
+        if (S.pdrPlanSrc && l.planOut !== '') { var px = pad + 180 + 180 + 118 + 88 + 112 / 2; text(S.pdrPlanSrc(l), px, y + rowH - 8, { size: 11, w: 600, color: MUTED, align: 'center', max: 108 }); }
         y += rowH;
       });
       y += 4 + 20;
     });
-    text('Achievement = actual output ÷ plan output (production plan of the day) · MP = production manpower (operator + helper + paster + QC + thread cutter + hand needle)', pad, H - 40, { size: 13, color: MUTED, max: tw - 260 });
-    text(S.imgStamp ? S.imgStamp() : '', W - pad, H - 40, { size: 13, color: MUTED, align: 'right' });
+    text('Plan output = actual man-hours × plan rate of the day (learning curve %, 100% after the plan ends, else bulletin SAM) · Achievement = actual ÷ plan', pad, H - 58, { size: 13, color: MUTED, max: tw });
+    text('MP = production manpower (operator + helper + paster + QC + thread cutter + hand needle)', pad, H - 34, { size: 13, color: MUTED, max: tw - 330 });
+    text(S.imgStamp ? S.imgStamp() : '', W - pad, H - 34, { size: 13, color: MUTED, align: 'right' });
     return cv;
   };
 })();

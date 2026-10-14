@@ -5,7 +5,8 @@
 //   hourly target = rate × production people today        plan output (sheet col M) = rate × their working hours
 // A line / SRN / date without a plan row falls back to the SAM method.
 // MASTER DATA col K row: [ts, SRN, style, line, plan date dd/mm/yyyy, day, day plan qty, balance, efficiency,
-//                         operators, other manpower {"Helper":7,…}, total manpower, working hours, daily target]
+//                         operators, other manpower {"Helper":7,…}, total manpower, working hours, daily target, O, learning curve % (P)]
+// After a line / SRN's last plan row, the plan runs on at 100% of that rate (planOf_).
 
 function planDate_(v) {
   var s = str_(v), m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
@@ -26,19 +27,44 @@ function planAgg_() {
       var srn = str_(a[1]).toUpperCase(), line = str_(a[3]); if (!/^SRN/.test(srn) || !line) return;
       var other = 0; try { var o = typeof a[10] === 'object' ? a[10] : JSON.parse(str_(a[10]) || '{}'); Object.keys(o || {}).forEach(function(k) { other += num_(o[k]); }); } catch (e) {}
       var mp = num_(a[9]) + other || num_(a[11]), hours = num_(a[12]) || shiftHours_('Final'), qty = num_(a[6]);
-      out[line + '|' + srn + '|' + d] = { qty: qty, mp: mp, hours: hours, rate: mp > 0 && hours > 0 ? qty / (mp * hours) : 0 };   // a later row of the same day wins
+      var lc = planLc_(a[15]), rate = mp > 0 && hours > 0 ? qty / (mp * hours) : 0;
+      // rate100: the full rate (the day plan qty is already reduced by the learning curve of that day)
+      out[line + '|' + srn + '|' + d] = { qty: qty, mp: mp, hours: hours, rate: rate, lc: lc, rate100: lc > 0 ? rate * 100 / lc : rate };   // a later row of the same day wins
     });
   }
   cachePutBig_('plan_agg', out, 1800);
   return out;
 }
-function planOf_(date, dept, srn) { return planAgg_()[str_(dept) + '|' + str_(srn).toUpperCase() + '|' + str_(date)] || null; }
+// learning curve % of a plan row (col P): "60%", 60 or 0.6 -> 60; blank -> 100
+function planLc_(v) {
+  if (v === '' || v === null || v === undefined) return 100;
+  var n = parseFloat(String(v).replace('%', ''));
+  if (!(n > 0)) return 100;
+  return typeof v === 'number' && n <= 1.5 ? Math.round(n * 1000) / 10 : n;
+}
+// the plan of a line / SRN / date. A date after the plan's last row (output still running) uses the last row at 100%
+// of the learning curve (user, 2026-10-14): { rate: rate100, lc: 100, after: true }.
+var PLAN_LAST_ = null, PLAN_LAST_OF_ = null;
+function planOf_(date, dept, srn) {
+  var all = planAgg_(), k = str_(dept) + '|' + str_(srn).toUpperCase();
+  var hit = all[k + '|' + str_(date)]; if (hit) return hit;
+  if (!PLAN_LAST_ || PLAN_LAST_OF_ !== all) {   // last plan date of every line|SRN (for this copy of the plan)
+    PLAN_LAST_OF_ = all;
+    PLAN_LAST_ = {};
+    Object.keys(all).forEach(function(key) { var i = key.lastIndexOf('|'), lk = key.slice(0, i), d = key.slice(i + 1); if (!PLAN_LAST_[lk] || d > PLAN_LAST_[lk]) PLAN_LAST_[lk] = d; });
+  }
+  var last = PLAN_LAST_[k]; if (!last || str_(date) <= last) return null;
+  var p = all[k + '|' + last], r100 = p.rate100 !== undefined ? p.rate100 : p.rate;
+  return { qty: Math.round(r100 * p.mp * p.hours), mp: p.mp, hours: p.hours, rate: r100, lc: 100, rate100: r100, after: true, lastDate: last };
+}
 
 // the plans of one date for some lines: { 'line|SRN': { qty, mp, hours, rate } } (phone attendance screen)
 function planOfDay_(date, depts) {
   var all = planAgg_(), want = {}, out = {};
   depts.forEach(function(d) { want[d] = 1; });
   Object.keys(all).forEach(function(k) { var p = k.split('|'); if (p[2] === date && want[p[0]]) out[p[0] + '|' + p[1]] = all[k]; });
+  // plan already ended for a line / SRN: its last row at 100%
+  Object.keys(all).forEach(function(k) { var p = k.split('|'), lk = p[0] + '|' + p[1]; if (!want[p[0]] || out[lk] || p[2] >= date) return; var x = planOf_(date, p[0], p[1]); if (x) out[lk] = x; });
   return out;
 }
 
@@ -69,4 +95,12 @@ function syncLines_() {
     invalidateMasters_();
   }
   return add.map(function(a) { return 'added ' + a.key + ' (FAC' + a.factory + ', ' + a.extra + ')'; }).concat(wake.map(function(r) { return 'active again ' + str_(r.key); }));
+}
+
+// learning curve % of an SRN on a date from any line's plan row (for the bulletin / SAM method when the line has no plan);
+// '' when the SRN has no plan row that day
+function planLcOfSrn_(date, srn) {
+  var all = planAgg_(), want = '|' + str_(srn).toUpperCase() + '|' + str_(date), lc = '';
+  Object.keys(all).forEach(function(k) { if (k.slice(-want.length) === want && all[k].lc) lc = all[k].lc; });
+  return lc;
 }

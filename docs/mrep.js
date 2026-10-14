@@ -46,6 +46,9 @@
 
   // ---- PDR: previous day report, master-wise (image to share by hand)
   function nm(v) { return String(v || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, ''); }
+  // where the plan output of a line came from
+  function planSrc(l) { return l.planFrom === 'plan' ? 'LC ' + l.lc + '%' : l.planFrom === 'after' ? '100% · plan over' : l.planFrom === 'sam' ? 'SAM ' + l.sam + (l.lc && l.lc < 100 ? ' · LC ' + l.lc + '%' : '') : l.planFrom === 'sheet' ? 'sheet plan' : 'no plan'; }
+  S.pdrPlanSrc = planSrc;
   function achCls(a) { return a === '' ? '' : a >= 100 ? 'ok' : a >= 85 ? 'mid' : 'low'; }
   function renderPdr() {
     if (!P.pdate) P.pdate = yesterday();
@@ -64,12 +67,12 @@
           '<button class="btn small ghost" data-pdrimg="' + esc(m.master) + '">Image</button></div>' +
           '<table class="pdr-t"><thead><tr><th class="l">Supervisor · line · SRN</th><th>Plan</th><th>Actual</th><th>Var</th><th>Ach</th></tr></thead><tbody>' +
           m.lines.map(function (l) {
-            return '<tr><td class="l">' + (l.supervisor ? '<em class="sup">' + esc(nm(l.supervisor)) + '</em>' : '') + '<b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + '/' + l.mp + (l.mpOt ? '+' + l.mpOt + 'OT' : '') + ' · ' + l.hours + (l.hoursOt ? '+' + l.hoursOt : '') + ' h' + (l.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
+            return '<tr><td class="l">' + (l.supervisor ? '<em class="sup">' + esc(nm(l.supervisor)) + '</em>' : '') + '<b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + '/' + l.mp + (l.mpOt ? '+' + l.mpOt + 'OT' : '') + ' · ' + l.hours + (l.hoursOt ? '+' + l.hoursOt : '') + ' h · plan ' + esc(planSrc(l)) + (l.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
               '<td>' + (l.planOut === '' ? '–' : n(l.planOut)) + '</td><td><b>' + n(l.out) + '</b></td><td class="' + (l.variance !== '' && l.variance < 0 ? 'neg' : '') + '">' + (l.variance === '' ? '–' : (l.variance > 0 ? '+' : '') + n(l.variance)) + '</td>' +
               '<td class="ach ' + achCls(l.ach) + '">' + (l.ach === '' ? '–' : l.ach + '%') + '</td></tr>';
           }).join('') + '</tbody></table></div>';
       });
-      html += '<p class="hint" style="margin:6px 2px">MP = planned / actual production manpower (operator, helper, paster, QC, thread cutter, hand needle) · hours = shift + OT · achievement = actual ÷ plan output</p>';
+      html += '<p class="hint" style="margin:6px 2px">Plan output = the people who actually worked × their hours × the plan rate of that day (learning curve %; 100% after the plan ends; no plan: Making Bulletin SAM) · MP = planned / actual production manpower (operator, helper, paster, QC, thread cutter, hand needle) · hours = shift + OT · achievement = actual ÷ plan output</p>';
     }
     $('#mrep-body').innerHTML = html;
   }
