@@ -832,6 +832,7 @@ span.ach.ok { background: #dcfce7; } span.ach.mid { background: #fef3c7; } span.
 .pdr-t.cut td.l { width: 30%; } .pdr-t.cut .fab { width: 52%; text-align: left; font-size: 11.5px; line-height: 1.3; } .pdr-t.cut td:last-child { width: 18%; }
 .pdr-t tr.ov td { font-size: 11.5px; color: #5b21b6; background: #faf8ff; padding-top: 3px; padding-bottom: 5px; border-top: 0; } .pdr-t tr.ov td.l { font-weight: 700; } .pdr-t tr.ov td.neg { color: var(--bad); }
 .pdr-t.st .l { width: 40%; } .pdr-h .pdr-mt { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.pdr-wk { margin: 0 0 8px; } .pdr-wk button { min-height: 32px; font-size: 13px; }
 .pdr-sec { display: flex; align-items: center; gap: 8px; margin: 14px 2px 8px; } .pdr-sec b { font-size: 15px; color: #1e3a8a; } .pdr-sec span { flex: 1; font-size: 12px; color: var(--muted); } .pdr-sec .btn.small { margin: 0; min-height: 28px; padding: 3px 10px; }
 .rp-sum b.ach.ok { color: #15803d; } .rp-sum b.ach.mid { color: #b45309; } .rp-sum b.ach.low { color: #c81e1e; }
 /* Approve tab: yesterday's PDR card */

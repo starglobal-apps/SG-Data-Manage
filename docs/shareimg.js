@@ -127,7 +127,10 @@
     var varT = T.planOut ? T.out - T.planOut : '', ovVarT = T.ovPlan ? T.ovOut - T.ovPlan : '';
     var endChk = sum(endl, function (e) { return e.checked; }), endPass = sum(endl, function (e) { return e.pass; }), endFail = sum(endl, function (e) { return e.fail; });
     var fq = sum(floors, function (f) { return f.qty; }), fc = sum(floors, function (f) { return f.cartons; });
-    var p = d.date.split('-'), day = new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+    var wk = !!d.weekly, dOf = function (s) { var q = s.split('-'); return new Date(+q[0], +q[1] - 1, +q[2]); };
+    var day = wk ? dOf(d.from).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' }) + ' – ' + dOf(d.to).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+                 : dOf(d.date).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+    var DAY = wk ? 'Week' : 'Day';
 
     var W = 720, X = 24, IW = W - X * 2, c = null, y = 0;
     var mc = document.createElement('canvas').getContext('2d');
@@ -150,13 +153,13 @@
       y = 0;
       // header
       rect(0, 0, W, 118, C.head);
-      text(mode === 'packing' ? 'Packing Output Report' : 'Production Output Report', X, 46, { size: 32, w: 800, color: '#fff' });
+      text((wk ? 'Weekly ' : '') + (mode === 'packing' ? 'Packing Report' : wk ? 'Production Report' : 'Production Output Report'), X, 46, { size: 32, w: 800, color: '#fff' });
       text('FAC' + d.factory + '  ·  ' + day + (mode === 'master' ? '  ·  ' + nm(only) : ''), X, 88, { size: 21, w: 500, color: '#dbeafe', max: IW });
       y = 118 + 18;
 
       // KPI cards: 2 per row
       var k = mode === 'packing' ? [['Packed pcs', n(fq), C.ink, ''], ['Cartons', n(fc), C.ink, floors.length + (floors.length > 1 ? ' floors' : ' floor')]] :
-        [['Stitching plan output', n(T.planOut), C.ink, 'plan MP ' + n(T.planMp)], ['Stitching actual output', n(T.out), C.ink, 'actual MP ' + n(T.mp)],
+        [['Stitching plan output', n(T.planOut), C.ink, 'plan MP ' + n(T.planMp) + (wk ? ' a day' : '')], ['Stitching actual output', n(T.out), C.ink, 'actual MP ' + n(T.mp) + (wk ? ' a day' : '')],
          ['Stitching variance', sg(varT), vc(varT), 'overall ' + sg(ovVarT)], ['Endline pass', n(endPass), C.ink, endChk ? n(endChk) + ' checked' : 'no endline'],
          ['Endline fail', n(endFail), endFail ? C.bad : C.ink, endChk ? Math.round(endFail / endChk * 1000) / 10 + '% of checked' : '']].concat(mode === 'all' ? [['Packed pcs', n(fq), C.ink, floors.length ? n(fc) + ' cartons' : 'no packing']] : []);
       var kw = (IW - 14) / 2, kh = 118;
@@ -194,20 +197,20 @@
             text(l.srn, X + 2 + Math.min(260, (setFont(mc, { size: 24, w: 800 }), mc.measureText(sl(l.dept)).width)) + 14, y + 16, { size: 21, w: 600, color: C.sub });
             text(nm(l.supervisor), W - X, y + 16, { size: 19, w: 600, color: C.sub, align: 'right', max: 230 });
             y += 34;
-            text('MP plan ' + n(l.planMp) + ' · actual ' + n(l.mp) + (l.mpOt ? ' (+' + l.mpOt + ' OT)' : '') + (S.pdrPlanSrc && l.planOut !== '' ? '  ·  ' + S.pdrPlanSrc(l) : ''), X + 2, y + 12, { size: 17, w: 500, color: C.sub, max: l.pending ? IW - 200 : IW });
+            text('MP plan ' + n(l.planMp) + ' · actual ' + n(l.mp) + (l.mpOt ? ' (+' + l.mpOt + ' OT)' : '') + (wk ? ' a day  ·  ' + l.days + (l.days > 1 ? ' days' : ' day') : S.pdrPlanSrc && l.planOut !== '' ? '  ·  ' + S.pdrPlanSrc(l) : ''), X + 2, y + 12, { size: 17, w: 500, color: C.sub, max: l.pending ? IW - 200 : IW });
             if (l.pending) text('● waiting approval', W - X, y + 12, { size: 17, w: 700, color: C.warn, align: 'right' });
             y += 26;
-            mini([['Day', n(l.planOut), l.endOnly ? '–' : n(l.out), sg(l.variance), n(l.endPass || 0), l.variance],
+            mini([[DAY, n(l.planOut), l.endOnly ? '–' : n(l.out), sg(l.variance), n(l.endPass || 0), l.variance],
                   [l.ovDays ? 'Overall · ' + l.ovDays + 'd' : 'Overall', n(l.ovPlan), l.endOnly ? '–' : n(l.ovOut), sg(l.ovVar), '', l.ovVar]]);
             hr(y); y += 2;
           });
         });
         y += 14;
         rect(X, y, IW, 4, C.head); y += 10;
-        text('Stitching total', X + 2, y + 16, { size: 24, w: 800 });
+        text(wk ? 'Stitching total · week' : 'Stitching total', X + 2, y + 16, { size: 24, w: 800 });
         text(lines.length + (lines.length > 1 ? ' lines' : ' line'), W - X, y + 16, { size: 19, w: 600, color: C.sub, align: 'right' });
         y += 34;
-        mini([['Day', n(T.planOut), n(T.out), sg(varT), n(T.endPass), varT], ['Overall', n(T.ovPlan), n(T.ovOut), sg(ovVarT), '', ovVarT]], true);
+        mini([[DAY, n(T.planOut), n(T.out), sg(varT), n(T.endPass), varT], ['Overall', n(T.ovPlan), n(T.ovOut), sg(ovVarT), '', ovVarT]], true);
       }
 
       // endline: line-wise checked / pass / fail
@@ -263,7 +266,7 @@
       // notes
       y += 18; hr(y); y += 14;
       (mode === 'packing' ? ['Packed pcs and cartons of that date from the packing sheet.'] :
-        ['Plan output = actual man-hours × plan rate of the day (learning curve; 100% after the plan ends; else Making Bulletin SAM).', 'Overall = every day of that line on that SRN up to this date.'])
+        ['Plan output = actual man-hours × plan rate of the day (learning curve; 100% after the plan ends; else Making Bulletin SAM).' + (wk ? ' Week = Monday to Saturday: each day\'s plan and output added up; manpower = average a day.' : ''), 'Overall = every day of that line on that SRN up to ' + (wk ? 'the last day of the week.' : 'this date.')])
         .concat(['● = waiting approval, included.', S.imgStamp ? S.imgStamp() : '']).forEach(function (t) {
           // wrap long notes over lines
           setFont(mc, { size: 16 }); var words = String(t).split(' '), ln = '';

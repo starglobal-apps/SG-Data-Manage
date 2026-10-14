@@ -435,4 +435,9 @@ check('overall: the day before adds its output, a later date does not', la && lb
 check('overall plan and variance: plan of each day (from its man-hours), variance = actual - plan', lb && lb.ovPlan > la.ovPlan && lb.ovVar === lb.ovOut - lb.ovPlan && pdr6.total.ovOut >= lb.ovOut, lb);
 var el = pdr6.endline || [], el1 = el.filter(e => e.dept === L1)[0];
 check('endline table: line-wise checked / pass / fail (reject column), no cutting in the reply', el.length === 2 && el1 && el1.checked === 100 && el1.pass === 95 && el1.fail === 5 && pdr6.total.endFail === 7 && !('cutting' in pdr6), el);
+// ========== 25. weekly report: a range of days (Monday..Saturday) ==========
+var wk = call('admin', 'm.pdr', { factory: '666', from: YD, date: TODAY }), lw = [].concat.apply([], wk.masters.map(m => m.lines)).filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0];
+var dYD = call('admin', 'm.pdr', { factory: '666', date: YD }), ly = [].concat.apply([], dYD.masters.map(m => m.lines)).filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0];
+check('week: output and plan of each day added up, manpower = average per day, overall up to the last day', wk.ok && wk.weekly && lw && ly && lw.out === lb.out + ly.out && lw.planOut === num_(lb.planOut) + num_(ly.planOut) && lw.days === 2 && lw.mp === Math.round((lb.mp + ly.mp) / 2) && lw.ovOut === lb.ovOut, [lw && [lw.out, lw.planOut, lw.mp, lw.days], ly && [ly.out, ly.planOut, ly.mp], lb && [lb.out, lb.planOut, lb.mp]]);
+check('week: from after the date is refused; a day report is not weekly', call('admin', 'm.pdr', { factory: '666', from: TODAY, date: YD }).ok === false && pdr6.weekly === false && pdr6.from === TODAY);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

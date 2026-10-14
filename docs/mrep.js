@@ -6,6 +6,12 @@
   var S = window.SG, $ = S.$, esc = S.esc, state = S.state, icon = S.icon;
   var P = { srn: '', dept: '', r: null, busy: false, err: '', mode: 'srn', pdate: '', pdr: null, pbusy: false, perr: '' };
   try { P.mode = localStorage.getItem('sg_rep_mode') === 'pdr' ? 'pdr' : 'srn'; } catch (e) {}
+  // weekly report: Monday..Saturday. weekOf: the week of a date (a Sunday -> the week before it); lastWeek: the last full week
+  function ymd(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function weekOf(s) { var p = s.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]), back = (d.getDay() + 6) % 7; if (d.getDay() === 0) back = 6; d.setDate(d.getDate() - back); var to = new Date(d); to.setDate(d.getDate() + 5); return { from: ymd(d), to: ymd(to) }; }
+  function lastWeek() { var d = new Date(); d.setDate(d.getDate() - 1); while (d.getDay() !== 6) d.setDate(d.getDate() - 1); return weekOf(ymd(d)); }
+  S.pdrLastWeek = lastWeek;
+  function wkLabel(r) { var f = function (x) { var p = x.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }); }; return f(r.from) + ' – ' + f(r.to); }
   function yesterday() { var d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   function seg() { return '<div class="seg mo-seg"><button data-rmode="srn" class="' + (P.mode === 'srn' ? 'on' : '') + '">SRN report</button><button data-rmode="pdr" class="' + (P.mode === 'pdr' ? 'on' : '') + '">Production output</button></div>'; }
 
@@ -50,13 +56,15 @@
   function planSrc(l) { return l.planFrom === 'plan' ? 'LC ' + l.lc + '%' : l.planFrom === 'after' ? '100% · plan over' : l.planFrom === 'sam' ? 'SAM ' + l.sam + (l.lc && l.lc < 100 ? ' · LC ' + l.lc + '%' : '') : l.planFrom === 'sheet' ? 'sheet plan' : 'no plan'; }
   S.pdrPlanSrc = planSrc;
   function renderPdr() {
-    if (!P.pdate) P.pdate = yesterday();
-    var d = P.pdr, html = seg() + '<div class="card rp-top"><div class="row"><div class="field"><label>Date</label><input type="date" id="pdr-date" value="' + esc(P.pdate) + '" max="' + S.todayStr() + '"></div>' +
-      '<button class="btn" id="pdr-go" style="flex:0 0 auto;margin:0">Show</button></div></div>';
+    if (P.wk == null) P.wk = new Date().getDay() === 1;   // Monday: last week's report
+    if (!P.pdate) P.pdate = P.wk ? lastWeek().to : yesterday();
+    var d = P.pdr, html = seg() + '<div class="card rp-top"><div class="seg pdr-wk"><button data-pwk="0" class="' + (P.wk ? '' : 'on') + '">Day</button><button data-pwk="1" class="' + (P.wk ? 'on' : '') + '">Week · Mon–Sat</button></div>' +
+      '<div class="row"><div class="field"><label>' + (P.wk ? 'Any day of the week' : 'Date') + '</label><input type="date" id="pdr-date" value="' + esc(P.pdate) + '" max="' + S.todayStr() + '"></div>' +
+      '<button class="btn" id="pdr-go" style="flex:0 0 auto;margin:0">Show</button></div>' + (P.wk ? '<div class="hint" style="margin:6px 2px 0">Week: ' + esc(wkLabel(weekOf(P.pdate))) + '</div>' : '') + '</div>';
     if (P.pbusy) html += '<div class="empty">Making the day report…</div>';
     else if (P.perr) html += '<div class="empty">' + esc(P.perr) + '</div>';
-    else if (!d) html += '<div class="empty">Pick a date (yesterday is set) and press Show.</div>';
-    else if (!d.masters.length && !(d.packing || []).length && !(d.endline || []).length) html += '<div class="empty">No stitching, endline or packing on ' + esc(S.fmtDay(d.date)) + '</div>';
+    else if (!d) html += '<div class="empty">Pick a date and press Show.</div>';
+    else if (!d.masters.length && !(d.packing || []).length && !(d.endline || []).length) html += '<div class="empty">No stitching, endline or packing ' + (d.weekly ? 'in ' + esc(wkLabel(d)) : 'on ' + esc(S.fmtDay(d.date))) + '</div>';
     else {
       var t = d.total, pk = d.packing || [], el = d.endline || [];
       var sg = function (v) { return v === '' || v == null ? '–' : (v > 0 ? '+' : '') + n(v); }, neg = function (v) { return v !== '' && v != null && v < 0 ? ' class="neg"' : ''; };
@@ -65,7 +73,7 @@
       var pq = pk.reduce(function (a, f) { return a + f.qty; }, 0), pc = pk.reduce(function (a, f) { return a + f.cartons; }, 0);
       html += '<div class="rp-sum"><div><small>Stitch plan</small><b>' + n(t.planOut) + '</b></div><div><small>Stitch actual</small><b>' + n(t.out) + '</b></div><div><small>Variance</small><b' + (varT !== '' && varT < 0 ? ' class="bad"' : '') + '>' + sg(varT) + '</b></div></div>' +
         '<div class="rp-sum"><div><small>End pass</small><b>' + n(ePass) + '</b></div><div><small>End fail</small><b' + (eFail ? ' class="bad"' : '') + '>' + n(eFail) + '</b></div><div><small>Packed</small><b>' + n(pq) + '</b></div></div>';
-      html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share report image</button>';
+      html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + (d.weekly ? ' Share weekly report · ' + esc(wkLabel(d)) : ' Share report image') + '</button>';
       // stitching: per line the day and the overall (every day of that line on that SRN up to this date)
       if (d.masters.length) html += '<div class="pdr-sec"><b>Stitching</b><span>' + n(t.out) + ' / ' + n(t.planOut) + ' pcs · overall ' + sg(ovT) + '</span></div>';
       d.masters.forEach(function (m) {
@@ -73,7 +81,7 @@
           '<button class="btn small ghost" data-pdrimg="' + esc(m.master) + '">Image</button></div>' +
           '<table class="pdr-t st"><thead><tr><th class="l">Line · SRN</th><th>Plan</th><th>Actual</th><th>Var</th><th>End pass</th></tr></thead><tbody>' +
           m.lines.map(function (l) {
-            return '<tr class="grp"><td class="l">' + (l.supervisor ? '<em class="sup">' + esc(nm(l.supervisor)) + '</em>' : '') + '<b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + (l.endOnly ? ' · endline only' : ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + ' / ' + l.mp + (l.mpOt ? ' +' + l.mpOt + ' OT' : '') + ' · ' + esc(planSrc(l))) + (l.pending || l.endPending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
+            return '<tr class="grp"><td class="l">' + (l.supervisor ? '<em class="sup">' + esc(nm(l.supervisor)) + '</em>' : '') + '<b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + (l.endOnly ? ' · endline only' : ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + ' / ' + l.mp + (l.mpOt ? ' +' + l.mpOt + ' OT' : '') + (d.weekly ? ' a day · ' + l.days + (l.days > 1 ? ' days' : ' day') : ' · ' + esc(planSrc(l)))) + (l.pending || l.endPending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
               '<td>' + n(l.planOut) + '</td><td><b>' + (l.endOnly ? '–' : n(l.out)) + '</b></td><td' + neg(l.variance) + '>' + sg(l.variance) + '</td><td><b>' + n(l.endPass || 0) + '</b></td></tr>' +
               '<tr class="ov"><td class="l">Overall' + (l.ovDays ? ' · ' + l.ovDays + (l.ovDays > 1 ? ' days' : ' day') : '') + '</td><td>' + n(l.ovPlan) + '</td><td>' + (l.endOnly ? '–' : n(l.ovOut)) + '</td><td' + neg(l.ovVar) + '>' + sg(l.ovVar) + '</td><td></td></tr>';
           }).join('') + '</tbody></table></div>';
@@ -100,7 +108,9 @@
   function loadPdr() {
     var el = $('#pdr-date'); if (el && el.value) P.pdate = el.value;
     P.pbusy = true; P.perr = ''; renderPdr();
-    S.api('m.pdr', { factory: state.factory, date: P.pdate }, { quiet: true })
+    var rq = { factory: state.factory, date: P.pdate };
+    if (P.wk) { var w = weekOf(P.pdate); rq.from = w.from; rq.date = w.to; }
+    S.api('m.pdr', rq, { quiet: true })
       .then(function (d) { P.pdr = d; P.pbusy = false; renderPdr(); })
       .catch(function (e) { P.pbusy = false; P.perr = e.message; P.pdr = null; renderPdr(); });
   }
@@ -140,7 +150,7 @@
       .catch(function (e) { P.busy = false; P.err = e.message; P.r = null; render(); });
   }
   S.openSrnReport = function (srn) { S.tab('mrep'); load(srn); };
-  S.openPdr = function (date) { P.mode = 'pdr'; try { localStorage.setItem('sg_rep_mode', 'pdr'); } catch (e) {} P.pdate = date || yesterday(); P.pdr = null; S.tab('mrep'); loadPdr(); };
+  S.openPdr = function (date, wk) { P.mode = 'pdr'; try { localStorage.setItem('sg_rep_mode', 'pdr'); } catch (e) {} P.wk = !!wk; P.pdate = date || (wk ? lastWeek().to : yesterday()); P.pdr = null; S.tab('mrep'); loadPdr(); };
 
   // WhatsApp: an image of the report in its printed format (the text version stays below for reference)
   function reportImage(r) {
@@ -196,9 +206,11 @@
     if (b.dataset.pick) { $('#rp-dd').hidden = true; load(b.dataset.pick); return; }
     if (b.dataset.rmode) { P.mode = b.dataset.rmode; try { localStorage.setItem('sg_rep_mode', P.mode); } catch (er) {} render(); return; }
     if (b.id === 'pdr-go') { loadPdr(); return; }
+    if (b.dataset.pwk !== undefined) { var el = $('#pdr-date'); if (el && el.value) P.pdate = el.value; P.wk = b.dataset.pwk === '1'; if (P.wk && P.pdate > lastWeek().to && weekOf(P.pdate).to > S.todayStr()) P.pdate = lastWeek().to; P.pdr = null; renderPdr(); loadPdr(); return; }
     if (b.dataset.pdrimg !== undefined && P.pdr) {
       var who = b.dataset.pdrimg, label = who === '__packing' ? 'Packing' : nm(who);
-      S.shareImage('Production Output Report · ' + S.fmtDay(P.pdr.date) + (who ? ' · ' + label : ''), S.pdrImage(P.pdr, who || null), 'ProductionOutput_FAC' + P.pdr.factory + '_' + P.pdr.date + (who ? '_' + label.replace(/[^A-Za-z0-9]+/g, '') : '') + '.png');
+      var wkd = P.pdr.weekly, nameDate = wkd ? P.pdr.from + '_to_' + P.pdr.to : P.pdr.date;
+      S.shareImage((wkd ? 'Weekly Production Report · ' + wkLabel(P.pdr) : 'Production Output Report · ' + S.fmtDay(P.pdr.date)) + (who ? ' · ' + label : ''), S.pdrImage(P.pdr, who || null), (wkd ? 'WeeklyProduction_FAC' : 'ProductionOutput_FAC') + P.pdr.factory + '_' + nameDate + (who ? '_' + label.replace(/[^A-Za-z0-9]+/g, '') : '') + '.png');
       return;
     }
     if (b.id === 'rp-go') { load($('#rp-srn').value); return; }

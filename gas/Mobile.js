@@ -860,15 +860,18 @@ function mReviewEdit_(req, user) {
 // (production plan of the day), actual manpower (operators + the other production roles, shift) + actual output (shift +
 // OT), working hours "shift + OT", variance and achievement %. Data: the main stitching sheet, plus output still waiting
 // in the app (pending). Read-only.
+// req.date: the day (or the last day of a range); req.from: first day of a range (weekly report: Monday..Saturday)
 function mPdr_(req, user) {
-  var factory = str_(req.factory).replace(/^FAC/i, '') || '666', date = str_(req.date);
-  if (!isDateStr_(date)) return fail_('DATE', 'Select a date');
+  var factory = str_(req.factory).replace(/^FAC/i, '') || '666', date = str_(req.date), from = str_(req.from) || date;
+  if (!isDateStr_(date) || !isDateStr_(from) || from > date) return fail_('DATE', 'Select a date');
+  var inRange = function(d) { return d >= from && d <= date; };
   var T = CFG.FINAL_TARGETS[factory === '117' ? 'STITCH_117' : 'STITCH_666'], col = {};
   Object.keys(T.cols).forEach(function(c) { col[T.cols[c]] = +c - 1; });
   var nm = function(v) { return str_(v).replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '').trim(); };
   var by = {};
   var add = function(dept, srn, x) {
-    var k = dept + '|' + srn, o = by[k] = by[k] || { dept: dept, srn: srn, master: '', supervisor: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, manhours: 0, out: 0, sheetPlan: 0, pending: false };
+    var k = dept + '|' + srn, o = by[k] = by[k] || { dept: dept, srn: srn, master: '', supervisor: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, manhours: 0, out: 0, sheetPlan: 0, pending: false, days: {}, otDays: {} };
+    o.days[x.day] = 1; if (x.ot) o.otDays[x.day] = 1;
     if (!o.master && x.master) o.master = nm(x.master);
     if (!o.supervisor && x.sup) o.supervisor = nm(x.sup);
     if (x.ot) { o.mpOt += x.mp; o.hoursOt = Math.max(o.hoursOt, x.hours); } else { o.mp += x.mp; o.hours = Math.max(o.hours, x.hours); }
@@ -884,7 +887,7 @@ function mPdr_(req, user) {
     var d = dateKey_(g('date')); if (d > date || !str_(g('dept'))) return;
     var mp = num_(g('manpower')) + num_(g('r1')) + num_(g('r2')) + num_(g('r3')) + num_(g('r4')) + num_(g('r5'));
     addHist(str_(g('dept')), str_(g('srn')).toUpperCase(), d, mp * num_(g('hours')), num_(g('output')), num_(g('plan')));
-    if (d === date) add(str_(g('dept')), str_(g('srn')).toUpperCase(), { ot: /OT|night/i.test(str_(g('shift'))), mp: mp, hours: num_(g('hours')), out: num_(g('output')), plan: num_(g('plan')), master: g('master'), sup: g('supervisor') });
+    if (inRange(d)) add(str_(g('dept')), str_(g('srn')).toUpperCase(), { day: d, ot: /OT|night/i.test(str_(g('shift'))), mp: mp, hours: num_(g('hours')), out: num_(g('output')), plan: num_(g('plan')), master: g('master'), sup: g('supervisor') });
   });
   // 2) output still in the app (waiting / approved, not in the sheet yet)
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
@@ -893,7 +896,7 @@ function mPdr_(req, user) {
     var p = parseJsonObj_(r.payload);
     var mp = (p.operators !== undefined ? num_(p.operators) : num_(p.manpower)) + num_(p.r1) + num_(p.r2) + num_(p.r3) + num_(p.r4) + num_(p.r5);
     addHist(str_(r.dept), str_(r.srn).toUpperCase(), str_(r.date), mp * num_(p.hours), num_(p.output), num_(p.plan));
-    if (str_(r.date) === date) add(str_(r.dept), str_(r.srn).toUpperCase(), { ot: (str_(r.shift) || 'Final') !== 'Final', mp: mp, hours: num_(p.hours), out: num_(p.output), plan: num_(p.plan), master: p.incharge, sup: p.supervisor, pending: true });
+    if (inRange(str_(r.date))) add(str_(r.dept), str_(r.srn).toUpperCase(), { day: str_(r.date), ot: (str_(r.shift) || 'Final') !== 'Final', mp: mp, hours: num_(p.hours), out: num_(p.output), plan: num_(p.plan), master: p.incharge, sup: p.supervisor, pending: true });
   });
   // 3) plan of the day (production plan: day plan qty + planned manpower); else the plan written on the sheet rows
   var masters = {}, samMem = {};
@@ -907,11 +910,14 @@ function mPdr_(req, user) {
     return { pl: pl, sm: sm, smLc: smLc, planOut: planOut };
   };
   Object.keys(by).forEach(function(k) {
-    var o = by[k], dp = dayPlan(date, o.dept, o.srn, o.manhours, o.sheetPlan), pl = dp.pl, sm = dp.sm, smLc = dp.smLc, planOut = dp.planOut;
+    // plan of each day it worked in the range, added up; manpower = average per day
+    var o = by[k], days = Object.keys(o.days).sort(), nd = days.length || 1, nOt = Object.keys(o.otDays).length || 1, planOut = 0, pmSum = 0, pmN = 0, dp = null;
+    days.forEach(function(d) { var x = hist[k][d]; dp = dayPlan(d, o.dept, o.srn, x.manhours, x.plan); planOut += dp.planOut; if (dp.pl && dp.pl.mp) { pmSum += dp.pl.mp; pmN++; } });
+    var pl = dp && dp.pl, sm = dp && dp.sm, smLc = dp ? dp.smLc : '';
     // overall: every day of this line on this SRN up to the date
     var ov = { plan: 0, out: 0, days: 0, from: '' };
     Object.keys(hist[k] || {}).forEach(function(d) { var x = hist[k][d]; ov.plan += dayPlan(d, o.dept, o.srn, x.manhours, x.plan).planOut; ov.out += x.out; ov.days++; if (!ov.from || d < ov.from) ov.from = d; });
-    var line = { dept: o.dept, srn: o.srn, supervisor: o.supervisor, planMp: pl && pl.mp ? Math.round(pl.mp) : '', planOut: planOut || '', mp: o.mp, mpOt: o.mpOt, hours: o.hours, hoursOt: o.hoursOt,
+    var line = { dept: o.dept, srn: o.srn, supervisor: o.supervisor, planMp: pmN ? Math.round(pmSum / pmN) : '', planOut: planOut || '', mp: Math.round(o.mp / nd), mpOt: Math.round(o.mpOt / nOt), hours: o.hours, hoursOt: o.hoursOt, days: days.length,
                  out: o.out, variance: planOut ? o.out - planOut : '', ach: planOut ? Math.round(o.out * 1000 / planOut) / 10 : '', pending: o.pending,
                  planFrom: pl && pl.rate ? (pl.after ? 'after' : 'plan') : sm && sm.sam > 0 && o.manhours ? 'sam' : (planOut ? 'sheet' : ''), lc: pl && pl.rate ? pl.lc : smLc, sam: sm && sm.sam > 0 ? sm.sam : '', manhours: Math.round(o.manhours * 10) / 10,
                  ovPlan: ov.plan || '', ovOut: ov.out, ovVar: ov.plan ? ov.out - ov.plan : '', ovDays: ov.days, ovFrom: ov.from };
@@ -933,7 +939,7 @@ function mPdr_(req, user) {
   }).sort(function(a, b) { return a.master === '—' ? 1 : b.master === '—' ? -1 : a.master.localeCompare(b.master); });
   tot.ach = tot.pOut ? Math.round(tot.aOut * 1000 / tot.pOut) / 10 : '';
   // 4) endline of that date per line / SRN (checked, pass) — after the actual output
-  var end = pdrEndline_(factory, date), lineOf = {};
+  var end = pdrEndline_(factory, from, date), lineOf = {};
   list.forEach(function(m) { m.lines.forEach(function(l) { lineOf[l.dept + '|' + l.srn] = l; l.endChecked = 0; l.endPass = 0; }); });
   Object.keys(end).forEach(function(k) {
     var e = end[k], l = lineOf[k];
@@ -952,8 +958,8 @@ function mPdr_(req, user) {
     .sort(function(a, b) { return a.dept.localeCompare(b.dept) || a.srn.localeCompare(b.srn); });
   tot.endFail = endline.reduce(function(a, e) { return a + e.fail; }, 0);
   // 5) packing of that date, floor-wise (cutting: pdrCutting_, not in the report for now)
-  var packing = pdrPacking_(factory, date);
-  return { ok: true, date: date, factory: factory, masters: list, total: tot, endline: endline, packing: packing };
+  var packing = pdrPacking_(factory, from, date);
+  return { ok: true, date: date, from: from, to: date, weekly: from !== date, factory: factory, masters: list, total: tot, endline: endline, packing: packing };
 }
 
 // a target sheet's rows as {field: value} (header-less read, minRow on)
@@ -965,7 +971,7 @@ function pdrRows_(T) {
 }
 function pdrFacOk_(v, factory) { var d = str_(v).replace(/\D/g, ''); return !d || d === factory; }
 // { 'dept|SRN': { dept, srn, checked, pass, pending } } — the endline sheet (production date) + app endline still waiting
-function pdrEndline_(factory, date) {
+function pdrEndline_(factory, from, date) {
   var out = {};
   var add = function(dept, srn, checked, pass, pending, reject) {
     dept = str_(dept); srn = str_(srn).toUpperCase(); if (!dept || !srn) return;
@@ -975,12 +981,12 @@ function pdrEndline_(factory, date) {
   };
   try {
     pdrRows_(CFG.FINAL_TARGETS.ENDLINE).forEach(function(r) {
-      if (dateKey_(r.date || r.entryDate) !== date || !pdrFacOk_(r.factoryName, factory)) return;
+      var d = dateKey_(r.date || r.entryDate); if (d < from || d > date || !pdrFacOk_(r.factoryName, factory)) return;
       add(r.dept, r.srn, r.checked, r.pass, false, r.reject);
     });
   } catch (e) {}
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
-    if (str_(r.date) !== date || str_(r.type) !== 'ENDLINE' || (str_(r.factory) && str_(r.factory) !== factory)) return;
+    if (str_(r.date) < from || str_(r.date) > date || str_(r.type) !== 'ENDLINE' || (str_(r.factory) && str_(r.factory) !== factory)) return;
     var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved') return;
     var p = parseJsonObj_(r.payload); add(r.dept, r.srn || p.srn, p.checked, p.pass, true, p.reject !== undefined ? p.reject : p.fail);
   });
@@ -1014,7 +1020,7 @@ function cutDate_(v) {
   var d = dateKey_(v); return d === '9999-12-31' ? '' : d;
 }
 // [{ floor, rows: [{ srn, item, qty, cartons, mp, hours, supervisor, pending }], qty, cartons, mp }] — the packing sheet + app packing waiting
-function pdrPacking_(factory, date) {
+function pdrPacking_(factory, from, date) {
   var nm = function(v) { return str_(v).replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '').trim(); };
   var by = {};
   var add = function(floor, srn, x) {
@@ -1025,12 +1031,12 @@ function pdrPacking_(factory, date) {
   };
   try {
     pdrRows_(CFG.FINAL_TARGETS.PACKING).forEach(function(r) {
-      if (dateKey_(r.date) !== date || !pdrFacOk_(r.factory, factory)) return;
+      var d = dateKey_(r.date); if (d < from || d > date || !pdrFacOk_(r.factory, factory)) return;
       add(r.floor, r.srn, { qty: r.qty, cartons: r.cartons, mp: num_(r.pressman) + num_(r.checker) + num_(r.threadcutter) + num_(r.helper), hours: r.hours, supervisor: r.supervisor, item: r.item });
     });
   } catch (e) {}
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
-    if (str_(r.date) !== date || str_(r.type) !== 'PACKING' || (str_(r.factory) && str_(r.factory) !== factory)) return;
+    if (str_(r.date) < from || str_(r.date) > date || str_(r.type) !== 'PACKING' || (str_(r.factory) && str_(r.factory) !== factory)) return;
     var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved') return;
     var p = parseJsonObj_(r.payload);
     add(p.floor || r.dept, r.srn || p.srn, { qty: p.qty, cartons: p.cartons, mp: num_(p.pressman) + num_(p.checker) + num_(p.threadcutter) + num_(p.helper), hours: p.hours, supervisor: p.supervisor, item: p.item, pending: true });
