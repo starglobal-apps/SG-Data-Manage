@@ -25,9 +25,17 @@
   S.pdFail.mrev = function (e) { $('#mrev-body').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; };
 
   function shLabel(sh) { return sh === 'OT' ? 'OT' : sh === 'Night' ? 'Night' : 'Shift'; }
+  // yesterday's day report (PDR): to share in the group once its output is approved
+  function pdrCard() {
+    var d = new Date(); d.setDate(d.getDate() - 1);
+    var y = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    var left = R.items.filter(function (it) { return it.date === y && it.type === 'STITCH'; }).length;
+    return '<div class="card pdr-cta ' + (left ? 'wait' : 'ready') + '"><div><b>PDR · ' + esc(S.fmtDay(y)) + '</b><span>' + (left ? left + ' output of that day still waiting — approve them first' : 'All output of that day approved — make the image and send it') + '</span></div>' +
+      '<button class="btn small ' + (left ? 'ghost' : 'ok') + '" data-pdr="' + y + '">Open PDR</button></div>';
+  }
   function render() {
-    if (!R.items.length) { $('#mrev-body').innerHTML = '<div class="empty">✓ Nothing waiting for approval</div>'; return; }
-    var html = '<button class="btn ok big" data-all="1" style="margin:0 0 10px">Approve all · ' + R.items.length + '</button>', last = '';
+    if (!R.items.length) { $('#mrev-body').innerHTML = pdrCard() + '<div class="empty">✓ Nothing waiting for approval</div>'; return; }
+    var html = pdrCard() + '<button class="btn ok big" data-all="1" style="margin:0 0 10px">Approve all · ' + R.items.length + '</button>', last = '';
     R.items.forEach(function (it) {
       if (it.date !== last) { last = it.date; html += '<h2 class="mo-date">' + esc(S.fmtDay(it.date)) + '</h2>'; }
       var block = it.flags.filter(function (f) { return f.level === 'block'; }).length;
@@ -134,6 +142,7 @@
 
   $('#mrev-body').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.pdr) { if (S.openPdr) S.openPdr(b.dataset.pdr); return; }
     if (b.dataset.all) {
       var blocked = R.items.filter(function (x) { return x.flags.some(function (f) { return f.level === 'block'; }); }).length;
       S.ask('Approve all ' + R.items.length + ' and write them to the main sheet?' + (blocked ? ' (' + blocked + ' with a loading alert are approved too)' : ''), { ok: 'Approve all', cancel: 'Cancel' })

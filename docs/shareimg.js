@@ -117,8 +117,8 @@
   S.pdrImage = function (d, only) {
     var masters = d.masters.filter(function (m) { return !only || m.master === only; });
     var Z = 2, W = 1400, pad = 32, rowH = 52, cols = [
-      { t: 'Line', w: 230, a: 'left' }, { t: 'SRN', w: 140, a: 'left' }, { t: 'Plan MP', w: 100 }, { t: 'Plan output', w: 130 }, { t: 'Actual MP', w: 110 },
-      { t: 'Actual output', w: 140 }, { t: 'Variance', w: 120 }, { t: 'Hours shift+OT', w: 170 }, { t: 'Achievement', w: W - pad * 2 - 1140 }];
+      { t: 'Supervisor', w: 180, a: 'left' }, { t: 'Line', w: 180, a: 'left' }, { t: 'SRN', w: 118, a: 'left' }, { t: 'Plan MP', w: 88 }, { t: 'Plan output', w: 112 }, { t: 'Actual MP', w: 118 },
+      { t: 'Actual output', w: 122 }, { t: 'Variance', w: 104 }, { t: 'Hours shift+OT', w: 130 }, { t: 'Achievement', w: W - pad * 2 - 1152 }];
     var tw = W - pad * 2;
     var lines = masters.reduce(function (a, m) { return a + m.lines.length; }, 0);
     var H = 170 + 140 + masters.length * (64 + 46 + 20) + lines * rowH + 70;
@@ -168,15 +168,16 @@
       y += 46;
       m.lines.forEach(function (l, i) {
         if (i % 2) { c.fillStyle = '#f8fafc'; c.fillRect(pad + 8, y, tw - 16, rowH); }
-        var cells = [l.dept.replace(/^FAC\d+-/, ''), l.srn, n(l.planMp), n(l.planOut), n(l.mp) + (l.mpOt ? ' (+' + l.mpOt + ' OT)' : ''), n(l.out),
+        var cells = [nm(l.supervisor) || '–', l.dept.replace(/^FAC\d+-/, ''), l.srn, n(l.planMp), n(l.planOut), n(l.mp) + (l.mpOt ? ' (+' + l.mpOt + ' OT)' : ''), n(l.out),
                      l.variance === '' ? '–' : (l.variance > 0 ? '+' : '') + n(l.variance), (l.hours || 0) + (l.hoursOt ? ' + ' + l.hoursOt : ''), ''];
         var cx = pad;
         cols.forEach(function (col, k) {
-          var o = { size: 18, w: k === 0 || k === 5 ? 700 : 500, color: INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 14 };
-          if (k === 6 && l.variance !== '') o.color = l.variance < 0 ? '#c81e1e' : '#15803d';
-          if (k === 4 && l.mpOt) o.size = 16;
-          if (k < 8) text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + rowH / 2, o);
-          if (k === 8) {   // achievement: pill + bar
+          var o = { size: 18, w: k === 1 || k === 6 ? 700 : 500, color: INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 14 };
+          if (k === 7 && l.variance !== '') o.color = l.variance < 0 ? '#c81e1e' : '#15803d';
+          if (k === 5 && l.mpOt) o.size = 16;
+          if (k === 0) { o.size = 16; o.color = '#334155'; }
+          if (k < 9) text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + rowH / 2, o);
+          if (k === 9) {   // achievement: pill + bar
             var a = l.ach, bw = col.w - 40, bx = cx + 14;
             c.fillStyle = '#e2e8f0'; rr(c, bx, y + rowH - 14, bw, 6, 3); c.fill();
             if (a !== '') { c.fillStyle = achColor(a); rr(c, bx, y + rowH - 14, Math.max(6, Math.min(1, a / 100) * bw), 6, 3); c.fill(); }
@@ -184,7 +185,7 @@
           }
           cx += col.w;
         });
-        if (l.pending) text('waiting approval', pad + 18, y + rowH - 9, { size: 11, w: 700, color: '#b45309' });
+        if (l.pending) text('waiting approval', pad + 18 + 180, y + rowH - 9, { size: 11, w: 700, color: '#b45309' });
         y += rowH;
       });
       y += 4 + 20;

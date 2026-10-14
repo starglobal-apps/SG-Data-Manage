@@ -370,5 +370,6 @@ var allLines = pdr.ok ? [].concat.apply([], pdr.masters.map(m => m.lines)) : [];
 var l3ot = allLines.filter(l => l.dept === L3)[0];
 check('PDR: masters with their lines, output from the main sheet + pending app output, shift + OT hours', pdr.ok && pdr.masters.length >= 1 && allLines.some(l => l.dept === L1 && l.out > 0) && l3ot && l3ot.hoursOt === 2 && l3ot.pending === true && pdr.masters.every(m => m.master && m.lines.length), [pdr.message, pdr.masters && pdr.masters.map(m => m.master + ':' + m.lines.map(l => l.dept.slice(-5) + '/' + l.out + '/' + l.hours + '+' + l.hoursOt).join(','))]);
 check('PDR: achievement % = actual / plan output', allLines.every(l => l.planOut === '' || Math.abs(l.ach - Math.round(l.out * 1000 / l.planOut) / 10) < 0.01) && (pdr.total.out === allLines.reduce((a, l) => a + l.out, 0)), pdr.total);
+check('PDR: each line carries its supervisor', allLines.every(l => typeof l.supervisor === 'string') && allLines.some(l => l.supervisor), allLines.map(l => l.supervisor));
 check('PDR: bad date refused', call('rec1', 'm.pdr', { factory: '666', date: 'x' }).ok === false);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

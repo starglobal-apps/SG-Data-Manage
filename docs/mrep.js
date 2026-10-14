@@ -62,9 +62,9 @@
       d.masters.forEach(function (m) {
         html += '<div class="pdr-m"><div class="pdr-h"><div><small>Master</small><b>' + esc(nm(m.master)) + '</b></div><span class="ach ' + achCls(m.ach) + '">' + (m.ach === '' ? 'no plan' : m.ach + '%') + '</span>' +
           '<button class="btn small ghost" data-pdrimg="' + esc(m.master) + '">Image</button></div>' +
-          '<table class="pdr-t"><thead><tr><th class="l">Line · SRN</th><th>Plan</th><th>Actual</th><th>Var</th><th>Ach</th></tr></thead><tbody>' +
+          '<table class="pdr-t"><thead><tr><th class="l">Supervisor · line · SRN</th><th>Plan</th><th>Actual</th><th>Var</th><th>Ach</th></tr></thead><tbody>' +
           m.lines.map(function (l) {
-            return '<tr><td class="l"><b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + '/' + l.mp + (l.mpOt ? '+' + l.mpOt + 'OT' : '') + ' · ' + l.hours + (l.hoursOt ? '+' + l.hoursOt : '') + ' h' + (l.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
+            return '<tr><td class="l">' + (l.supervisor ? '<em class="sup">' + esc(nm(l.supervisor)) + '</em>' : '') + '<b>' + esc(S.shortLine(l.dept)) + '</b><small>' + esc(l.srn) + ' · MP ' + (l.planMp === '' ? '–' : l.planMp) + '/' + l.mp + (l.mpOt ? '+' + l.mpOt + 'OT' : '') + ' · ' + l.hours + (l.hoursOt ? '+' + l.hoursOt : '') + ' h' + (l.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
               '<td>' + (l.planOut === '' ? '–' : n(l.planOut)) + '</td><td><b>' + n(l.out) + '</b></td><td class="' + (l.variance !== '' && l.variance < 0 ? 'neg' : '') + '">' + (l.variance === '' ? '–' : (l.variance > 0 ? '+' : '') + n(l.variance)) + '</td>' +
               '<td class="ach ' + achCls(l.ach) + '">' + (l.ach === '' ? '–' : l.ach + '%') + '</td></tr>';
           }).join('') + '</tbody></table></div>';
@@ -116,6 +116,7 @@
       .catch(function (e) { P.busy = false; P.err = e.message; P.r = null; render(); });
   }
   S.openSrnReport = function (srn) { S.tab('mrep'); load(srn); };
+  S.openPdr = function (date) { P.mode = 'pdr'; try { localStorage.setItem('sg_rep_mode', 'pdr'); } catch (e) {} P.pdate = date || yesterday(); P.pdr = null; S.tab('mrep'); loadPdr(); };
 
   // WhatsApp: an image of the report in its printed format (the text version stays below for reference)
   function reportImage(r) {

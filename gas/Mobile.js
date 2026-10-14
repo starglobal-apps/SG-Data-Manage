@@ -868,8 +868,9 @@ function mPdr_(req, user) {
   var nm = function(v) { return str_(v).replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '').trim(); };
   var by = {};
   var add = function(dept, srn, x) {
-    var k = dept + '|' + srn, o = by[k] = by[k] || { dept: dept, srn: srn, master: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, out: 0, sheetPlan: 0, pending: false };
+    var k = dept + '|' + srn, o = by[k] = by[k] || { dept: dept, srn: srn, master: '', supervisor: '', mp: 0, mpOt: 0, hours: 0, hoursOt: 0, out: 0, sheetPlan: 0, pending: false };
     if (!o.master && x.master) o.master = nm(x.master);
+    if (!o.supervisor && x.sup) o.supervisor = nm(x.sup);
     if (x.ot) { o.mpOt += x.mp; o.hoursOt = Math.max(o.hoursOt, x.hours); } else { o.mp += x.mp; o.hours = Math.max(o.hours, x.hours); }
     o.out += x.out; o.sheetPlan += x.plan; if (x.pending) o.pending = true;
   };
@@ -879,7 +880,7 @@ function mPdr_(req, user) {
     var g = function(f) { return col[f] === undefined ? '' : r[col[f]]; };
     if (dateKey_(g('date')) !== date || !str_(g('dept'))) return;
     var mp = num_(g('manpower')) + num_(g('r1')) + num_(g('r2')) + num_(g('r3')) + num_(g('r4')) + num_(g('r5'));
-    add(str_(g('dept')), str_(g('srn')).toUpperCase(), { ot: /OT|night/i.test(str_(g('shift'))), mp: mp, hours: num_(g('hours')), out: num_(g('output')), plan: num_(g('plan')), master: g('master') });
+    add(str_(g('dept')), str_(g('srn')).toUpperCase(), { ot: /OT|night/i.test(str_(g('shift'))), mp: mp, hours: num_(g('hours')), out: num_(g('output')), plan: num_(g('plan')), master: g('master'), sup: g('supervisor') });
   });
   // 2) output of that date still in the app (waiting / approved, not in the sheet yet)
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
@@ -887,14 +888,14 @@ function mPdr_(req, user) {
     var st = str_(r.status); if (st !== 'Submitted' && st !== 'Approved') return;
     var p = parseJsonObj_(r.payload);
     var mp = (p.operators !== undefined ? num_(p.operators) : num_(p.manpower)) + num_(p.r1) + num_(p.r2) + num_(p.r3) + num_(p.r4) + num_(p.r5);
-    add(str_(r.dept), str_(r.srn).toUpperCase(), { ot: (str_(r.shift) || 'Final') !== 'Final', mp: mp, hours: num_(p.hours), out: num_(p.output), plan: num_(p.plan), master: p.incharge, pending: true });
+    add(str_(r.dept), str_(r.srn).toUpperCase(), { ot: (str_(r.shift) || 'Final') !== 'Final', mp: mp, hours: num_(p.hours), out: num_(p.output), plan: num_(p.plan), master: p.incharge, sup: p.supervisor, pending: true });
   });
   // 3) plan of the day (production plan: day plan qty + planned manpower); else the plan written on the sheet rows
   var masters = {};
   Object.keys(by).forEach(function(k) {
     var o = by[k], pl = planOf_(date, o.dept, o.srn);
     var planOut = pl && pl.qty ? Math.round(pl.qty) : Math.round(o.sheetPlan);
-    var line = { dept: o.dept, srn: o.srn, planMp: pl && pl.mp ? Math.round(pl.mp) : '', planOut: planOut || '', mp: o.mp, mpOt: o.mpOt, hours: o.hours, hoursOt: o.hoursOt,
+    var line = { dept: o.dept, srn: o.srn, supervisor: o.supervisor, planMp: pl && pl.mp ? Math.round(pl.mp) : '', planOut: planOut || '', mp: o.mp, mpOt: o.mpOt, hours: o.hours, hoursOt: o.hoursOt,
                  out: o.out, variance: planOut ? o.out - planOut : '', ach: planOut ? Math.round(o.out * 1000 / planOut) / 10 : '', pending: o.pending, planFrom: pl && pl.qty ? 'plan' : (planOut ? 'sheet' : '') };
     var mk = o.master || '—', m = masters[mk.toLowerCase()] = masters[mk.toLowerCase()] || { master: mk, lines: [] };
     m.lines.push(line);
