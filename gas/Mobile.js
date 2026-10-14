@@ -129,7 +129,8 @@ function mOut_(req, user) {
   var sheet = sheetAttAgg_(), L = ledgerLite_(), sheetDays = {};
   (L.recent || []).forEach(function(x) { sheetDays[x[1] + '|' + x[0] + '|' + x[2]] = 1; });   // output typed in the sheet
   var lineFloor = masterMap_('LINE_FLOOR'), stBy = {}, srnsBy = {};
-  var statusOf = function(d, dept) { var m = stBy[d] = stBy[d] || statusMap_(d, factory); return m[dept + '|STITCH'] || ''; };
+  // per shift: a submitted shift output must not hide the OT output of the same line (and the other way round)
+  var statusOf = function(d, dept, sh) { var m = stBy[d] = stBy[d] || statusMapShift_(d, factory); return m[dept + '|STITCH|' + (sh || 'Final')] || ''; };
   var srnsOf = function(dept) { return srnsBy[dept] = srnsBy[dept] || mSrns_(L, dept); };
   // every (date, dept, shift) with attendance
   var keys = {};
@@ -138,14 +139,14 @@ function mOut_(req, user) {
   var groups = {}, done = [], waiting = [], rejRemark = {}, reasonOf = {};
   readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
     if (str_(r.type) !== 'STITCH') return;
-    if (str_(r.status) === 'Rejected') rejRemark[str_(r.date) + '|' + str_(r.dept)] = str_(r.remark);
+    if (str_(r.status) === 'Rejected') rejRemark[str_(r.date) + '|' + str_(r.dept) + '|' + (str_(r.shift) || 'Final')] = str_(r.remark);
     var rs = str_(parseJsonObj_(r.payload).reason); if (rs) reasonOf[str_(r.date) + '|' + str_(r.dept) + '|' + (str_(r.shift) || 'Final')] = rs;
   });
   Object.keys(keys).sort().forEach(function(k) {
     var p = k.split('|'), d = p[0], dept = p[1], sh = p[2], src = keys[k];
     if (!lineVisible_(user, attOwners_(att, d, dept, sh), dept)) return;   // another recorder's line
     var outRows = hourly.filter(function(r) { return str_(r.date) === d && str_(r.dept) === dept && (str_(r.shift) || 'Final') === sh; });
-    var status = statusOf(d, dept);
+    var status = statusOf(d, dept, sh);
     var by = {}; outRows.forEach(function(r) { var e = by[str_(r.srn)] = by[str_(r.srn)] || { srn: str_(r.srn), total: 0, other: 0 }; e.total += num_(r.qty); if (str_(r.slot) !== M_SLOT[sh]) e.other += num_(r.qty); });
     var entries = Object.keys(by).map(function(x) { return by[x]; });
     var rows = att.filter(function(r) { return str_(r.date) === d && str_(r.dept) === dept && str_(r.shift) === sh; });
@@ -164,7 +165,7 @@ function mOut_(req, user) {
     if (d === today && outRows.length) done.push(line);
     // saved in the app and with the admin: listed as waiting until approved / rejected (a rejected one is pending again)
     if (outRows.length && (status === 'Submitted' || status === 'Approved')) { if (status === 'Submitted') line.srns = srnsOf(dept); waiting.push(line); return; }
-    if (status === 'Rejected') line.remark = rejRemark[d + '|' + dept] || '';
+    if (status === 'Rejected') line.remark = rejRemark[d + '|' + dept + '|' + sh] || '';
     if (hasOut && status !== 'Rejected') return;
     if (isLocked_(status)) return;
     line.srns = srnsOf(dept);

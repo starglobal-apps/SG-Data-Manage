@@ -64,6 +64,16 @@ function daySrnMap_(date, factory) {
   return { map: map, from: from };
 }
 
+// the same per line, type and shift (phone: the shift output and the OT output are approved separately)
+function statusMapShift_(date, factory) {
+  var m = {}, order = ['Sent', 'Approved', 'Submitted', 'Rejected', 'Draft'];
+  readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory) return;
+    var k = str_(r.dept) + '|' + str_(r.type) + '|' + (str_(r.shift) || 'Final'), s = str_(r.status);
+    if (!m[k] || order.indexOf(s) < order.indexOf(m[k])) m[k] = s;
+  });
+  return m;
+}
 function statusMap_(date, factory) {
   var m = {}, order = ['Sent', 'Approved', 'Submitted', 'Rejected', 'Draft'];
   readDaily_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
@@ -139,7 +149,9 @@ function slotUpsert_(p, user, ctx) {
   var sd = slotDef_(slot); if (!sd) return fail_('SLOT', 'Slot galat');
   if (!dept || !srn) return fail_('KEY', 'SRN chuno');
   if (!canWrite_(user, factory, dept)) return fail_('PERM', 'Permission nahi');
-  var status = ctx.status[dept + '|' + type] || '';
+  // phone (lite): the lock is per shift — a submitted shift output never blocks the OT output of the line
+  var shKey = dept + '|' + type + '|' + sd.shift;
+  var status = ctx.statusSh ? (ctx.statusSh[shKey] || '') : (ctx.status[dept + '|' + type] || '');
   if (isLocked_(status)) return fail_('LOCKED', status + ' hai — edit band');
   var gateAmt = type === 'ENDLINE' ? num_(p.checked) : num_(p.qty);
   if (gateAmt > 0) { var gate = attGate_(ctx, dept, sd.shift, type, str_(p.checker)); if (gate) return fail_('ATT', gate); }
@@ -198,14 +210,17 @@ function slotUpsert_(p, user, ctx) {
   if (type === 'STITCH') addTo_(ctx.L.stitched, k2_(dept, srn), delta);
   else if (type === 'ENDLINE') { addTo_(ctx.L.endChecked, k2_(dept, srn), delta); var pd = row.pass - existing.reduce(function(t, r) { return t + num_(r.pass); }, 0); addTo_(ctx.L.endPass, k2_(dept, srn), pd); addTo_(ctx.L.endPassSrn, srn, pd); }
   else addTo_(ctx.L.packed, srn, delta);
-  if (status === 'Rejected') { setDayStatus_(date, factory, dept, type, 'Draft', user, 'Re-entered after reject'); ctx.status[dept + '|' + type] = 'Draft'; }
+  if (status === 'Rejected') {
+    if (ctx.statusSh) { setDayStatus_(date, factory, dept, type, 'Draft', user, 'Re-entered after reject', sd.shift); ctx.statusSh[shKey] = 'Draft'; }
+    else { setDayStatus_(date, factory, dept, type, 'Draft', user, 'Re-entered after reject'); ctx.status[dept + '|' + type] = 'Draft'; }
+  }
   return { ok: true, amount: newAmt, balance: chk.balance, limit: chk.limit, at: stamp, warn: chk.level === 'warn' ? chk.msg : '' };
 }
 
 // lite (phone): loading / output totals from APP SUMMARY instead of reading the MASTER DATA history
 function batchCtx_(date, factory, lite) {
   var att = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory; });
-  return { L: lite ? ledgerLite_() : ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory), att: att, date: date };
+  return { L: lite ? ledgerLite_() : ledger_(), rows: readDaily_(CFG.TABS.HOURLY_LOG), status: statusMap_(date, factory), statusSh: lite ? statusMapShift_(date, factory) : null, att: att, date: date };
 }
 // Output needs that shift's attendance for the line; endline also needs the checker to be one of the attendance QC names
 function attGate_(ctx, dept, shift, type, checker) {

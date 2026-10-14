@@ -349,4 +349,13 @@ var rowsBefore = dataSh.getLastRow();
 var w1 = call('rec2', 'm.warm', {}), afterW1 = dataSh.getLastRow();
 var w2 = call('rec2', 'm.warm', {}), afterW2 = dataSh.getLastRow();
 check('approved row left behind: sent by m.warm, only once', w1.ok && w1.resent === 1 && afterW1 > rowsBefore && readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.id === left.id)[0].status === 'Sent' && (w2.resent || 0) === 0 && afterW2 === afterW1, [w1, w2, rowsBefore, afterW1, afterW2]);
+// ========== 18. shift output done -> the OT output of the same line still pending and can be saved ==========
+var otAtt = call('rec1', 'att.save', { phone: true, rid: 'ot18', date: TODAY, factory: '666', dept: L3, shift: 'OT', srn: 'SRN0620A', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 2, count: 6 }] });
+var finSt = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.date === TODAY && r.dept === L3 && r.type === 'STITCH' && (r.shift || 'Final') === 'Final').map(r => r.status);
+var mo18 = call('rec1', 'm.out', { factory: '666' });
+var otPend = (mo18.groups || []).some(g => g.lines.some(l => l.dept === L3 && l.date === TODAY && l.shift === 'OT'));
+check('shift output of L3 already ' + (finSt[0] || 'none') + ': L3 OT output is still pending', otAtt.ok && finSt.length && otPend, [otAtt.message, finSt, mo18.groups && mo18.groups.map(g => g.lines.map(l => l.dept.slice(-5) + ':' + l.shift))]);
+var otSave = call('rec1', 'm.outSave', { rid: 'ots18', date: TODAY, factory: '666', dept: L3, shift: 'OT', slot: '21-22', srn: 'SRN0620A', qty: 30, other: 0, floor: '', allowOver: true, reason: '' });
+var ds18 = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.date === TODAY && r.dept === L3 && r.type === 'STITCH');
+check('OT output saves and goes for approval; the shift row keeps its status', otSave.ok && ds18.some(r => r.shift === 'OT' && r.status === 'Submitted') && ds18.filter(r => (r.shift || 'Final') === 'Final').map(r => r.status).join() === finSt.join(), [otSave.message, ds18.map(r => (r.shift || 'Final') + ':' + r.status)]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

@@ -215,11 +215,12 @@ function daySubmit_(req, user) {
   return { ok: true, submitted: n, rows: built.rows, blocks: blocks };
 }
 
-function setDayStatus_(date, factory, dept, type, status, user, remark) {
+// shift (optional): only that shift's rows (phone)
+function setDayStatus_(date, factory, dept, type, status, user, remark, shift) {
   var sh = tab_(CFG.TABS.DAY_SUMMARY, true), head = physHeadOf_(CFG.TABS.DAY_SUMMARY);
   var cs = head.indexOf('status') + 1, cr = head.indexOf('remark') + 1;
   readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
-    if (str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.type) === type) {
+    if (str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.type) === type && (!shift || (str_(r.shift) || 'Final') === shift)) {
       sh.getRange(r._row, cs).setValue(status);
       if (remark !== undefined) sh.getRange(r._row, cr).setValue(remark);
     }
