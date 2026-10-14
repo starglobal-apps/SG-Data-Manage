@@ -57,12 +57,23 @@
     if (P.pbusy) html += '<div class="empty">Making the day report…</div>';
     else if (P.perr) html += '<div class="empty">' + esc(P.perr) + '</div>';
     else if (!d) html += '<div class="empty">Pick a date (yesterday is set) and press Show.</div>';
-    else if (!d.masters.length && !(d.packing || []).length) html += '<div class="empty">No stitching output or packing on ' + esc(S.fmtDay(d.date)) + '</div>';
+    else if (!d.masters.length && !(d.packing || []).length && !(d.cutting || []).length) html += '<div class="empty">No cutting, stitching or packing on ' + esc(S.fmtDay(d.date)) + '</div>';
     else {
-      var t = d.total, pk = d.packing || [];
-      if (d.masters.length) {
+      var t = d.total, pk = d.packing || [], cu = d.cutting || [];
+      if (!d.masters.length) html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share Production Output image</button>';
+      else {
         html += '<div class="rp-sum"><div><small>Plan</small><b>' + n(t.planOut) + '</b></div><div><small>Actual</small><b>' + n(t.out) + '</b></div><div><small>End pass</small><b class="ach ok">' + n(t.endPass || 0) + '</b></div><div><small>Achieve</small><b class="ach ' + achCls(t.ach) + '">' + (t.ach === '' ? '–' : t.ach + '%') + '</b></div></div>';
-        html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share Production Output image · all' + (pk.length ? ' + packing' : '') + '</button>';
+        html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share Production Output image · all</button>';
+      }
+      if (cu.length) {
+        var cq = cu.reduce(function (a, x) { return a + x.qty; }, 0);
+        html += '<div class="pdr-sec"><b>Cutting · fabric-wise</b><span>' + n(cq) + ' cut · ' + cu.length + ' SRN</span><button class="btn small ghost" data-pdrimg="__cutting">Image</button></div>';
+        cu.forEach(function (x) {
+          html += '<div class="pdr-m"><div class="pdr-h"><div><small>SRN</small><b>' + esc(x.srn) + (x.style ? ' · ' + esc(x.style) : '') + '</b></div><span class="ach ok">' + n(x.qty) + '</span></div>' +
+            '<table class="pdr-t"><thead><tr><th class="l" style="width:72%">Fabric · intent number</th><th>Cut qty</th></tr></thead><tbody>' +
+            x.rows.map(function (r) { return '<tr><td class="l"><b style="font-size:12px;font-weight:600">' + esc(r.fabric || '–') + '</b><small>' + esc(r.intent || '') + '</small></td><td><b>' + n(r.qty) + '</b></td></tr>'; }).join('') + '</tbody></table></div>';
+        });
+        if (d.masters.length) html += '<div class="pdr-sec"><b>Stitching · master-wise</b><span>' + n(t.out) + ' pcs · end pass ' + n(t.endPass || 0) + '</span></div>';
       }
       d.masters.forEach(function (m) {
         html += '<div class="pdr-m"><div class="pdr-h"><div><small>Master · end pass ' + n(m.endPass || 0) + '</small><b>' + esc(nm(m.master)) + '</b></div><span class="ach ' + achCls(m.ach) + '">' + (m.ach === '' ? 'no plan' : m.ach + '%') + '</span>' +
@@ -192,7 +203,7 @@
     if (b.dataset.rmode) { P.mode = b.dataset.rmode; try { localStorage.setItem('sg_rep_mode', P.mode); } catch (er) {} render(); return; }
     if (b.id === 'pdr-go') { loadPdr(); return; }
     if (b.dataset.pdrimg !== undefined && P.pdr) {
-      var who = b.dataset.pdrimg, label = who === '__packing' ? 'Packing' : nm(who);
+      var who = b.dataset.pdrimg, label = who === '__packing' ? 'Packing' : who === '__cutting' ? 'Cutting' : nm(who);
       S.shareImage('Production Output Report · ' + S.fmtDay(P.pdr.date) + (who ? ' · ' + label : ''), S.pdrImage(P.pdr, who || null), 'ProductionOutput_FAC' + P.pdr.factory + '_' + P.pdr.date + (who ? '_' + label.replace(/[^A-Za-z0-9]+/g, '') : '') + '.png');
       return;
     }

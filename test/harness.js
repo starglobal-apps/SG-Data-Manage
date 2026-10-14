@@ -75,7 +75,7 @@ global.Sheets = Sheets;
 // ---------- load the server ----------
 fs.readdirSync('gas').filter(f => f.endsWith('.js') && f !== 'Sources.js').sort().forEach(f => vm.runInThisContext(fs.readFileSync('gas/' + f, 'utf8'), { filename: f }));
 // fake source ids: the test never needs (or touches) the real spreadsheets
-globalThis.SOURCE_IDS = {}; ['ATT', 'STITCH117', 'PACKING', 'ENDLINE', 'LOADING', 'ALLORDER', 'COST', 'PLAN'].forEach(k => { SOURCE_IDS[k] = 'fake_' + k; });
+globalThis.SOURCE_IDS = {}; ['ATT', 'STITCH117', 'PACKING', 'ENDLINE', 'LOADING', 'ALLORDER', 'COST', 'PLAN', 'CUTTING'].forEach(k => { SOURCE_IDS[k] = 'fake_' + k; });
 // ---------- seed data ----------
 var TODAY = todayStr_();
 function seed(ssId, name, rows, maxCols) { var sh = ssById(ssId).getSheetByName(name) || ssById(ssId).insertSheet(name); sh.maxCols = maxCols || 40; rows.forEach((r, i) => { sh.data[i] = r.slice(); }); return sh; }
@@ -83,7 +83,7 @@ seed('APP', 'USERS', [CFG.HEADERS.USERS, ['admin', 'Admin', '1111', 'Admin', '',
 var S = [CFG.HEADERS.MASTERS]; ['FAC666-Line 1-SL001', 'FAC666-Line 2-SL002', 'FAC666-Line 3-SL003'].forEach(d => S.push(['DEPT', d, d, '666', 'STITCH', 'TRUE'])); S.push(['DEPT', 'FAC666-Packing Ground', 'FAC666-Packing Ground', '666', 'PACKING', 'TRUE']);
 CFG.DEPT_CATEGORIES.forEach(c => c.roles.forEach((r, i) => S.push(['CAT_ROLE', c.key, r, '', i + 1, 'TRUE']))); S.push(['LINE_STAFF', 'FAC666-Line 1-SL001', 'SG01-Inch', '', 'SG02-Sup', 'TRUE']); S.push(['SAM', 'SRN0621A', 20, '', 'admin', 'TRUE']);
 seed('APP', 'SETTINGS', S);
-var MD = [['FAC666-Final Attendance', '', '', 'Stitching Data', '', 'Packing Data', 'END LINE DATA', 'Loading Data', 'All order', 'Unloading Data', 'Making Plan'], []]; seed('APP', 'MASTER DATA', MD, 12);
+var MD = [['FAC666-Final Attendance', '', '', 'Stitching Data', '', 'Packing Data', 'END LINE DATA', 'Loading Data', 'All order', 'Unloading Data', 'Making Plan', 'Cutting Data'], []]; seed('APP', 'MASTER DATA', MD, 12);
 seed('APP', 'APP SUMMARY', [[ 'x', '', 0, '', '', '', '', 0, '', '', '', '', '', '', '', '', '', '', '', '', '', 0 ]], 60);
 var ATTID = SOURCE_IDS.ATT; seed(ATTID, ' karigar att_666', [['', '', 'Date', 'location', 'department', 'designation', 'working hour', 'manpower', 'Blank', 'Incharge', 'Supervisor', 'SRN', 'Remark', 'Status']]);
 seed(ATTID, 'OT att', [['', '', 'Date', 'Location', 'Line', 'OT', 'Degination', 'OT hours', 'Manpower', 'total', 'Incharge', 'Supervisor', 'SRN', 'Remark', 'Status']]); seed(ATTID, '117', [['', '', 'Date']]);
@@ -409,4 +409,16 @@ check('PDR endline: checked / pass on the line (other factory left out)', e1 && 
 check('PDR endline of a line without stitching that day: listed too', e2 && e2.endOnly && e2.endPass === 48 && pdr4.total.endPass === 143, [e2, pdr4.total]);
 var pk = pdr4.packing || [], gr = pk.filter(f => f.floor === 'FAC666-Packing Ground')[0];
 check('PDR packing floor-wise: per floor and SRN, pcs + cartons added, manpower, hours, supervisor', pk.length === 2 && gr && gr.qty === 500 && gr.cartons === 17 && gr.rows[0].mp === 8 && gr.rows[0].hours === 8 && gr.rows[0].supervisor === 'Pack Sup', pk);
+// ========== 23. cutting: import of 'cutting data_R' (date, SRN, intent, fabric, qty) and the report's cutting part ==========
+var cj = IMPORT_JOBS.filter(j => j.tgt === 'Cutting Data')[0];
+var cs = shapeJob_(cj, [['14-Oct-2026 09:55:47', '13-Oct-2026', 'SRN0620A', 'CA0001750', 'Poly | Quilted', 600, 81.5, 8], ['', '28/05/2026', 'SRN0610A', 'CA0001630', 'Jacquard', 250, 43, 8]]);
+check('cutting import keeps date, SRN, intent, fabric, qty (col L)', MASTER_PUSH.some(m => m.col === 12 && m.sheet === 'Cutting Data' && m.width === 5) && cs.width === 5 && cs.values[0].join('|') === '13-Oct-2026|SRN0620A|CA0001750|Poly | Quilted|600', cs);
+check('cutting dates: 06-Oct-2026 and 05/06/2026 (day first)', cutDate_('06-Oct-2026') === '2026-10-06' && cutDate_('05/06/2026') === '2026-06-05' && cutDate_('') === '', [cutDate_('06-Oct-2026'), cutDate_('05/06/2026')]);
+var TD = TODAY.split('-'), MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+TD[1] - 1];
+md.data[2][11] = JSON.stringify([TD[2] + '-' + MON + '-' + TD[0], 'SRN0620A', 'CA1', 'Poly Quilted', 600, ]);
+md.data[3][11] = JSON.stringify([TD[2] + '/' + TD[1] + '/' + TD[0], 'SRN0620A', 'CA2', 'Lining', 250]);
+md.data[4] = md.data[4] || []; md.data[4][11] = JSON.stringify([TD[2] + '-' + MON + '-' + TD[0], 'SRN0620A', 'CA1', 'Poly Quilted', 100]);
+md.data[5] = md.data[5] || []; md.data[5][11] = JSON.stringify(['01-Jan-2020', 'SRN0620A', 'CA9', 'Old', 999]);
+var pdr5 = call('admin', 'm.pdr', { factory: '666', date: TODAY }), cut = pdr5.cutting || [];
+check('report cutting of the date: SRN-wise, fabric rows added up (other dates left out)', cut.length === 1 && cut[0].srn === 'SRN0620A' && cut[0].qty === 950 && cut[0].rows.length === 2 && cut[0].rows[0].fabric === 'Poly Quilted' && cut[0].rows[0].qty === 700 && cut[0].rows[0].intent === 'CA1', cut);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

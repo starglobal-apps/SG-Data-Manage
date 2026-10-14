@@ -934,7 +934,7 @@ function mPdr_(req, user) {
   tot.endChecked = list.reduce(function(a, m) { return a + m.endChecked; }, 0); tot.endPass = list.reduce(function(a, m) { return a + m.endPass; }, 0);
   // 5) packing of that date, floor-wise
   var packing = pdrPacking_(factory, date);
-  return { ok: true, date: date, factory: factory, masters: list, total: tot, packing: packing };
+  return { ok: true, date: date, factory: factory, masters: list, total: tot, packing: packing, cutting: pdrCutting_(factory, date) };
 }
 
 // a target sheet's rows as {field: value} (header-less read, minRow on)
@@ -965,6 +965,33 @@ function pdrEndline_(factory, date) {
     var p = parseJsonObj_(r.payload); add(r.dept, r.srn || p.srn, p.checked, p.pass, true);
   });
   return out;
+}
+// cutting of that date, SRN-wise: [{ srn, style, rows: [{ intent, fabric, qty }], qty }] from MASTER DATA col L (import of
+// 'cutting data_R': [date, SRN, intent number, fabric name, cutting qty]). An SRN known to belong to the other factory is left out.
+function pdrCutting_(factory, date) {
+  var md = getSS_().getSheetByName(MASTER_SHEET_NAME), by = {};
+  if (!md || md.getLastRow() < 3 || md.getLastColumn() < 12) return [];
+  var L = null, O = null;
+  try { L = ledgerLite_(); } catch (e) {}
+  try { O = ordersAgg_(); } catch (e) {}
+  md.getRange(3, 12, md.getLastRow() - 2, 1).getValues().forEach(function(row) {
+    var a = parseJson_(row[0]); if (!a || cutDate_(a[0]) !== date) return;
+    var srn = str_(a[1]).toUpperCase(), qty = num_(a[4]); if (!srn || !qty) return;
+    var info = L && L.srnInfo[srn];
+    if (info && info.factory && String(info.factory).replace(/\D/g, '') !== String(factory).replace(/\D/g, '')) return;
+    var o = by[srn] = by[srn] || { srn: srn, style: (O && O[srn] && O[srn].style) || (info && info.item) || '', rows: {}, qty: 0 };
+    var k = str_(a[2]) + '|' + str_(a[3]), r = o.rows[k] = o.rows[k] || { intent: str_(a[2]), fabric: str_(a[3]), qty: 0 };
+    r.qty += qty; o.qty += qty;
+  });
+  return Object.keys(by).sort().map(function(s) { var o = by[s]; o.rows = Object.keys(o.rows).map(function(k) { return o.rows[k]; }).sort(function(x, y) { return y.qty - x.qty; }); return o; });
+}
+// the cutting sheet's date: 06-Oct-2026 · 28/05/2026 (day first) · a sheet date
+function cutDate_(v) {
+  if (v instanceof Date) return fmtDate_(v);
+  if (typeof v === 'number') return fmtDate_(new Date(Math.round((v - 25569) * 86400000)));
+  var m = str_(v).match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  var d = dateKey_(v); return d === '9999-12-31' ? '' : d;
 }
 // [{ floor, rows: [{ srn, item, qty, cartons, mp, hours, supervisor, pending }], qty, cartons, mp }] — the packing sheet + app packing waiting
 function pdrPacking_(factory, date) {

@@ -13,7 +13,8 @@ var MASTER_PUSH = [
   { col: 8, sheet: 'Loading Data',                  width: 12, dataRow: 2 },
   { col: 9, sheet: 'All order',                     width: 27, dataRow: 2 },
   { col: 10, sheet: 'Unloading Data',               width: 18, dataRow: 2 },
-  { col: 11, sheet: 'Making Plan',                  width: 16, dataRow: 2 }
+  { col: 11, sheet: 'Making Plan',                  width: 16, dataRow: 2 },
+  { col: 12, sheet: 'Cutting Data',                 width: 5,  dataRow: 2 }
 ];
 
 var IMPORT_JOBS = [
@@ -29,6 +30,8 @@ var IMPORT_JOBS = [
   { srcKey: 'LOADING', srcSheet: 'Unloading_chalaan', srcRow: 2, srcCol: 1, cols: 18, tgt: 'Unloading Data', tgtCol: 1 },
   // production plan with the learning curve: [ts, SRN, style, line, plan date dd/mm/yyyy, day, day plan qty, balance, efficiency, operators, other manpower {json}, total manpower, working hours, daily target, O, learning curve % (P)]
   { srcKey: 'PLAN', srcSheet: 'Making Plan Response for Production', srcRow: 2, srcCol: 1, cols: 16, tgt: 'Making Plan', tgtCol: 1 },
+  // cutting: [cutting date, SRN, intent number, fabric name, cutting qty] from 'cutting data_R' (A timestamp, B date, C SRN, D intent, E fabric, F qty)
+  { srcKey: 'CUTTING', srcSheet: 'cutting data_R', srcRow: 2, srcCol: 1, cols: 6, tgt: 'Cutting Data', tgtCol: 1, pick: [2, 3, 4, 5, 6] },
 ];
 
 function colLetter_(n) {

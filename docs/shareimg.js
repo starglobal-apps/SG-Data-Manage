@@ -115,18 +115,21 @@
 
   // d: m.pdr reply. only: a master's name -> that master; '__packing' -> the packing report; empty -> everything
   S.pdrImage = function (d, only) {
-    var mode = only === '__packing' ? 'packing' : only ? 'master' : 'all';
-    var masters = mode === 'packing' ? [] : d.masters.filter(function (m) { return mode === 'all' || m.master === only; });
-    var floors = mode === 'master' ? [] : (d.packing || []);
+    var mode = only === '__packing' ? 'packing' : only === '__cutting' ? 'cutting' : only ? 'master' : 'all';
+    var masters = mode === 'packing' || mode === 'cutting' ? [] : d.masters.filter(function (m) { return mode === 'all' || m.master === only; });
+    var floors = mode === 'master' || mode === 'cutting' ? [] : (d.packing || []);
+    var cuts = mode === 'all' || mode === 'cutting' ? (d.cutting || []) : [], crows = cuts.reduce(function (a, x) { return a + x.rows.length; }, 0);
+    var heads = mode === 'all' ? (cuts.length ? 1 : 0) + (cuts.length && masters.length ? 1 : 0) + (floors.length ? 1 : 0) : 0;
     var Z = 2, W = 1590, pad = 32, rowH = 52, prowH = 46, tw = W - pad * 2;
     var cols = [
       { t: 'Supervisor', w: 170, a: 'left' }, { t: 'Line', w: 170, a: 'left' }, { t: 'SRN', w: 112, a: 'left' }, { t: 'Plan MP', w: 80 }, { t: 'Plan output', w: 108 },
       { t: 'Actual MP', w: 112 }, { t: 'Actual output', w: 130 }, { t: 'End check', w: 92, end: 1 }, { t: 'End pass', w: 92, end: 1 }, { t: 'Variance', w: 96 },
       { t: 'Hours shift+OT', w: 132 }, { t: 'Achievement', w: tw - 1294 }];
     var pcols = [{ t: 'SRN', w: 180, a: 'left' }, { t: 'Style', w: 360, a: 'left' }, { t: 'Packed pcs', w: 180 }, { t: 'Cartons', w: 150 }, { t: 'Manpower', w: 150 }, { t: 'Hours', w: 150 }, { t: 'Supervisor', w: tw - 1170, a: 'left' }];
+    var ccols = [{ t: 'Intent number', w: 260, a: 'left' }, { t: 'Fabric name', w: tw - 500, a: 'left' }, { t: 'Cut qty', w: 240 }];
     var xOf = function (list, k) { var x = pad; for (var i = 0; i < k; i++) x += list[i].w; return x; };
     var lines = masters.reduce(function (a, m) { return a + m.lines.length; }, 0), prows = floors.reduce(function (a, f) { return a + f.rows.length; }, 0);
-    var H = 170 + 140 + masters.length * (64 + 46 + 24) + lines * rowH + (floors.length ? (mode === 'all' ? 60 : 0) + floors.length * (64 + 46 + 24) + prows * prowH : 0) + 96;
+    var H = 170 + 140 + masters.length * (64 + 46 + 24) + lines * rowH + floors.length * (64 + 46 + 24) + prows * prowH + cuts.length * (64 + 46 + 24) + crows * prowH + heads * 60 + 96;
     var cv = document.createElement('canvas'); cv.width = W * Z; cv.height = H * Z;
     var c = cv.getContext('2d'); c.scale(Z, Z); c.textBaseline = 'middle';
     var font = function (sz, w) { c.font = (w || 500) + ' ' + sz + 'px ' + FONT; };
@@ -138,12 +141,15 @@
     c.fillStyle = g; c.fillRect(0, 0, W, 150);
     var p = d.date.split('-'), dt = new Date(+p[0], +p[1] - 1, +p[2]);
     var day = dt.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
-    text(mode === 'packing' ? 'Packing Output Report' : 'Production Output Report', pad, 52, { size: 38, w: 800, color: '#fff' });
-    text((mode === 'packing' ? 'Packing, floor-wise' : 'Stitching') + ' · FAC' + d.factory + ' · ' + day + (mode === 'master' ? ' · Master: ' + nm(only) : ''), pad, 100, { size: 21, w: 500, color: '#dbeafe' });
+    text(mode === 'packing' ? 'Packing Output Report' : mode === 'cutting' ? 'Cutting Output Report' : 'Production Output Report', pad, 52, { size: 38, w: 800, color: '#fff' });
+    text((mode === 'packing' ? 'Packing, floor-wise' : mode === 'cutting' ? 'Cutting, fabric-wise' : mode === 'all' ? [cuts.length ? 'Cutting' : '', 'Stitching', 'Endline', floors.length ? 'Packing' : ''].filter(String).join(' · ') : 'Stitching') + ' · FAC' + d.factory + ' · ' + day + (mode === 'master' ? ' · Master: ' + nm(only) : ''), pad, 100, { size: 21, w: 500, color: '#dbeafe' });
     text('SG Data', W - pad, 52, { size: 20, w: 700, color: '#bfdbfe', align: 'right' });
     // KPI cards
     var cards;
-    if (mode === 'packing') {
+    if (mode === 'cutting') {
+      var cq = cuts.reduce(function (a, x) { return a + x.qty; }, 0);
+      cards = [['Cut qty', n(cq), BLUE], ['SRN', String(cuts.length), INK], ['Fabrics', String(crows), INK]];
+    } else if (mode === 'packing') {
       var pq = floors.reduce(function (a, f) { return a + f.qty; }, 0), pc = floors.reduce(function (a, f) { return a + f.cartons; }, 0), pm = floors.reduce(function (a, f) { return a + f.mp; }, 0);
       cards = [['Packed pcs', n(pq), BLUE], ['Cartons', n(pc), INK], ['Floors', String(floors.length), INK], ['Manpower', n(pm), INK]];
     } else {
@@ -178,6 +184,23 @@
       c.fillStyle = LINE; c.fillRect(pad + 14, y + 45, tw - 28, 1.5);
       y += 46;
     };
+    var heading = function (t) { if (mode !== 'all') return; text(t, pad + 4, y + 26, { size: 20, w: 800, color: NAVY }); y += 60; };
+    if (cuts.length) {
+      heading('CUTTING · FABRIC-WISE');
+      cuts.forEach(function (x) {
+        card(pad, y, tw, 64 + 46 + x.rows.length * prowH + 4, 16);
+        section('SRN', x.srn + (x.style ? ' · ' + x.style : ''), x.rows.length + (x.rows.length > 1 ? ' fabrics' : ' fabric') + '  ·  ' + n(x.qty) + ' cut');
+        headRow(ccols);
+        x.rows.forEach(function (r, i) {
+          if (i % 2) { c.fillStyle = '#f8fafc'; c.fillRect(pad + 8, y, tw - 16, prowH); }
+          var cells = [r.intent || '–', r.fabric || '–', n(r.qty)];
+          ccols.forEach(function (col, k) { var cx = xOf(ccols, k); text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + prowH / 2, { size: 18, w: k === 2 ? 800 : 500, color: k === 2 ? BLUE : INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 24 }); });
+          y += prowH;
+        });
+        y += 4 + 20;
+      });
+      if (masters.length) heading('STITCHING · MASTER-WISE');
+    }
     masters.forEach(function (m) {
       card(pad, y, tw, 64 + 46 + m.lines.length * rowH + 4, 16);
       section('MASTER', nm(m.master), m.lines.length + (m.lines.length > 1 ? ' lines' : ' line') + '  ·  ' + n(m.out) + ' / ' + n(m.planOut) + ' pcs  ·  end pass ' + n(m.endPass || 0), m.ach === '' ? 'no plan' : m.ach + '%', m.ach);
@@ -208,7 +231,7 @@
       y += 4 + 20;
     });
     if (floors.length) {
-      if (mode === 'all') { text('PACKING · FLOOR-WISE', pad + 4, y + 26, { size: 20, w: 800, color: NAVY }); y += 60; }
+      heading('PACKING · FLOOR-WISE');
       floors.forEach(function (f) {
         card(pad, y, tw, 64 + 46 + f.rows.length * prowH + 4, 16);
         section('FLOOR', f.floor.replace(/^FAC\d+-/, ''), f.rows.length + ' SRN  ·  ' + n(f.qty) + ' pcs  ·  ' + n(f.cartons) + ' cartons');
@@ -223,8 +246,8 @@
         y += 4 + 20;
       });
     }
-    if (mode !== 'packing') text('Plan output = actual man-hours × plan rate of the day (learning curve %, 100% after the plan ends, else bulletin SAM) · Achievement = actual ÷ plan · End = endline of that date', pad, H - 58, { size: 13, color: MUTED, max: tw });
-    text(mode === 'packing' ? 'Manpower = pressman + checker + thread cutter + helper' : 'MP = production manpower (operator + helper + paster + QC + thread cutter + hand needle)', pad, H - 34, { size: 13, color: MUTED, max: tw - 330 });
+    if (mode === 'master' || mode === 'all') text('Plan output = actual man-hours × plan rate of the day (learning curve %, 100% after the plan ends, else bulletin SAM) · Achievement = actual ÷ plan · End = endline of that date', pad, H - 58, { size: 13, color: MUTED, max: tw });
+    text(mode === 'cutting' ? 'Cut qty from the cutting sheet, per SRN, intent number and fabric' : mode === 'packing' ? 'Manpower = pressman + checker + thread cutter + helper' : 'MP = production manpower (operator + helper + paster + QC + thread cutter + hand needle)', pad, H - 34, { size: 13, color: MUTED, max: tw - 330 });
     text(S.imgStamp ? S.imgStamp() : '', W - pad, H - 34, { size: 13, color: MUTED, align: 'right' });
     return cv;
   };
