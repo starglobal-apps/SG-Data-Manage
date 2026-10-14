@@ -65,16 +65,7 @@
         html += '<div class="rp-sum"><div><small>Plan</small><b>' + n(t.planOut) + '</b></div><div><small>Actual</small><b>' + n(t.out) + '</b></div><div><small>End pass</small><b class="ach ok">' + n(t.endPass || 0) + '</b></div><div><small>Achieve</small><b class="ach ' + achCls(t.ach) + '">' + (t.ach === '' ? '–' : t.ach + '%') + '</b></div></div>';
         html += '<button class="btn big wa" data-pdrimg="" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px">' + icon('wa') + ' Share Production Output image · all</button>';
       }
-      if (cu.length) {
-        var cq = cu.reduce(function (a, x) { return a + x.qty; }, 0);
-        html += '<div class="pdr-sec"><b>Cutting · fabric-wise</b><span>' + n(cq) + ' cut · ' + cu.length + ' SRN</span><button class="btn small ghost" data-pdrimg="__cutting">Image</button></div>';
-        cu.forEach(function (x) {
-          html += '<div class="pdr-m"><div class="pdr-h"><div><small>SRN</small><b>' + esc(x.srn) + (x.style ? ' · ' + esc(x.style) : '') + '</b></div><span class="ach ok">' + n(x.qty) + '</span></div>' +
-            '<table class="pdr-t"><thead><tr><th class="l" style="width:72%">Fabric · intent number</th><th>Cut qty</th></tr></thead><tbody>' +
-            x.rows.map(function (r) { return '<tr><td class="l"><b style="font-size:12px;font-weight:600">' + esc(r.fabric || '–') + '</b><small>' + esc(r.intent || '') + '</small></td><td><b>' + n(r.qty) + '</b></td></tr>'; }).join('') + '</tbody></table></div>';
-        });
-        if (d.masters.length) html += '<div class="pdr-sec"><b>Stitching · master-wise</b><span>' + n(t.out) + ' pcs · end pass ' + n(t.endPass || 0) + '</span></div>';
-      }
+      if (d.masters.length && (cu.length || pk.length)) html += '<div class="pdr-sec"><b>Stitching · master-wise</b><span>' + n(t.out) + ' pcs · end pass ' + n(t.endPass || 0) + '</span></div>';
       d.masters.forEach(function (m) {
         html += '<div class="pdr-m"><div class="pdr-h"><div><small>Master · end pass ' + n(m.endPass || 0) + '</small><b>' + esc(nm(m.master)) + '</b></div><span class="ach ' + achCls(m.ach) + '">' + (m.ach === '' ? 'no plan' : m.ach + '%') + '</span>' +
           '<button class="btn small ghost" data-pdrimg="' + esc(m.master) + '">Image</button></div>' +
@@ -97,6 +88,15 @@
               return '<tr><td class="l"><b>' + esc(r.srn) + '</b><small>' + esc(r.item || '') + (r.supervisor ? ' · ' + esc(nm(r.supervisor)) : '') + (r.pending ? ' · <i>waiting approval</i>' : '') + '</small></td>' +
                 '<td><b>' + n(r.qty) + '</b></td><td>' + n(r.cartons) + '</td><td>' + n(r.mp) + '</td><td>' + (r.hours || '–') + '</td></tr>';
             }).join('') + '</tbody></table></div>';
+        });
+      }
+      if (cu.length) {
+        var cq = cu.reduce(function (a, x) { return a + x.qty; }, 0);
+        html += '<div class="pdr-sec"><b>Cutting · fabric-wise</b><span>' + n(cq) + ' cut · ' + cu.length + ' SRN</span><button class="btn small ghost" data-pdrimg="__cutting">Image</button></div>';
+        cu.forEach(function (x) {
+          html += '<div class="pdr-m"><div class="pdr-h"><div><small>SRN</small><b>' + esc(x.srn) + (x.style ? ' · ' + esc(x.style) : '') + '</b></div><span class="ach ok">' + n(x.qty) + '</span></div>' +
+            '<table class="pdr-t"><thead><tr><th class="l" style="width:72%">Fabric · intent number</th><th>Cut qty</th></tr></thead><tbody>' +
+            x.rows.map(function (r) { return '<tr><td class="l"><b style="font-size:12px;font-weight:600">' + esc(r.fabric || '–') + '</b><small>' + esc(r.intent || '') + '</small></td><td><b>' + n(r.qty) + '</b></td></tr>'; }).join('') + '</tbody></table></div>';
         });
       }
       html += '<p class="hint" style="margin:6px 2px">Plan output = the people who actually worked × their hours × the plan rate of that day (learning curve %; 100% after the plan ends; no plan: Making Bulletin SAM) · MP = planned / actual production manpower (operator, helper, paster, QC, thread cutter, hand needle) · hours = shift + OT · achievement = actual ÷ plan output · End pass = endline passed that day, of the pieces checked' + (pk.length ? ' · Packing MP = pressman + checker + thread cutter + helper' : '') + '</p>';

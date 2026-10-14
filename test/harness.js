@@ -21,6 +21,7 @@ Sheet.prototype = {
     var R = {
       setValues(v) { v.forEach((row, i) => { var rr = sh.data[r - 1 + i] = sh.data[r - 1 + i] || []; row.forEach((x, j) => rr[col - 1 + j] = x); }); return R; },
       setValue(x) { var rr = sh.data[r - 1] = sh.data[r - 1] || []; rr[col - 1] = x; return R; }, setFormula(f) { return R.setValue(f); },
+      clearContent() { for (var i = 0; i < nr; i++) { var rr = sh.data[r - 1 + i]; if (rr) for (var j = 0; j < nc; j++) rr[col - 1 + j] = ''; } return R; },
       getValue() { return R.getValues()[0][0]; },
       getValues() { var out = []; for (var i = 0; i < nr; i++) { var row = sh.data[r - 1 + i] || [], o = []; for (var j = 0; j < nc; j++) { var v = row[col - 1 + j]; o.push(v === undefined || v === null ? '' : v); } out.push(o); } return out; },
       getDisplayValues() { return R.getValues().map(row => row.map(v => v instanceof Date ? fmt(v, 'dd-MMM-yyyy') : String(v))); },
@@ -421,4 +422,7 @@ md.data[4] = md.data[4] || []; md.data[4][11] = JSON.stringify([TD[2] + '-' + MO
 md.data[5] = md.data[5] || []; md.data[5][11] = JSON.stringify(['01-Jan-2020', 'SRN0620A', 'CA9', 'Old', 999]);
 var pdr5 = call('admin', 'm.pdr', { factory: '666', date: TODAY }), cut = pdr5.cutting || [];
 check('report cutting of the date: SRN-wise, fabric rows added up (other dates left out)', cut.length === 1 && cut[0].srn === 'SRN0620A' && cut[0].qty === 950 && cut[0].rows.length === 2 && cut[0].rows[0].fabric === 'Poly Quilted' && cut[0].rows[0].qty === 700 && cut[0].rows[0].intent === 'CA1', cut);
+seed(SOURCE_IDS.CUTTING, 'cutting data_R', [['Timestamps', 'Date', 'SRN', 'Intent', 'Fabric', 'Qty'], ['t', '13-Oct-2026', 'SRN0620A', 'CA1', 'Poly', 600], ['', '28/05/2026', 'SRN0610A', 'CA2', 'Foam', 250]]);
+var keepK = md.data[2][10], ci = importCutting_();
+check('cutting-only import: header + rows in col L, other columns untouched', /2 rows/.test(ci) && md.data[0][11] === 'Cutting Data' && JSON.parse(md.data[2][11])[3] === 'Poly' && JSON.parse(md.data[3][11])[1] === 'SRN0610A' && !md.data[4][11] && md.data[2][10] === keepK, [ci, md.data[0][11], md.data[2][11]]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

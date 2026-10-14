@@ -31,7 +31,8 @@ var IMPORT_JOBS = [
   // production plan with the learning curve: [ts, SRN, style, line, plan date dd/mm/yyyy, day, day plan qty, balance, efficiency, operators, other manpower {json}, total manpower, working hours, daily target, O, learning curve % (P)]
   { srcKey: 'PLAN', srcSheet: 'Making Plan Response for Production', srcRow: 2, srcCol: 1, cols: 16, tgt: 'Making Plan', tgtCol: 1 },
   // cutting: [cutting date, SRN, intent number, fabric name, cutting qty] from 'cutting data_R' (A timestamp, B date, C SRN, D intent, E fabric, F qty)
-  { srcKey: 'CUTTING', srcSheet: 'cutting data_R', srcRow: 2, srcCol: 1, cols: 6, tgt: 'Cutting Data', tgtCol: 1, pick: [2, 3, 4, 5, 6] },
+  // optional: a read failure here does not stop the cleanup after the import (the cutting sheet is not part of Send to Final)
+  { srcKey: 'CUTTING', srcSheet: 'cutting data_R', srcRow: 2, srcCol: 1, cols: 6, tgt: 'Cutting Data', tgtCol: 1, pick: [2, 3, 4, 5, 6], optional: true },
 ];
 
 function colLetter_(n) {
@@ -137,7 +138,7 @@ function runAllImport() {
 
   IMPORT_JOBS.forEach(function(job, i) {
     var raw = raws[i];
-    if (raw === null || raw === undefined) { log.push('READ FAIL: ' + job.srcSheet); return; }
+    if (raw === null || raw === undefined) { log.push((job.optional ? 'NOT READ (optional): ' : 'READ FAIL: ') + job.srcSheet); return; }
     var got = shapeJob_(job, raw);
 
     if (job.sheetOnly) {
@@ -176,6 +177,23 @@ function runAllImport() {
   var out = log.join('\n');
   Logger.log(out);
   return out;
+}
+
+// only the cutting column (MASTER DATA col L): the cutting sheet -> [date, SRN, intent number, fabric, qty]
+function importCutting_() {
+  var job = IMPORT_JOBS.filter(function(j) { return j.srcKey === 'CUTTING'; })[0], m = MASTER_PUSH.filter(function(x) { return x.sheet === job.tgt; })[0];
+  var ss = SpreadsheetApp.getActiveSpreadsheet() || getSS_(), raw;
+  try { raw = Sheets.Spreadsheets.Values.get(srcId_(job.srcKey), a1_(job.srcSheet, job.srcRow, job.srcCol, job.cols), { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || []; }
+  catch (e) { return 'CUTTING READ FAIL: ' + (e && e.message || e); }
+  var got = shapeJob_(job, raw), md = ss.getSheetByName(MASTER_SHEET_NAME);
+  // write only col L: the other columns keep what they have
+  var col = got.values.map(function(r) { return padRow_(r, m.width).map(mdCell_); }).filter(function(r) { return r.some(function(v) { return v !== '' && v !== 0; }); }).map(function(r) { return [JSON.stringify(r)]; });
+  if (md.getMaxRows() < col.length + 2) md.insertRowsAfter(md.getMaxRows(), col.length + 2 - md.getMaxRows() + 500);
+  if (md.getMaxColumns() < m.col) md.insertColumnsAfter(md.getMaxColumns(), m.col - md.getMaxColumns());
+  md.getRange(1, m.col).setValue(m.sheet);
+  if (md.getMaxRows() > 2) md.getRange(3, m.col, md.getMaxRows() - 2, 1).clearContent();
+  if (col.length) md.getRange(3, m.col, col.length, 1).setValues(col);
+  return 'Cutting Data : ' + col.length + ' rows';
 }
 
 function writeMaster_(ss, ssId, grid) {

@@ -119,7 +119,7 @@
     var masters = mode === 'packing' || mode === 'cutting' ? [] : d.masters.filter(function (m) { return mode === 'all' || m.master === only; });
     var floors = mode === 'master' || mode === 'cutting' ? [] : (d.packing || []);
     var cuts = mode === 'all' || mode === 'cutting' ? (d.cutting || []) : [], crows = cuts.reduce(function (a, x) { return a + x.rows.length; }, 0);
-    var heads = mode === 'all' ? (cuts.length ? 1 : 0) + (cuts.length && masters.length ? 1 : 0) + (floors.length ? 1 : 0) : 0;
+    var heads = mode === 'all' ? (cuts.length ? 1 : 0) + (masters.length && (cuts.length || floors.length) ? 1 : 0) + (floors.length ? 1 : 0) : 0;
     var Z = 2, W = 1590, pad = 32, rowH = 52, prowH = 46, tw = W - pad * 2;
     var cols = [
       { t: 'Supervisor', w: 170, a: 'left' }, { t: 'Line', w: 170, a: 'left' }, { t: 'SRN', w: 112, a: 'left' }, { t: 'Plan MP', w: 80 }, { t: 'Plan output', w: 108 },
@@ -142,7 +142,7 @@
     var p = d.date.split('-'), dt = new Date(+p[0], +p[1] - 1, +p[2]);
     var day = dt.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
     text(mode === 'packing' ? 'Packing Output Report' : mode === 'cutting' ? 'Cutting Output Report' : 'Production Output Report', pad, 52, { size: 38, w: 800, color: '#fff' });
-    text((mode === 'packing' ? 'Packing, floor-wise' : mode === 'cutting' ? 'Cutting, fabric-wise' : mode === 'all' ? [cuts.length ? 'Cutting' : '', 'Stitching', 'Endline', floors.length ? 'Packing' : ''].filter(String).join(' · ') : 'Stitching') + ' · FAC' + d.factory + ' · ' + day + (mode === 'master' ? ' · Master: ' + nm(only) : ''), pad, 100, { size: 21, w: 500, color: '#dbeafe' });
+    text((mode === 'packing' ? 'Packing, floor-wise' : mode === 'cutting' ? 'Cutting, fabric-wise' : mode === 'all' ? ['Stitching', 'Endline', floors.length ? 'Packing' : '', cuts.length ? 'Cutting' : ''].filter(String).join(' · ') : 'Stitching') + ' · FAC' + d.factory + ' · ' + day + (mode === 'master' ? ' · Master: ' + nm(only) : ''), pad, 100, { size: 21, w: 500, color: '#dbeafe' });
     text('SG Data', W - pad, 52, { size: 20, w: 700, color: '#bfdbfe', align: 'right' });
     // KPI cards
     var cards;
@@ -185,22 +185,7 @@
       y += 46;
     };
     var heading = function (t) { if (mode !== 'all') return; text(t, pad + 4, y + 26, { size: 20, w: 800, color: NAVY }); y += 60; };
-    if (cuts.length) {
-      heading('CUTTING · FABRIC-WISE');
-      cuts.forEach(function (x) {
-        card(pad, y, tw, 64 + 46 + x.rows.length * prowH + 4, 16);
-        section('SRN', x.srn + (x.style ? ' · ' + x.style : ''), x.rows.length + (x.rows.length > 1 ? ' fabrics' : ' fabric') + '  ·  ' + n(x.qty) + ' cut');
-        headRow(ccols);
-        x.rows.forEach(function (r, i) {
-          if (i % 2) { c.fillStyle = '#f8fafc'; c.fillRect(pad + 8, y, tw - 16, prowH); }
-          var cells = [r.intent || '–', r.fabric || '–', n(r.qty)];
-          ccols.forEach(function (col, k) { var cx = xOf(ccols, k); text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + prowH / 2, { size: 18, w: k === 2 ? 800 : 500, color: k === 2 ? BLUE : INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 24 }); });
-          y += prowH;
-        });
-        y += 4 + 20;
-      });
-      if (masters.length) heading('STITCHING · MASTER-WISE');
-    }
+    if (masters.length && (cuts.length || floors.length)) heading('STITCHING · MASTER-WISE');
     masters.forEach(function (m) {
       card(pad, y, tw, 64 + 46 + m.lines.length * rowH + 4, 16);
       section('MASTER', nm(m.master), m.lines.length + (m.lines.length > 1 ? ' lines' : ' line') + '  ·  ' + n(m.out) + ' / ' + n(m.planOut) + ' pcs  ·  end pass ' + n(m.endPass || 0), m.ach === '' ? 'no plan' : m.ach + '%', m.ach);
@@ -241,6 +226,21 @@
           var cells = [r.srn, r.item || '–', n(r.qty), n(r.cartons), n(r.mp), r.hours || '–', nm(r.supervisor) || '–'];
           pcols.forEach(function (col, k) { var cx = xOf(pcols, k); text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + prowH / 2, { size: 18, w: k === 0 || k === 2 ? 700 : 500, color: k === 2 ? BLUE : INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 14 }); });
           if (r.pending) text('waiting approval', xOf(pcols, 0) + 18, y + prowH - 7, { size: 11, w: 700, color: '#b45309' });
+          y += prowH;
+        });
+        y += 4 + 20;
+      });
+    }
+    if (cuts.length) {
+      heading('CUTTING · FABRIC-WISE');
+      cuts.forEach(function (x) {
+        card(pad, y, tw, 64 + 46 + x.rows.length * prowH + 4, 16);
+        section('SRN', x.srn + (x.style ? ' · ' + x.style : ''), x.rows.length + (x.rows.length > 1 ? ' fabrics' : ' fabric') + '  ·  ' + n(x.qty) + ' cut');
+        headRow(ccols);
+        x.rows.forEach(function (r, i) {
+          if (i % 2) { c.fillStyle = '#f8fafc'; c.fillRect(pad + 8, y, tw - 16, prowH); }
+          var cells = [r.intent || '–', r.fabric || '–', n(r.qty)];
+          ccols.forEach(function (col, k) { var cx = xOf(ccols, k); text(cells[k], col.a === 'left' ? cx + 18 : cx + col.w / 2, y + prowH / 2, { size: 18, w: k === 2 ? 800 : 500, color: k === 2 ? BLUE : INK, align: col.a === 'left' ? 'left' : 'center', max: col.w - 24 }); });
           y += prowH;
         });
         y += 4 + 20;
