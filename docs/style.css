@@ -801,18 +801,19 @@ body.phone .rp-top .row { align-items: flex-end; gap: 8px; } body.phone .rp-top 
 /* PMS: simple table, one row per SRN */
 .pm-tw { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .pm-t { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
-.pm-t thead th { position: sticky; top: 0; z-index: 2; background: #f3f5f9; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; padding: 7px 2px; text-align: right; border-bottom: 1px solid var(--line); }
-.pm-t th.s, .pm-t td.s { text-align: left; width: 31%; padding-left: 9px; }
-.pm-t td { padding: 7px 4px 7px 2px; font-size: 12.5px; font-weight: 600; text-align: right; border-top: 1px solid #eef1f5; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-t thead th { position: sticky; top: 0; z-index: 2; background: #f3f5f9; font-size: 9.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; padding: 7px 3px 7px 0; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.pm-t th.s, .pm-t td.s { text-align: left; width: 25%; padding-left: 8px; }
+.pm-t td { padding: 8px 3px 8px 0; font-size: 12px; font-weight: 600; letter-spacing: -.2px; text-align: right; border-top: 1px solid #eef1f5; vertical-align: top; white-space: nowrap; overflow: visible; }
 .pm-t tbody tr:first-child td { border-top: 0; }
 .pm-t td.z { color: #c3cad5; font-weight: 500; } .pm-t td.bad { color: var(--bad); background: #fff3f3; }
-.pm-t td.s b { font-size: 13.5px; display: inline; } .pm-t td.s i { font-style: normal; font-size: 9.5px; font-weight: 700; color: var(--ok); background: var(--ok-soft); border-radius: 4px; padding: 1px 4px; margin-left: 4px; vertical-align: 1px; }
-.pm-t td.s small { display: block; font-size: 10.5px; font-weight: 500; color: var(--muted); overflow: hidden; text-overflow: ellipsis; } .pm-t td.s small.ct { color: var(--warn); }
+.pm-t td.s { overflow: hidden; letter-spacing: 0; } .pm-t td.s b { font-size: 13.5px; display: block; }
+.pm-t td.s i { font-style: normal; font-size: 9px; font-weight: 700; color: var(--ok); background: var(--ok-soft); border-radius: 4px; padding: 1px 4px; display: inline-block; margin-top: 2px; }
+.pm-t td.s small { display: block; font-size: 10.5px; font-weight: 500; color: var(--muted); overflow: hidden; text-overflow: ellipsis; } .pm-t td.s small.oq { color: var(--text); font-weight: 600; } .pm-t td.s small.ct { color: var(--warn); }
+.pm-t td:nth-child(odd):not(.s), .pm-t th:nth-child(odd):not(.s) { background-color: #f7f9fc; } .pm-t td.bad { background: #fff3f3; }
 .pm-t tr[data-rep] { cursor: pointer; } .pm-t tr[data-rep]:active td { background: var(--soft); } .pm-t tr.shipped td { color: var(--muted); }
 .pm-note { font-size: 11px; color: var(--muted); margin: 6px 2px 0; line-height: 1.4; }
 .pm-tw { overflow: clip; } body.phone .pm-t thead th { top: 46px; }
 .pm-t thead th { font-size: 9.5px; letter-spacing: 0; padding: 7px 3px 7px 0; }
-.pm-t td.s em { font-style: normal; font-size: 10.5px; font-weight: 600; color: var(--muted); margin-left: 5px; }
 /* PDR (day report) on the phone */
 .pdr-m { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin: 0 0 10px; overflow: hidden; }
 .pdr-h { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #eef3ff; }

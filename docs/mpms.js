@@ -36,17 +36,19 @@
     html += '<div class="pm-sub">' + (q ? rows.length + ' found' + (P.fq !== q && q.length >= 2 ? ' · looking in shipped…' : '') : P.rows.length + ' open SRN (not shipped) · search finds shipped ones too') + (P.err ? ' · <span style="color:var(--bad)">unloading not available</span>' : '') + '</div>';
     if (!rows.length) html += '<div class="empty">' + (q ? (P.fq === q ? 'No SRN found' : 'Searching…') : 'No open SRN') + '</div>';
     // one row per SRN: a plain table (tap a row: its day-wise report)
-    var num = function (v, bad) { return '<td class="' + (bad ? 'bad' : '') + (+v ? '' : ' z') + '">' + (+v ? n(v) : '–') + '</td>'; };
-    if (rows.length) html += '<div class="pm-tw"><table class="pm-t"><thead><tr><th class="s">SRN</th><th>Load</th><th>Stitch</th><th>End</th><th>Pack</th><th>Unload</th><th>Ship</th></tr></thead><tbody>' +
+    // numbers fit the narrow columns of a phone: 1 lakh and more -> 1.02L
+    var fmt = function (v) { v = +v; return v >= 100000 ? (Math.round(v / 1000) / 100) + 'L' : n(v); };
+    var num = function (v, bad) { return '<td class="' + (bad ? 'bad' : '') + (+v ? '' : ' z') + '">' + (+v ? fmt(v) : '–') + '</td>'; };
+    if (rows.length) html += '<div class="pm-tw"><table class="pm-t"><thead><tr><th class="s">SRN</th><th>Load</th><th>Stitch</th><th>End</th><th>Pack</th><th>Unld</th><th>Ship</th></tr></thead><tbody>' +
       rows.slice(0, 400).map(function (r) {
         var sub = [r.buyer, r.style].filter(Boolean).join(' · ');
         return '<tr data-rep="' + esc(r.srn) + '" class="' + (r.isShipped ? 'shipped' : '') + '"><td class="s"><b>' + esc(r.srn.replace(/^SRN/, '')) + '</b>' + (r.isShipped ? '<i class="ok">shipped</i>' : '') +
-          (r.order ? '<em>' + n(r.order) + '</em>' : '') + (sub ? '<small>' + esc(sub) + '</small>' : '') +
+          (r.order ? '<small class="oq">' + n(r.order) + ' pcs</small>' : '') + (sub ? '<small>' + esc(sub) + '</small>' : '') +
           (r.contractor ? '<small class="ct">Contractor ' + n(r.contractor) + '</small>' : '') + '</td>' +
           num(r.loading) + num(r.stitched, r.stitched > r.loading - (r.contractor || 0)) + num(r.endPass, r.endPass > r.stitched) +
           num(r.packed, r.packed > r.endPass + (r.contractor || 0)) + num(r.unloaded) + num(r.shipped) + '</tr>';
       }).join('') + '</tbody></table></div>' +
-      '<p class="pm-note">Grey number next to the SRN = order qty · red = more than the step before it · contractor stitching / endline is not reported · tap a row for its day-wise report</p>';
+      '<p class="pm-note">Under the SRN: order qty · Unld = unloaded · L = lakh · red = more than the step before it · contractor stitching / endline is not reported · tap a row for its day-wise report</p>';
     $('#mpms-body').innerHTML = html;
     var inp = $('#pm-q');
     inp.addEventListener('input', function () { P.q = inp.value; var pos = inp.selectionStart; render(); var i2 = $('#pm-q'); i2.focus(); try { i2.setSelectionRange(pos, pos); } catch (e) {} find(); });
