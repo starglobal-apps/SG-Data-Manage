@@ -363,6 +363,22 @@ function eventHour_(e) {
 }
 function eventAdds_(e) { var d = CFG.MP_EVENTS.filter(function(x) { return x.key === str_(e.event); })[0]; return !!(d && d.add); }
 
+// The same, role by role ({ Operator: 20, Helper: 5, … }): the hourly target counts the production people there now
+function rolesAtSlot_(attRows, events, dept, slotKey) {
+  var out = {};
+  attRows.forEach(function(r) { if (str_(r.dept) === dept && str_(r.shift) === 'Final') out[str_(r.role)] = (out[str_(r.role)] || 0) + num_(r.count); });
+  var st = Number(slotKey.split('-')[0]), closed = false;
+  events.forEach(function(e) {
+    if (str_(e.dept) !== dept) return;
+    var t = eventHour_(e), n = num_(e.count), role = str_(e.role);
+    if (str_(e.event) === 'LINE_CLOSED') { if (t <= st + 0.01) closed = true; return; }
+    if (!role) return;
+    if (eventAdds_(e)) { if (t < st + 1) out[role] = (out[role] || 0) + n; }
+    else if (t <= st + 0.01) out[role] = Math.max(0, (out[role] || 0) - n);
+  });
+  if (closed) Object.keys(out).forEach(function(k) { out[k] = 0; });
+  return out;
+}
 // Manpower actually on a dept during a slot = Final attendance + people who joined before the slot ends − people who left before it starts
 function mpAtSlot_(attRows, events, dept, slotKey) {
   var base = 0;

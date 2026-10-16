@@ -218,13 +218,13 @@
     // one card per line: line code + SRN, then manpower · hourly target · recorder; the pencil opens the update actions
     shown.forEach(function (x) {
       var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent';
-      var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.roles), x.dept) : null;
+      var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.rolesNow || x.roles), x.dept) : null;   // production people there now
       html += '<div class="chk-line done al-done pl-card"><div class="b">' +
         '<div class="pl-h"><span class="n">' + esc(S.shortLine(x.dept)) + '</span>' + (x.srn ? '<span class="pl-srn">' + esc(x.srn) + '</span>' : '') +
           (x.supervisor || x.incharge ? '<span class="pl-staff">' + (x.supervisor ? '<span><i>Sup</i> ' + esc(nm(x.supervisor)) + '</span>' : '') + (x.incharge ? '<span><i>Inc</i> ' + esc(nm(x.incharge)) + '</span>' : '') + '</span>' : '') +
           (lock ? '<em class="tag warn">' + (st === 'Submitted' ? 'In review' : st === 'Sent' ? 'In sheet' : esc(st)) + '</em>'
                 : '<button type="button" class="pl-edit" data-acts="' + esc(x.dept) + '" aria-label="Update ' + esc(S.shortLine(x.dept)) + '">' + icon('edit') + '</button>') + '</div>' +
-        '<div class="pl-kv"><div><small>Manpower</small><b>' + (+x.count || 0) + '</b></div>' +
+        '<div class="pl-kv"><div><small>Manpower</small><b>' + (+x.count || 0) + (!x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count ? '<i> now ' + x.mpNow + '</i>' : '') + '</b></div>' +
           '<div><small>Hourly target</small>' + (tg && tg.v ? '<b>' + tg.v + '<i> pcs</i></b>' : '<b class="na">—</b>') + '</div>' +
           '<div><small>Recorder</small><b class="who">' + esc(nm(x.by) || (x.fromSheet ? 'Main sheet' : '—')) + '</b></div></div>' +
         x.ob.map(obLine).join('') + '</div></div>';
@@ -234,7 +234,7 @@
   }
   // pencil on a line card: the update actions as buttons (+ what changed on that line today)
   function actsSheet(x) {
-    var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.roles), x.dept) : null, ev = evText(x);
+    var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.rolesNow || x.roles), x.dept) : null, ev = evText(x);
     var info = [x.fromSheet ? 'Filled in the main sheet' : '', x.status === 'Synced' ? 'In main sheet ✓' : '', ev, x.ot ? 'OT ' + x.ot + ' people' : '', x.night ? 'Night ' + x.night + ' people' : '',
       !x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count ? 'Manpower now ' + x.mpNow : ''].filter(Boolean);
     var html = '<div class="pl-acts">' +

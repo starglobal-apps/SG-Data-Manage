@@ -96,8 +96,9 @@ function mAtt_(req, user) {
     pick.push({ dept: d.dept, cat: d.cat, filled: count > 0, by: count && !mineLine ? owners.join(', ') : '' });
     if (!count || !mineLine) return;   // filled by another recorder: not on this recorder's list
     var ev = mEvents_(events, d.dept), mpNow = fromSheet ? count : mpAtSlot_(attDay, events, d.dept, slot);
+    var rolesNow = fromSheet ? roles : rolesAtSlot_(attDay, events, d.dept, slot);   // people there now (half day / absent / transfers): the hourly target
     items.push({ dept: d.dept, cat: d.cat, count: count, srn: srn, supervisor: sup, incharge: inc, by: by, fromSheet: fromSheet, inSheet: !!shF, roles: roles,
-                 ot: otCount, night: night, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow });
+                 ot: otCount, night: night, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow, rolesNow: rolesNow });
     wa.depts.push({ dept: d.dept, cat: d.cat });
     wa.att[d.dept + '|Final'] = count; wa.attRoles[d.dept + '|Final'] = roles; if (srn) wa.attSrn[d.dept] = srn;
     ev.forEach(function(e) { wa.eventList.push({ dept: d.dept, role: e.role, event: e.event, count: e.count, time: e.time }); });

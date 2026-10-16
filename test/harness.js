@@ -134,6 +134,8 @@ check('update: half day row 4h x2 + absent remark, status kept', u1.ok && ops.le
 var a1 = call('rec1', 'm.all', { factory: '666', date: TODAY });
 var it = a1.att.items.find(x => x.dept === L1);
 check('m.all att item count/events', it && it.count === 28 && it.events.length === 2 && it.srn === 'SRN0620A' && (it.mpNow === 25 || it.mpNow === 27), it);
+var rn = it && it.rolesNow || {}, rnSum = Object.keys(rn).reduce((t, k) => t + rn[k], 0);
+check('people there now by role (hourly target): sums to manpower now; absent operator gone', it && rnSum === it.mpNow && rn.Operator === it.roles.Operator - (it.mpNow === 25 ? 3 : 1), [it && it.roles, rn, it && it.mpNow]);
 var pend = a1.out.groups.flatMap(g => g.lines);
 check('output pending: L1 with srn list + mp 25 + plan', pend.length === 1 && pend[0].dept === L1 && pend[0].mp === 25 && pend[0].srns.some(s => s.srn === 'SRN0620A' && s.balance === 936), pend);
 check('plan for today given to phone', a1.att.plan && a1.att.plan[L1 + '|SRN0620A'] && Math.abs(a1.att.plan[L1 + '|SRN0620A'].rate - 0.88) < 0.001, a1.att.plan);
