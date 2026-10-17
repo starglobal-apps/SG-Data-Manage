@@ -363,7 +363,7 @@ a.btn { color: #fff; }
 
 .hdr-btn { position: relative; }
 .hdr-btn .dot { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--bad); border: 2px solid var(--primary); }
-.dlg-msg { font-size: 17px; margin: 4px 0 12px; line-height: 1.45; }
+.dlg-msg { font-size: 17px; margin: 4px 0 12px; line-height: 1.45; white-space: pre-line; }
 .ra-item { background: var(--card); border-radius: 12px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(17,24,39,.05); }
 .ra-item .t { font-weight: 700; font-size: 15px; margin: 0 4px 6px; display: flex; justify-content: space-between; }
 .ra-item canvas { width: 100%; height: auto; display: block; border-radius: 6px; border: 1px solid var(--line); }
@@ -842,3 +842,14 @@ span.ach.ok { background: #dcfce7; } span.ach.mid { background: #fef3c7; } span.
 .pdr-cta > div { flex: 1; min-width: 0; display: flex; flex-direction: column; } .pdr-cta b { font-size: 14px; } .pdr-cta span { font-size: 12px; color: var(--muted); }
 .pdr-cta .btn.small { margin: 0; flex: none; }
 .pdr-t td.l em.sup { display: block; font-style: normal; font-size: 10.5px; font-weight: 700; color: #475569; }
+
+/* attendance card: tap Manpower -> designations under it */
+body.phone .pl-mpc { position: relative; }
+body.phone .pl-mp { all: unset; display: block; width: 100%; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+body.phone .pl-mp small { color: var(--primary); }
+body.phone .pl-pop { position: absolute; top: calc(100% + 4px); left: -4px; z-index: 30; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(15,23,42,.18); padding: 6px 10px 4px; min-width: 200px; }
+body.phone .pl-pop table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+body.phone .pl-pop th { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; text-align: right; padding: 2px 0 4px 10px; } body.phone .pl-pop th:first-child { text-align: left; padding-left: 0; }
+body.phone .pl-pop td { font-size: 13.5px; text-align: right; padding: 4px 0 4px 10px; border-top: 1px solid #f0f2f6; white-space: nowrap; } body.phone .pl-pop td:first-child { text-align: left; padding-left: 0; }
+body.phone .pl-pop td.chg { color: var(--bad); font-weight: 700; }
+body.phone .pl-pop tfoot td { font-weight: 800; border-top: 1.5px solid var(--line); }

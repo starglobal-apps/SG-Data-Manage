@@ -741,6 +741,7 @@ function outputReport_(factory, srn, onlyDept, curId) {
 // { date, factory, dept, shift, slot, srn, qty (the shift's total), other (already in other slots), floor, allowOver }
 // Phone output save in ONE call (sent from the phone's background outbox with a rid): output still waiting for
 // approval is reopened, the pieces are saved, and the line's day goes to the admin (Submitted).
+var OUT_EARLY_BEFORE_ = '16:00';   // today's Final output saved before this time gets a warning for the admin
 function mOutSave_(req, user) {
   var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), shift = str_(req.shift) || 'Final';
   var re = mOutReopen_({ date: date, factory: factory, dept: dept, shift: shift }, user);
@@ -754,10 +755,15 @@ function mOutSave_(req, user) {
   if (!s.ok) return s;
   // optional reason (why output is below plan) -> the review row -> the main sheet's Reason column (O) on approval
   var why = str_(req.reason).slice(0, 300);
+  // today's day output saved before the day is over: often yesterday's output put on today's line by mistake -> the admin sees a warning
+  var hm = Utilities.formatDate(new Date(), tz_(), 'HH:mm'), early = date === todayStr_() && shift === 'Final' && hm < OUT_EARLY_BEFORE_;
   withLock_(function() {
     readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
       if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept || str_(r.type) !== 'STITCH' || (str_(r.shift) || 'Final') !== shift) return;
       if (str_(r.status) !== 'Submitted') return;
+      var fl = parseJsonArr_(r.flags), kept = fl.filter(function(f) { return !/before the day ended/.test(str_(f.msg)); });   // a later save (after the day) clears it
+      if (early) kept.push({ level: 'warn', msg: 'Today\'s output saved at ' + hm + ', before the day ended — check it is not yesterday\'s output' });
+      if (early || kept.length !== fl.length) setField_(CFG.TABS.DAY_SUMMARY, r._row, 'flags', JSON.stringify(kept));
       var p = parseJsonObj_(r.payload); if (str_(p.reason) === why) return;
       p.reason = why; setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
     });

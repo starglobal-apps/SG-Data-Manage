@@ -144,7 +144,12 @@
       if (q > 0 && !srn) { toast('Select SRN', 'bad'); return; }
       if (q < num(cur.other)) { toast(cur.other + ' already filled hour-wise from computer — total cannot be less than ' + cur.other, 'bad', 6000); return; }
       var why = ($('#mo-why') || {}).value || '';
-      var c = check(), go = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0, reason: why.trim() }); };
+      var c = check(), go0 = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0, reason: why.trim() }); };
+      // today's day output in the morning: usually yesterday's output put on today's line by mistake
+      var now = new Date(), go = go0;
+      if (l.date === S.todayStr() && l.shift === 'Final' && now.getHours() < 16) go = function () {
+        S.ask('It is only ' + now.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) + '. Is ' + q + ' pcs the full-day output of TODAY (' + S.fmtDay(l.date) + ') for ' + S.shortLine(l.dept) + '?\n\nIf it is yesterday\'s output, cancel and pick the line under yesterday\'s date.', { ok: 'Yes, today\'s output', cancel: 'Cancel' }).then(function (ok) { if (ok) go0(); });
+      };
       if (q === 0) { S.ask('Save 0 pieces for ' + S.shortLine(l.dept) + ' (' + shLabel(l.shift) + ')? It goes to the admin as no output.', { ok: 'Yes, 0 output', cancel: 'Cancel' }).then(function (ok) { if (ok) go(); }); return; }
       if (c.over > 0) S.ask(c.over + ' pcs more than loading. Save anyway? Admin gets an alert.', { ok: 'Yes, save', cancel: 'Let me fix it' }).then(function (ok) { if (ok) go(); });
       else go();

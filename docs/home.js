@@ -224,7 +224,7 @@
           (x.supervisor || x.incharge ? '<span class="pl-staff">' + (x.supervisor ? '<span><i>Sup</i> ' + esc(nm(x.supervisor)) + '</span>' : '') + (x.incharge ? '<span><i>Inc</i> ' + esc(nm(x.incharge)) + '</span>' : '') + '</span>' : '') +
           (lock ? '<em class="tag warn">' + (st === 'Submitted' ? 'In review' : st === 'Sent' ? 'In sheet' : esc(st)) + '</em>'
                 : '<button type="button" class="pl-edit" data-acts="' + esc(x.dept) + '" aria-label="Update ' + esc(S.shortLine(x.dept)) + '">' + icon('edit') + '</button>') + '</div>' +
-        '<div class="pl-kv"><div><small>Manpower</small><b>' + (+x.count || 0) + (!x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count ? '<i> now ' + x.mpNow + '</i>' : '') + '</b></div>' +
+        '<div class="pl-kv"><div class="pl-mpc"><button type="button" class="pl-mp" data-mp="' + esc(x.dept) + '"><small>Manpower ▾</small><b>' + (+x.count || 0) + (!x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count ? '<i> now ' + x.mpNow + '</i>' : '') + '</b></button></div>' +
           '<div><small>Hourly target</small>' + (tg && tg.v ? '<b>' + tg.v + '<i> pcs</i></b>' : '<b class="na">—</b>') + '</div>' +
           '<div><small>Recorder</small><b class="who">' + esc(nm(x.by) || (x.fromSheet ? 'Main sheet' : '—')) + '</b></div></div>' +
         x.ob.map(obLine).join('') + '</div></div>';
@@ -423,6 +423,21 @@
     }
   });
 
+  // tap on Manpower: a small box just under it with each designation and its count (and the count now, after half day / absent / transfers)
+  function rolesPop(btn) {
+    var cell = btn.parentNode, had = cell.querySelector('.pl-pop');
+    Array.prototype.forEach.call(document.querySelectorAll('.pl-pop'), function (p) { p.remove(); });
+    if (had) return;
+    var x = (PA.shown || PA.items).filter(function (i) { return i.dept === btn.dataset.mp; })[0]; if (!x) return;
+    var roles = x.roles || {}, now = x.rolesNow || {}, showNow = !x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count;
+    var keys = Object.keys(roles).filter(function (k) { return +roles[k] > 0; }).sort(function (a, b) { return roles[b] - roles[a]; });
+    var pop = document.createElement('div'); pop.className = 'pl-pop';
+    pop.innerHTML = '<table><thead><tr><th>Designation</th><th>Qty</th>' + (showNow ? '<th>Now</th>' : '') + '</tr></thead><tbody>' +
+      keys.map(function (k) { var nw = now[k] === undefined ? roles[k] : now[k]; return '<tr><td>' + esc(k) + '</td><td>' + roles[k] + '</td>' + (showNow ? '<td' + (nw !== roles[k] ? ' class="chg"' : '') + '>' + nw + '</td>' : '') + '</tr>'; }).join('') +
+      '</tbody><tfoot><tr><td>Total</td><td>' + (+x.count || 0) + '</td>' + (showNow ? '<td>' + x.mpNow + '</td>' : '') + '</tr></tfoot></table>';
+    cell.appendChild(pop);
+  }
+  document.addEventListener('click', function (e) { if (!e.target.closest('.pl-pop') && !e.target.closest('[data-mp]')) Array.prototype.forEach.call(document.querySelectorAll('.pl-pop'), function (p) { p.remove(); }); });
   // phone: the same list is the Attendance tab
   S.tabs.matt = function () { AL.box = '#matt-body'; AL.shift = 'Final'; loadAttList(); };
   function attListClick(e) {
@@ -443,6 +458,7 @@
       });
       return;
     }
+    if (b.dataset.mp) { rolesPop(b); return; }
     if (b.dataset.acts) { var xa = (PA.shown || PA.items).filter(function (i) { return i.dept === b.dataset.acts; })[0]; if (xa) actsSheet(xa); return; }
     if (b.dataset.ot) { var xo = PA.items.filter(function (i) { return i.dept === b.dataset.ot; })[0]; S.openAttendance(xo && !xo.ot && xo.night ? 'Night' : 'OT', b.dataset.ot); return; }
     if (b.dataset.chg) { S.openAttendance('Final', b.dataset.chg, { change: true }); return; }

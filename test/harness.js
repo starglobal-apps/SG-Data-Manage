@@ -153,6 +153,11 @@ check('after save: not pending, in waiting', a2.out.groups.flatMap(g => g.lines)
 // edit while waiting
 var o2 = call('rec1', 'm.outSave', { rid: 'o2', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 160, other: 0, floor: '', allowOver: false, reason: '' });
 ds = dsRows(L1, 'STITCH'); p = parseJsonObj_(ds[0].payload);
+var early0 = OUT_EARLY_BEFORE_; OUT_EARLY_BEFORE_ = '99:99'; call('rec1', 'm.outSave', { rid: 'o2e', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 160, other: 0, floor: '', allowOver: false, reason: '' }); OUT_EARLY_BEFORE_ = early0;
+var fe = parseJsonArr_(dsRows(L1, 'STITCH')[0].flags).filter(f => /before the day ended/.test(f.msg));
+check("today's output saved early: one warning for the admin, not repeated on a re-save", fe.length === 1 && fe[0].level === 'warn', fe);
+OUT_EARLY_BEFORE_ = '00:00'; call('rec1', 'm.outSave', { rid: 'o2l', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 160, other: 0, floor: '', allowOver: false, reason: '' }); OUT_EARLY_BEFORE_ = early0;
+check('saved again after the day: the warning goes', !parseJsonArr_(dsRows(L1, 'STITCH')[0].flags).some(f => /before the day ended/.test(f.msg)));
 check('edit while waiting: still one row, qty 160', o2.ok && ds.length === 1 && ds[0].status === 'Submitted' && p.output === 160 && readTab_(CFG.TABS.HOURLY_LOG).filter(r => r.dept === L1).length === 1, { ds: ds.length, p: p.output });
 // zero output on another line (rec2 / L3)
 call('rec2', 'att.save', { phone: true, rid: 'r4', date: TODAY, factory: '666', dept: L3, shift: 'Final', srn: 'SRN0621A', floor: 'First', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 8, count: 10 }] });
