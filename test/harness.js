@@ -454,6 +454,8 @@ globalThis.nowHm_ = () => '18:00';
 check('10 AM: today\'s shift output refused, yesterday\'s still allowed', early.ok === false && early.error === 'EARLY' && /5:30 PM/.test(early.message) && earlyOld.error !== 'EARLY', [early, earlyOld.error]);
 var sr0 = call('admin', 'm.sentRows', { factory: '666', date: YD, dept: L1 }), s150 = (sr0.rows || []).filter(r => r.output === 150)[0];
 check('admin: main sheet rows of a date + line', sr0.ok && s150 && s150.srn === 'SRN0620A' && s150.shift === 'Final' && s150.row > 1, sr0);
+var sl0 = call('admin', 'm.sentRows', { factory: '666', date: YD });
+check('admin: only the lines with output in the main sheet on that date', sl0.ok && (sl0.lines || []).length >= 1 && sl0.lines.every(l => l.rows > 0) && sl0.lines.some(l => l.dept === L1 && l.output >= 150) && !sl0.lines.some(l => l.dept === L2 && !l.rows), sl0.lines);
 var fxBad = call('admin', 'm.outFix', { factory: '666', date: YD, dept: L1, row: s150.row, srn: 'SRN0620A', old: 999, output: 140 });
 var fxRec = call('rec1', 'm.outFix', { factory: '666', date: YD, dept: L1, row: s150.row, srn: 'SRN0620A', old: 150, output: 140 });
 var fx = call('admin', 'm.outFix', { factory: '666', date: YD, dept: L1, row: s150.row, srn: 'SRN0620A', old: 150, output: 140, reason: 'wrong day' });

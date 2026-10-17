@@ -1074,16 +1074,20 @@ function sentRowsRead_(factory, date, dept) {
   var out = [];
   v.forEach(function(r, i) {
     var g = function(f) { return col[f] === undefined ? '' : r[col[f]]; };
-    if (dateKey_(g('date')) !== date || str_(g('dept')) !== dept) return;
-    out.push({ row: T.minRow + i, srn: str_(g('srn')).toUpperCase(), shift: /OT|night/i.test(str_(g('shift'))) ? 'OT' : 'Final', manpower: num_(g('manpower')), hours: num_(g('hours')), output: num_(g('output')) });
+    if (dateKey_(g('date')) !== date || !str_(g('dept')) || (dept && str_(g('dept')) !== dept)) return;
+    out.push({ row: T.minRow + i, dept: str_(g('dept')), srn: str_(g('srn')).toUpperCase(), shift: /OT|night/i.test(str_(g('shift'))) ? 'OT' : 'Final', manpower: num_(g('manpower')), hours: num_(g('hours')), output: num_(g('output')) });
   });
   return out;
 }
 function mSentRows_(req, user) {
   if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
   var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept);
-  if (!isDateStr_(date) || !dept) return fail_('VAL', 'Select the date and the line');
-  return { ok: true, date: date, dept: dept, rows: sentRowsRead_(factory, date, dept) };
+  if (!isDateStr_(date)) return fail_('VAL', 'Select the date');
+  var rows = sentRowsRead_(factory, date, dept);
+  if (dept) return { ok: true, date: date, dept: dept, rows: rows };
+  // no line: the lines that have output rows in the main sheet on that date (for the line picker)
+  var by = {}; rows.forEach(function(r) { var x = by[r.dept] = by[r.dept] || { dept: r.dept, rows: 0, output: 0 }; x.rows++; x.output += r.output; });
+  return { ok: true, date: date, lines: Object.keys(by).sort().map(function(k) { return by[k]; }) };
 }
 // { date, factory, dept, row, srn, old, output, reason } -> the output cell of that sheet row; the app's Sent copy follows
 function mOutFix_(req, user) {

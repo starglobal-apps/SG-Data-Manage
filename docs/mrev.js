@@ -38,38 +38,49 @@
   // an output already in the main sheet entered wrong (e.g. yesterday's on today's line): the admin corrects it here
   function fixBtn() { return '<button class="btn ghost fix-btn" data-fixout="1">✎ Correct an output already in the main sheet</button>'; }
   function ymdOf(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
-  var FX = { date: '', dept: '', rows: null, busy: false, err: '' };
+  var FX = { date: '', dept: '', lines: null, linesFor: '', rows: null, busy: '', err: '' };
+  // the date's lines that have output in the main sheet -> pick one -> its rows
+  function fxLoadLines() {
+    FX.lines = null; FX.linesFor = FX.date; FX.dept = ''; FX.rows = null; FX.err = ''; FX.busy = 'lines'; fixSheet();
+    var want = FX.date;
+    S.api('m.sentRows', { factory: state.factory, date: want }, { quiet: true }).then(function (d) { if (FX.date === want) FX.lines = d.lines || []; })
+      .catch(function (er) { FX.err = er.message; }).then(function () { if (FX.date === want) { FX.busy = ''; fixSheet(); } });
+  }
+  function fxLoadRows() {
+    FX.rows = null; FX.err = ''; FX.busy = 'rows'; fixSheet();
+    var want = FX.date + '|' + FX.dept;
+    S.api('m.sentRows', { factory: state.factory, date: FX.date, dept: FX.dept }, { quiet: true }).then(function (d) { if (FX.date + '|' + FX.dept === want) FX.rows = d.rows || []; })
+      .catch(function (er) { FX.err = er.message; }).then(function () { if (FX.date + '|' + FX.dept === want) { FX.busy = ''; fixSheet(); } });
+  }
   function fixSheet() {
     if (!FX.date) { var y = new Date(); y.setDate(y.getDate() - 1); FX.date = ymdOf(y); }
-    var lines = (S.allLines || []).filter(function (l) { return l.cat === 'STITCH'; });
+    var lines = FX.lines || [];
     var html = '<div class="row"><div class="field small"><label>Date</label><input type="date" id="fx-date" value="' + esc(FX.date) + '" max="' + S.todayStr() + '"></div>' +
-      '<div class="field"><label>Line</label><select id="fx-dept"><option value="">— select line —</option>' + lines.map(function (l) { return '<option value="' + esc(l.dept) + '"' + (l.dept === FX.dept ? ' selected' : '') + '>' + esc(S.shortLine(l.dept)) + '</option>'; }).join('') + '</select></div></div>' +
-      '<button class="btn" id="fx-go">Show the main sheet rows</button><div id="fx-rows" style="margin-top:10px">' +
-      (FX.busy ? '<div class="hint">Reading the main sheet…</div>' : FX.err ? '<div class="hint" style="color:var(--bad)">' + esc(FX.err) + '</div>' : !FX.rows ? '<div class="hint">Pick the date and the line. The output in the main sheet can be changed here; the change is logged.</div>' :
+      '<div class="field"><label>Line' + (FX.lines ? ' · ' + lines.length + ' with output' : '') + '</label><select id="fx-dept"' + (FX.lines && lines.length ? '' : ' disabled') + '><option value="">' + (FX.busy === 'lines' ? 'Loading lines…' : FX.lines && !lines.length ? 'No output on this date' : '— select line —') + '</option>' +
+        lines.map(function (l) { return '<option value="' + esc(l.dept) + '"' + (l.dept === FX.dept ? ' selected' : '') + '>' + esc(S.shortLine(l.dept)) + ' · ' + l.output + ' pcs</option>'; }).join('') + '</select></div></div>' +
+      '<div id="fx-rows" style="margin-top:6px">' +
+      (FX.err ? '<div class="hint" style="color:var(--bad)">' + esc(FX.err) + '</div>' : FX.busy === 'rows' ? '<div class="hint">Reading the main sheet…</div>' :
+        !FX.dept || !FX.rows ? '<div class="hint">Only the lines that have output in the main sheet on this date are listed. The output can be changed here; the change is logged.</div>' :
         !FX.rows.length ? '<div class="empty">No output of this line on ' + esc(S.fmtDay(FX.date)) + ' in the main sheet</div>' :
         FX.rows.map(function (r, i) { return '<div class="card fx-row"><div><b>' + esc(r.srn) + '</b> · ' + (r.shift === 'Final' ? 'Shift' : 'OT') + '<small>MP ' + r.manpower + ' · ' + r.hours + ' hrs · sheet row ' + r.row + '</small></div>' +
           '<div class="fx-edit"><input type="number" inputmode="numeric" min="0" id="fx-q' + i + '" value="' + r.output + '"><button class="btn small primary" data-fxsave="' + i + '">Save</button></div></div>'; }).join('') +
         '<input id="fx-why" class="fx-why" placeholder="Reason (e.g. 15 Oct output was put on 16 Oct)" maxlength="200">') + '</div>';
     S.sheet.open('Correct output', html);
+    if (FX.linesFor !== FX.date && !FX.busy) { fxLoadLines(); return; }
     var box = $('#sheet-content');
-    box.onchange = function (e) { if (e.target.id === 'fx-date') FX.date = e.target.value; if (e.target.id === 'fx-dept') FX.dept = e.target.value; };
+    box.onchange = function (e) {
+      if (e.target.id === 'fx-date' && e.target.value) { FX.date = e.target.value; fxLoadLines(); }
+      if (e.target.id === 'fx-dept') { FX.dept = e.target.value; if (FX.dept) fxLoadRows(); else { FX.rows = null; fixSheet(); } }
+    };
     box.onclick = function (e) {
-      var b = e.target.closest('button'); if (!b) return;
-      if (b.id === 'fx-go') {
-        FX.date = $('#fx-date').value; FX.dept = $('#fx-dept').value; if (!FX.date || !FX.dept) { S.toast('Pick the date and the line', 'bad'); return; }
-        FX.busy = true; FX.err = ''; FX.rows = null; fixSheet();
-        S.api('m.sentRows', { factory: state.factory, date: FX.date, dept: FX.dept }, { quiet: true }).then(function (d) { FX.rows = d.rows || []; }).catch(function (er) { FX.err = er.message; }).then(function () { FX.busy = false; fixSheet(); });
-        return;
-      }
-      if (b.dataset.fxsave !== undefined) {
-        var r = FX.rows[+b.dataset.fxsave], v = String(($('#fx-q' + b.dataset.fxsave) || {}).value).trim(), why = (($('#fx-why') || {}).value || '').trim();
-        if (!/^\d+$/.test(v)) { S.toast('Pieces — whole number', 'bad'); return; }
-        if (+v === r.output) { S.toast('Same as now — nothing to change', ''); return; }
-        b.disabled = true;
-        S.api('m.outFix', { factory: state.factory, date: FX.date, dept: FX.dept, row: r.row, srn: r.srn, old: r.output, output: +v, reason: why }, { quiet: true })
-          .then(function (d) { S.toast(S.shortLine(FX.dept) + ' · ' + S.fmtDay(FX.date) + ': ' + d.from + ' → ' + d.to + ' pcs ✓', 'ok', 6000); r.output = d.to; fixSheet(); if (S.pd) { S.pd.dirty = true; S.pd.load(true).catch(function () {}); } })
-          .catch(function (er) { S.toast(er.message, 'bad', 7000); b.disabled = false; });
-      }
+      var b = e.target.closest('button'); if (!b || b.dataset.fxsave === undefined) return;
+      var r = FX.rows[+b.dataset.fxsave], v = String(($('#fx-q' + b.dataset.fxsave) || {}).value).trim(), why = (($('#fx-why') || {}).value || '').trim();
+      if (!/^\d+$/.test(v)) { S.toast('Pieces — whole number', 'bad'); return; }
+      if (+v === r.output) { S.toast('Same as now — nothing to change', ''); return; }
+      b.disabled = true;
+      S.api('m.outFix', { factory: state.factory, date: FX.date, dept: FX.dept, row: r.row, srn: r.srn, old: r.output, output: +v, reason: why }, { quiet: true })
+        .then(function (d) { S.toast(S.shortLine(FX.dept) + ' · ' + S.fmtDay(FX.date) + ': ' + d.from + ' → ' + d.to + ' pcs ✓', 'ok', 6000); var ln = (FX.lines || []).filter(function (x) { return x.dept === FX.dept; })[0]; if (ln) ln.output += d.to - d.from; r.output = d.to; fixSheet(); if (S.pd) { S.pd.dirty = true; S.pd.load(true).catch(function () {}); } })
+        .catch(function (er) { S.toast(er.message, 'bad', 7000); b.disabled = false; });
     };
   }
   function render() {
@@ -181,7 +192,7 @@
 
   $('#mrev-body').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.fixout) { fixSheet(); return; }
+    if (b.dataset.fixout) { FX.linesFor = ''; fixSheet(); return; }
     if (b.dataset.pdr) { if (S.openPdr) S.openPdr(b.dataset.pdr, b.dataset.pdrwk === '1'); return; }
     if (b.dataset.all) {
       var blocked = R.items.filter(function (x) { return x.flags.some(function (f) { return f.level === 'block'; }); }).length;
