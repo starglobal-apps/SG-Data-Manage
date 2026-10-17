@@ -40,7 +40,12 @@
   S.pdRender.mout = function () { var d = S.pd.get(); if (d && d.out && d.out.ok !== false) apply(d.out); };
   S.pdFail.mout = fail;
 
+  // today's shift output opens 30 min before the line's work ends (5:30 PM; whole line on half day: 12:30 PM)
+  function hmNow() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function hm12(hm) { var p = String(hm).split(':'), h = +p[0]; return (h % 12 || 12) + ':' + p[1] + (h >= 12 ? ' PM' : ' AM'); }
   function card(l, gi, li) {
+    if (l.opensAt && hmNow() < l.opensAt) return '<div class="mo-card lock early"><span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + '</span>' +
+      '<span class="s">' + esc(l.attSrn || ((l.srns || [])[0] || {}).srn || 'SRN') + ' · ' + l.mp + ' people · ' + l.hours + ' hrs</span><span class="st">🔒 Output opens at ' + hm12(l.opensAt) + '</span></span><span class="v"><small>locked</small></span></div>';
     return '<button type="button" class="mo-card" data-open="' + gi + '|' + li + '">' +
       '<span class="b"><span class="nm">' + esc(S.shortLine(l.dept)) + ' ' + shBadge(l.shift) + (l.fromSheet ? ' <em class="ot">sheet att.</em>' : '') + '</span>' +
       '<span class="s">' + esc(l.attSrn || ((l.srns || [])[0] || {}).srn || 'SRN') + ' · ' + l.mp + ' people' + (l.mp !== l.mpBase ? ' (morning ' + l.mpBase + ')' : '') + ' · ' + l.hours + ' hrs</span>' +
@@ -144,12 +149,7 @@
       if (q > 0 && !srn) { toast('Select SRN', 'bad'); return; }
       if (q < num(cur.other)) { toast(cur.other + ' already filled hour-wise from computer — total cannot be less than ' + cur.other, 'bad', 6000); return; }
       var why = ($('#mo-why') || {}).value || '';
-      var c = check(), go0 = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0, reason: why.trim() }); };
-      // today's day output in the morning: usually yesterday's output put on today's line by mistake
-      var now = new Date(), go = go0;
-      if (l.date === S.todayStr() && l.shift === 'Final' && now.getHours() < 16) go = function () {
-        S.ask('It is only ' + now.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) + '. Is ' + q + ' pcs the full-day output of TODAY (' + S.fmtDay(l.date) + ') for ' + S.shortLine(l.dept) + '?\n\nIf it is yesterday\'s output, cancel and pick the line under yesterday\'s date.', { ok: 'Yes, today\'s output', cancel: 'Cancel' }).then(function (ok) { if (ok) go0(); });
-      };
+      var c = check(), go = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0, reason: why.trim() }); };
       if (q === 0) { S.ask('Save 0 pieces for ' + S.shortLine(l.dept) + ' (' + shLabel(l.shift) + ')? It goes to the admin as no output.', { ok: 'Yes, 0 output', cancel: 'Cancel' }).then(function (ok) { if (ok) go(); }); return; }
       if (c.over > 0) S.ask(c.over + ' pcs more than loading. Save anyway? Admin gets an alert.', { ok: 'Yes, save', cancel: 'Let me fix it' }).then(function (ok) { if (ok) go(); });
       else go();

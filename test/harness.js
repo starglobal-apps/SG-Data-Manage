@@ -77,6 +77,7 @@ global.Sheets = Sheets;
 fs.readdirSync('gas').filter(f => f.endsWith('.js') && f !== 'Sources.js').sort().forEach(f => vm.runInThisContext(fs.readFileSync('gas/' + f, 'utf8'), { filename: f }));
 // fake source ids: the test never needs (or touches) the real spreadsheets
 globalThis.SOURCE_IDS = {}; ['ATT', 'STITCH117', 'PACKING', 'ENDLINE', 'LOADING', 'ALLORDER', 'COST', 'PLAN', 'CUTTING'].forEach(k => { SOURCE_IDS[k] = 'fake_' + k; });
+globalThis.nowHm_ = () => '18:00';   // the tests save today's output after the day (output opens 30 min before the line's work ends)
 // ---------- seed data ----------
 var TODAY = todayStr_();
 function seed(ssId, name, rows, maxCols) { var sh = ssById(ssId).getSheetByName(name) || ssById(ssId).insertSheet(name); sh.maxCols = maxCols || 40; rows.forEach((r, i) => { sh.data[i] = r.slice(); }); return sh; }
@@ -153,11 +154,6 @@ check('after save: not pending, in waiting', a2.out.groups.flatMap(g => g.lines)
 // edit while waiting
 var o2 = call('rec1', 'm.outSave', { rid: 'o2', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 160, other: 0, floor: '', allowOver: false, reason: '' });
 ds = dsRows(L1, 'STITCH'); p = parseJsonObj_(ds[0].payload);
-var early0 = OUT_EARLY_BEFORE_; OUT_EARLY_BEFORE_ = '99:99'; call('rec1', 'm.outSave', { rid: 'o2e', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 160, other: 0, floor: '', allowOver: false, reason: '' }); OUT_EARLY_BEFORE_ = early0;
-var fe = parseJsonArr_(dsRows(L1, 'STITCH')[0].flags).filter(f => /before the day ended/.test(f.msg));
-check("today's output saved early: one warning for the admin, not repeated on a re-save", fe.length === 1 && fe[0].level === 'warn', fe);
-OUT_EARLY_BEFORE_ = '00:00'; call('rec1', 'm.outSave', { rid: 'o2l', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 160, other: 0, floor: '', allowOver: false, reason: '' }); OUT_EARLY_BEFORE_ = early0;
-check('saved again after the day: the warning goes', !parseJsonArr_(dsRows(L1, 'STITCH')[0].flags).some(f => /before the day ended/.test(f.msg)));
 check('edit while waiting: still one row, qty 160', o2.ok && ds.length === 1 && ds[0].status === 'Submitted' && p.output === 160 && readTab_(CFG.TABS.HOURLY_LOG).filter(r => r.dept === L1).length === 1, { ds: ds.length, p: p.output });
 // zero output on another line (rec2 / L3)
 call('rec2', 'att.save', { phone: true, rid: 'r4', date: TODAY, factory: '666', dept: L3, shift: 'Final', srn: 'SRN0621A', floor: 'First', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 8, count: 10 }] });
@@ -447,4 +443,19 @@ var wk = call('admin', 'm.pdr', { factory: '666', from: YD, date: TODAY }), lw =
 var dYD = call('admin', 'm.pdr', { factory: '666', date: YD }), ly = [].concat.apply([], dYD.masters.map(m => m.lines)).filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0];
 check('week: output and plan of each day added up, manpower = average per day, overall up to the last day', wk.ok && wk.weekly && lw && ly && lw.out === lb.out + ly.out && lw.planOut === num_(lb.planOut) + num_(ly.planOut) && lw.days === 2 && lw.mp === Math.round((lb.mp + ly.mp) / 2) && lw.ovOut === lb.ovOut, [lw && [lw.out, lw.planOut, lw.mp, lw.days], ly && [ly.out, ly.planOut, ly.mp], lb && [lb.out, lb.planOut, lb.mp]]);
 check('week: from after the date is refused; a day report is not weekly', call('admin', 'm.pdr', { factory: '666', from: TODAY, date: YD }).ok === false && pdr6.weekly === false && pdr6.from === TODAY);
+// ========== 26. today's output opens 30 min before the line's work ends; admin corrects an output in the main sheet ==========
+check('output opens: 8 h -> 5:30 PM, whole line half day 4 h -> 12:30 PM, 6 h -> 3:30 PM', outOpenAt_(8) === '17:30' && outOpenAt_(4) === '12:30' && outOpenAt_(6) === '15:30' && outOpenAt_('') === '17:30');
+var oL = call('rec1', 'm.out', { factory: '666' }), tl = [].concat.apply([], (oL.groups || []).map(g => g.lines)).concat(oL.waiting || []).filter(l => l.date === TODAY && l.shift === 'Final')[0];
+check('today\'s shift line carries its opening time', !tl || tl.opensAt === '17:30' || tl.opensAt === '12:30', tl && tl.opensAt);
+globalThis.nowHm_ = () => '10:00';
+var early = call('rec1', 'm.outSave', { rid: 'early1', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 5, other: 0, floor: '', allowOver: true, reason: '' });
+var earlyOld = call('rec1', 'm.outSave', { rid: 'early2', date: YD, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 5, other: 0, floor: '', allowOver: true, reason: '' });
+globalThis.nowHm_ = () => '18:00';
+check('10 AM: today\'s shift output refused, yesterday\'s still allowed', early.ok === false && early.error === 'EARLY' && /5:30 PM/.test(early.message) && earlyOld.error !== 'EARLY', [early, earlyOld.error]);
+var sr0 = call('admin', 'm.sentRows', { factory: '666', date: YD, dept: L1 }), s150 = (sr0.rows || []).filter(r => r.output === 150)[0];
+check('admin: main sheet rows of a date + line', sr0.ok && s150 && s150.srn === 'SRN0620A' && s150.shift === 'Final' && s150.row > 1, sr0);
+var fxBad = call('admin', 'm.outFix', { factory: '666', date: YD, dept: L1, row: s150.row, srn: 'SRN0620A', old: 999, output: 140 });
+var fxRec = call('rec1', 'm.outFix', { factory: '666', date: YD, dept: L1, row: s150.row, srn: 'SRN0620A', old: 150, output: 140 });
+var fx = call('admin', 'm.outFix', { factory: '666', date: YD, dept: L1, row: s150.row, srn: 'SRN0620A', old: 150, output: 140, reason: 'wrong day' });
+check('admin corrects the output in the sheet (changed row / recorder refused)', fx.ok && fx.from === 150 && fx.to === 140 && dataSh.data[s150.row - 1][8] === 140 && fxBad.error === 'CHANGED' && fxRec.error === 'PERM', [fx, fxBad.error, fxRec.error, dataSh.data[s150.row - 1]]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

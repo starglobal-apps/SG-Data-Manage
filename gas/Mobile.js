@@ -118,6 +118,21 @@ function mAtt_(req, user) {
 // sheet — but no stitching output yet (not in the app, not in the main sheet, not already with the admin; a line the
 // admin sent back is listed again). Plus today's lines already filled, for the WhatsApp message.
 var M_SLOT = { Final: '17-18', OT: '21-22', Night: '05-06' };
+// Today's shift output opens 30 min before the line's work ends (day 9 AM, lunch 1–2 PM): 8 h -> 6 PM -> 5:30 PM;
+// the whole line on half day (4 h) -> 1 PM -> 12:30 PM. Earlier the line is not pending and a save is refused.
+function outOpenAt_(hours) {
+  var h = Math.max(1, Math.min(num_(hours) || shiftHours_('Final'), 12)), end = 9 + h + (9 + h > TR_LUNCH ? 1 : 0), m = Math.round(end * 60) - 30;
+  return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2);
+}
+function outOpensFor_(date, factory, dept) {
+  var rows = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === 'Final'; });
+  var hours = attHours_(rows.map(function(r) { return { hours: num_(r.hours), count: num_(r.count) }; }), 'Final');
+  var close = lineClose_(readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(e) { return str_(e.date) === date && str_(e.factory) === factory; }), dept);
+  if (close && close.eff) hours = Math.min(hours, close.eff);
+  return outOpenAt_(hours);
+}
+function hm12_(hm) { var p = hm.split(':'), h = +p[0]; return (h % 12 || 12) + ':' + p[1] + (h >= 12 ? ' PM' : ' AM'); }
+function nowHm_() { return Utilities.formatDate(new Date(), tz_(), 'HH:mm'); }
 function mOut_(req, user) {
   var factory = str_(req.factory), today = todayStr_();
   var from = fmtDate_(new Date(new Date().getTime() - 14 * 86400000)); if (from < PHONE_FROM) from = PHONE_FROM;
@@ -161,7 +176,8 @@ function mOut_(req, user) {
       attSrn = str_(rows[0].srn);
     } else { base = sheet[k].count; mp = base; hours = sheet[k].hours || (sh === 'OT' ? 2 : 8); }
     var line = { reason: reasonOf[d + '|' + dept + '|' + sh] || '', date: d, dept: dept, shift: sh, slot: M_SLOT[sh], fromSheet: src === 'sheet', mp: mp, mpBase: base, hours: hours, attSrn: attSrn,
-                 floor: (src === 'app' && attFloor_(rows, dept)) || (lineFloor[dept] ? lineFloor[dept].value : ''), events: sh === 'Final' ? mEvents_(dayEv, dept) : [], entries: entries, status: status };
+                 floor: (src === 'app' && attFloor_(rows, dept)) || (lineFloor[dept] ? lineFloor[dept].value : ''), events: sh === 'Final' ? mEvents_(dayEv, dept) : [], entries: entries, status: status,
+                 opensAt: d === today && sh === 'Final' ? outOpenAt_(hours) : '' };   // the phone keeps it locked until then
     var hasOut = outRows.length > 0 || sheetDays[dept + '|' + d + '|' + sh];
     if (d === today && outRows.length) done.push(line);
     // saved in the app and with the admin: listed as waiting until approved / rejected (a rejected one is pending again)
@@ -741,9 +757,9 @@ function outputReport_(factory, srn, onlyDept, curId) {
 // { date, factory, dept, shift, slot, srn, qty (the shift's total), other (already in other slots), floor, allowOver }
 // Phone output save in ONE call (sent from the phone's background outbox with a rid): output still waiting for
 // approval is reopened, the pieces are saved, and the line's day goes to the admin (Submitted).
-var OUT_EARLY_BEFORE_ = '16:00';   // today's Final output saved before this time gets a warning for the admin
 function mOutSave_(req, user) {
   var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), shift = str_(req.shift) || 'Final';
+  if (date === todayStr_() && shift === 'Final') { var oa = outOpensFor_(date, factory, dept); if (nowHm_() < oa) return fail_('EARLY', 'Today\'s output of this line can be entered from ' + hm12_(oa)); }
   var re = mOutReopen_({ date: date, factory: factory, dept: dept, shift: shift }, user);
   if (!re.ok) return re;
   var h = hourSave_({ lite: true, date: date, factory: factory, slot: str_(req.slot),
@@ -755,15 +771,10 @@ function mOutSave_(req, user) {
   if (!s.ok) return s;
   // optional reason (why output is below plan) -> the review row -> the main sheet's Reason column (O) on approval
   var why = str_(req.reason).slice(0, 300);
-  // today's day output saved before the day is over: often yesterday's output put on today's line by mistake -> the admin sees a warning
-  var hm = Utilities.formatDate(new Date(), tz_(), 'HH:mm'), early = date === todayStr_() && shift === 'Final' && hm < OUT_EARLY_BEFORE_;
   withLock_(function() {
     readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
       if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept || str_(r.type) !== 'STITCH' || (str_(r.shift) || 'Final') !== shift) return;
       if (str_(r.status) !== 'Submitted') return;
-      var fl = parseJsonArr_(r.flags), kept = fl.filter(function(f) { return !/before the day ended/.test(str_(f.msg)); });   // a later save (after the day) clears it
-      if (early) kept.push({ level: 'warn', msg: 'Today\'s output saved at ' + hm + ', before the day ended — check it is not yesterday\'s output' });
-      if (early || kept.length !== fl.length) setField_(CFG.TABS.DAY_SUMMARY, r._row, 'flags', JSON.stringify(kept));
       var p = parseJsonObj_(r.payload); if (str_(p.reason) === why) return;
       p.reason = why; setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
     });
@@ -1051,5 +1062,50 @@ function pdrPacking_(factory, from, date) {
   return Object.keys(by).sort().map(function(fl) {
     var rows = Object.keys(by[fl]).sort().map(function(s) { return by[fl][s]; });
     return { floor: fl, rows: rows, qty: rows.reduce(function(a, x) { return a + x.qty; }, 0), cartons: rows.reduce(function(a, x) { return a + x.cartons; }, 0), mp: rows.reduce(function(a, x) { return a + x.mp; }, 0) };
+  });
+}
+
+// ---------- admin: correct an output already in the main stitching sheet (e.g. yesterday's output put on today's line) ----------
+function sentTarget_(factory) { return CFG.FINAL_TARGETS[factory === '117' ? 'STITCH_117' : 'STITCH_666']; }
+// the main sheet rows of a date + line: { row (sheet row number), srn, shift, manpower, hours, output }
+function sentRowsRead_(factory, date, dept) {
+  var T = sentTarget_(factory), col = {}; Object.keys(T.cols).forEach(function(c) { col[T.cols[c]] = +c - 1; });
+  var v = Sheets.Spreadsheets.Values.get(srcId_(T.srcKey), "'" + T.sheet + "'!A" + T.minRow + ':AB', { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || [];
+  var out = [];
+  v.forEach(function(r, i) {
+    var g = function(f) { return col[f] === undefined ? '' : r[col[f]]; };
+    if (dateKey_(g('date')) !== date || str_(g('dept')) !== dept) return;
+    out.push({ row: T.minRow + i, srn: str_(g('srn')).toUpperCase(), shift: /OT|night/i.test(str_(g('shift'))) ? 'OT' : 'Final', manpower: num_(g('manpower')), hours: num_(g('hours')), output: num_(g('output')) });
+  });
+  return out;
+}
+function mSentRows_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept);
+  if (!isDateStr_(date) || !dept) return fail_('VAL', 'Select the date and the line');
+  return { ok: true, date: date, dept: dept, rows: sentRowsRead_(factory, date, dept) };
+}
+// { date, factory, dept, row, srn, old, output, reason } -> the output cell of that sheet row; the app's Sent copy follows
+function mOutFix_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), row = num_(req.row), out = num_(req.output), why = str_(req.reason).slice(0, 200);
+  if (!isDateStr_(date) || !dept || !row) return fail_('VAL', 'Select the row to correct');
+  if (str_(req.output) === '' || out < 0 || Math.floor(out) !== out) return fail_('VAL', 'Pieces — whole number');
+  var T = sentTarget_(factory), outCol = +Object.keys(T.cols).filter(function(c) { return T.cols[c] === 'output'; })[0];
+  return withLock_(function() {
+    var cur = sentRowsRead_(factory, date, dept).filter(function(r) { return r.row === row; })[0];
+    if (!cur || cur.srn !== str_(req.srn).toUpperCase() || cur.output !== num_(req.old)) return fail_('CHANGED', 'This row changed in the sheet — open it again');
+    Sheets.Spreadsheets.Values.update({ values: [[out]] }, srcId_(T.srcKey), a1_(T.sheet, row, outCol, 1, row), { valueInputOption: 'USER_ENTERED' });
+    readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+      if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept || str_(r.type) !== 'STITCH' || str_(r.status) !== 'Sent' || str_(r.srn).toUpperCase() !== cur.srn) return;
+      if (((str_(r.shift) || 'Final') === 'Final') !== (cur.shift === 'Final')) return;
+      var p = parseJsonObj_(r.payload); if (num_(p.output) !== cur.output) return;
+      p.output = out; p.fixed = { from: cur.output, by: userName_(user), at: nowStr_(), reason: why };
+      setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
+    });
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+    audit_(user, 'm.outFix', date + '|' + factory + '|' + dept + '|' + cur.srn + '|' + cur.shift, { row: row, from: cur.output, to: out, reason: why });
+    clearAllCaches_();
+    return { ok: true, row: row, from: cur.output, to: out };
   });
 }

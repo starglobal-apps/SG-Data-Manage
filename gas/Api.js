@@ -93,6 +93,8 @@ function routes_() {
     'm.reviewReport': mReviewReport_,
     'm.srnReport':    mSrnReport_,
     'm.pdr':          mPdr_,
+    'm.sentRows':     mSentRows_,
+    'm.outFix':       mOutFix_,
     'm.trCreate':     mTrCreate_,
     'm.warm':         mWarm_,
     'm.all':          mAll_,

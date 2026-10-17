@@ -162,7 +162,7 @@
   var PA = { items: [], lines: [], wa: null, incoming: [], allLines: [] };
   // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
   function applyAtt(d) {
-    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; S.planMap = d.plan || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || [];
+    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; S.planMap = d.plan || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || []; S.allLines = PA.allLines;
     trBadge(PA.incoming.length);
     renderPhoneAtt();
   }
