@@ -460,4 +460,15 @@ var fxBad = call('admin', 'm.outFix', { factory: '666', date: YD, dept: L1, row:
 var fxRec = call('rec1', 'm.outFix', { factory: '666', date: YD, dept: L1, row: s150.row, srn: 'SRN0620A', old: 150, output: 140 });
 var fx = call('admin', 'm.outFix', { factory: '666', date: YD, dept: L1, row: s150.row, srn: 'SRN0620A', old: 150, output: 140, reason: 'wrong day' });
 check('admin corrects the output in the sheet (changed row / recorder refused)', fx.ok && fx.from === 150 && fx.to === 140 && dataSh.data[s150.row - 1][8] === 140 && fxBad.error === 'CHANGED' && fxRec.error === 'PERM', [fx, fxBad.error, fxRec.error, dataSh.data[s150.row - 1]]);
+var sent1 = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.type === 'STITCH' && r.status === 'Sent' && r.factory == '666')[0];
+if (sent1) {
+  var sh1 = (sent1.shift || 'Final') === 'Final' ? 'Final' : 'OT', srn1 = String(sent1.srn).toUpperCase();
+  var rs1 = call('admin', 'm.sentRows', { factory: '666', date: sent1.date, dept: sent1.dept }).rows.filter(r => r.srn === srn1 && r.shift === sh1).map(r => r.row);
+  var bad1 = call('admin', 'm.outRedo', { factory: '666', date: sent1.date, dept: sent1.dept, srn: srn1, shift: sh1, rows: [99999] });
+  var rd = call('admin', 'm.outRedo', { factory: '666', date: sent1.date, dept: sent1.dept, srn: srn1, shift: sh1, rows: rs1, reason: 'half day' });
+  var after1 = call('admin', 'm.sentRows', { factory: '666', date: sent1.date, dept: sent1.dept }).rows.filter(r => r.srn === srn1 && r.shift === sh1);
+  var ds1 = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.id === sent1.id)[0];
+  var pend1 = [].concat.apply([], (call('admin', 'm.out', { factory: '666' }).groups || []).map(g => g.lines)).filter(l => l.date === sent1.date && l.dept === sent1.dept && l.shift === (sent1.shift || 'Final'))[0];
+  check('fill again: the main sheet rows go, the output is pending again (sent back) to be built from the attendance now', rs1.length > 0 && bad1.error === 'CHANGED' && rd.ok && rd.deleted === rs1.length && rd.reopened === 1 && !after1.length && ds1.status === 'Rejected' && /fill again/.test(ds1.remark) && pend1 && pend1.status === 'Rejected', [rs1, rd, after1.length, ds1 && ds1.status, pend1 && pend1.status]);
+} else check('fill again: a sent output to test with', false);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

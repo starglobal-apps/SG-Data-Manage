@@ -1113,3 +1113,36 @@ function mOutFix_(req, user) {
     return { ok: true, row: row, from: cur.output, to: out };
   });
 }
+
+// { date, factory, dept, srn, shift, rows: [sheet row numbers shown], reason } -> those main sheet rows are removed and the
+// app's sent copy goes back to pending (Rejected): filled again in Output it is built from the attendance as it is NOW
+// (half day / absent / transfers -> its own rows), approved, and goes to the main sheet again.
+function mOutRedo_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  var date = str_(req.date), factory = str_(req.factory), dept = str_(req.dept), srn = str_(req.srn).toUpperCase(), shift = str_(req.shift) === 'OT' ? 'OT' : 'Final';
+  var want = (Array.isArray(req.rows) ? req.rows : []).map(Number).sort(function(a, b) { return a - b; }), why = str_(req.reason).slice(0, 200);
+  if (!isDateStr_(date) || !dept || !srn || !want.length) return fail_('VAL', 'Select the row to fill again');
+  var T = sentTarget_(factory);
+  return withLock_(function() {
+    var got = sentRowsRead_(factory, date, dept).filter(function(r) { return r.srn === srn && r.shift === shift; }).map(function(r) { return r.row; }).sort(function(a, b) { return a - b; });
+    if (!got.length || got.join(',') !== want.join(',')) return fail_('CHANGED', 'The main sheet changed — open it again');
+    var id = srcId_(T.srcKey), meta = Sheets.Spreadsheets.get(id, { fields: 'sheets.properties' });
+    var sh = (meta.sheets || []).filter(function(x) { return x.properties.title === T.sheet; })[0];
+    if (!sh) return fail_('NF', 'Main sheet not found');
+    Sheets.Spreadsheets.batchUpdate({ requests: got.slice().reverse().map(function(r) {
+      return { deleteDimension: { range: { sheetId: sh.properties.sheetId, dimension: 'ROWS', startIndex: r - 1, endIndex: r } } };
+    }) }, id);
+    var reopened = 0;
+    readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+      if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept || str_(r.type) !== 'STITCH' || str_(r.status) !== 'Sent' || str_(r.srn).toUpperCase() !== srn) return;
+      if (((str_(r.shift) || 'Final') === 'Final') !== (shift === 'Final')) return;
+      setField_(CFG.TABS.DAY_SUMMARY, r._row, 'status', 'Rejected');
+      setField_(CFG.TABS.DAY_SUMMARY, r._row, 'remark', 'Reopened by ' + userName_(user).replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, '') + ': fill again (manpower from the attendance now)' + (why ? ' · ' + why : ''));
+      reopened++;
+    });
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+    audit_(user, 'm.outRedo', date + '|' + factory + '|' + dept + '|' + srn + '|' + shift, { rows: got, reopened: reopened, reason: why });
+    clearAllCaches_();
+    return { ok: true, deleted: got.length, reopened: reopened };
+  });
+}

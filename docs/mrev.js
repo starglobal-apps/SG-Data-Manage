@@ -63,7 +63,8 @@
         !FX.dept || !FX.rows ? '<div class="hint">Only the lines that have output in the main sheet on this date are listed. The output can be changed here; the change is logged.</div>' :
         !FX.rows.length ? '<div class="empty">No output of this line on ' + esc(S.fmtDay(FX.date)) + ' in the main sheet</div>' :
         FX.rows.map(function (r, i) { return '<div class="card fx-row"><div><b>' + esc(r.srn) + '</b> · ' + (r.shift === 'Final' ? 'Shift' : 'OT') + '<small>MP ' + r.manpower + ' · ' + r.hours + ' hrs · sheet row ' + r.row + '</small></div>' +
-          '<div class="fx-edit"><input type="number" inputmode="numeric" min="0" id="fx-q' + i + '" value="' + r.output + '"><button class="btn small primary" data-fxsave="' + i + '">Save</button></div></div>'; }).join('') +
+          '<div class="fx-edit"><input type="number" inputmode="numeric" min="0" id="fx-q' + i + '" value="' + r.output + '"><button class="btn small primary" data-fxsave="' + i + '">Save</button></div>' +
+          (FX.rows.findIndex(function (x) { return x.srn === r.srn && x.shift === r.shift; }) === i ? '<button class="btn small ghost fx-redo" data-fxredo="' + i + '">↻ Fill again from attendance now <small>manpower and hours as they are now (half day, absent, transfers)</small></button>' : '') + '</div>'; }).join('') +
         '<input id="fx-why" class="fx-why" placeholder="Reason (e.g. 15 Oct output was put on 16 Oct)" maxlength="200">') + '</div>';
     S.sheet.open('Correct output', html);
     if (FX.linesFor !== FX.date && !FX.busy) { fxLoadLines(); return; }
@@ -73,7 +74,19 @@
       if (e.target.id === 'fx-dept') { FX.dept = e.target.value; if (FX.dept) fxLoadRows(); else { FX.rows = null; fixSheet(); } }
     };
     box.onclick = function (e) {
-      var b = e.target.closest('button'); if (!b || b.dataset.fxsave === undefined) return;
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.fxredo !== undefined) {
+        var rr = FX.rows[+b.dataset.fxredo], grp = FX.rows.filter(function (x) { return x.srn === rr.srn && x.shift === rr.shift; }), why0 = (($('#fx-why') || {}).value || '').trim(), keep = { date: FX.date, dept: FX.dept };
+        S.ask('Fill ' + S.shortLine(FX.dept) + ' · ' + S.fmtDay(FX.date) + ' · ' + rr.srn + ' again?\n\n' + grp.length + (grp.length > 1 ? ' rows' : ' row') + ' (' + grp.reduce(function (t, x) { return t + x.output; }, 0) + ' pcs) ' + (grp.length > 1 ? 'are' : 'is') + ' removed from the main sheet and the line goes back to Output → Pending. Fill the output there again: it takes the manpower and hours from the attendance as it is now, and after approval it goes to the main sheet again.',
+          { ok: 'Yes, fill again', cancel: 'Cancel', danger: true }).then(function (ok) {
+          if (!ok) { fixSheet(); return; }
+          S.api('m.outRedo', { factory: state.factory, date: keep.date, dept: keep.dept, srn: rr.srn, shift: rr.shift, rows: grp.map(function (x) { return x.row; }), reason: why0 }, { quiet: true })
+            .then(function () { S.toast(S.shortLine(keep.dept) + ' · ' + S.fmtDay(keep.date) + ' is back in Output → Pending — fill it again there', 'ok', 8000); FX.linesFor = ''; if (S.pd) { S.pd.dirty = true; S.pd.load(true).catch(function () {}); } fixSheet(); })
+            .catch(function (er) { S.toast(er.message, 'bad', 7000); fixSheet(); });
+        });
+        return;
+      }
+      if (b.dataset.fxsave === undefined) return;
       var r = FX.rows[+b.dataset.fxsave], v = String(($('#fx-q' + b.dataset.fxsave) || {}).value).trim(), why = (($('#fx-why') || {}).value || '').trim();
       if (!/^\d+$/.test(v)) { S.toast('Pieces — whole number', 'bad'); return; }
       if (+v === r.output) { S.toast('Same as now — nothing to change', ''); return; }

@@ -95,6 +95,7 @@ function routes_() {
     'm.pdr':          mPdr_,
     'm.sentRows':     mSentRows_,
     'm.outFix':       mOutFix_,
+    'm.outRedo':      mOutRedo_,
     'm.trCreate':     mTrCreate_,
     'm.warm':         mWarm_,
     'm.all':          mAll_,
