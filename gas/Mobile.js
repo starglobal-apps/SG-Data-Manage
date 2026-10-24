@@ -104,14 +104,15 @@ function mAtt_(req, user) {
     ev.forEach(function(e) { wa.eventList.push({ dept: d.dept, role: e.role, event: e.event, count: e.count, time: e.time }); });
     wa.mpNow[d.dept] = mpNow;
   });
-  var sam = samMap_();
   // transfers: requests waiting for my lines, each line's transfers of the date, every line of the factory to transfer to
   var tr = mTransfers_(date, factory, user, depts);
   items.forEach(function(x) { x.transfers = tr.byLine[x.dept] || []; });
   var allLines = mastersRows_().filter(function(r) { return str_(r.type) === 'DEPT' && str_(r.factory) === factory && isTrue_(r.active) && CFG.ACTIVE_CATS.indexOf(str_(r.extra)) >= 0; })
     .map(function(r) { return { dept: str_(r.key), cat: str_(r.extra) }; });
   var plan = {}; try { plan = planOfDay_(date, depts.map(function(d) { return d.dept; })); } catch (e) {}   // production plan of the date (learning curve)
-  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: sam, plan: plan, incoming: tr.incoming, allLines: allLines };
+  // hourly target on the phone: 3600 × productive people now ÷ SAM seconds × learning curve factor
+  var samB = {}, lcMap = {}; try { samB = bulletinSec_(); } catch (e) {} try { lcMap = hourlyLcMap_(date, depts.map(function(d) { return d.dept; })); } catch (e) {}
+  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: typedSamMap_(), samB: samB, lc: lcMap, plan: plan, incoming: tr.incoming, allLines: allLines };
 }
 
 // Phone Output tab: every line / shift (from PHONE_FROM up to today) that has attendance — in the app or typed in the

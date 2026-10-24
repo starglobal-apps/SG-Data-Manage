@@ -9,10 +9,13 @@ var TARGET_NON_PRODUCTIVE = ['Supervisor', 'Incharge', 'Data Collector'];
 // · N operation time in sec (production, used when filled). SAM (min per piece) = all operations' seconds / 60.
 // A bulletin entered again (full re-entry or a corrected operation) must not count twice: per SRN and operation
 // (name + manpower type) only the latest entry is kept. Cached 10 min; "Get new data" / Refresh clears it.
-function bulletinSam_() {
-  var hit = cacheGetBig_('bulletin_sam');
+function bulletinSam_() { return bulletinRead_().min; }
+// SAM in seconds per SRN (the sum of all operations' seconds, no efficiency) — the hourly target uses this
+function bulletinSec_() { return bulletinRead_().sec; }
+function bulletinRead_() {
+  var hit = cacheGetBig_('bulletin_sam2');
   if (hit) return hit;
-  var out = {};
+  var out = {}, outSec = {};
   try {
     var v = Sheets.Spreadsheets.Values.get(srcId_('COST'), "'Making Bulletin Data'!A2:N", { valueRenderOption: 'UNFORMATTED_VALUE' }).values || [];
     var ts = function(x) { var n = Number(x); if (!isNaN(n) && n > 0) return n; var d = new Date(x); return isNaN(d.getTime()) ? 0 : d.getTime() / 86400000 + 25569; };
@@ -26,11 +29,12 @@ function bulletinSam_() {
     });
     Object.keys(by).forEach(function(srn) {
       var s = 0; Object.keys(by[srn]).forEach(function(op) { s += by[srn][op].sec; });
-      if (s > 0) out[srn] = Math.round(s / 60 * 100) / 100;
+      if (s > 0) { out[srn] = Math.round(s / 60 * 100) / 100; outSec[srn] = Math.round(s * 100) / 100; }
     });
   } catch (e) { Logger.log('bulletinSam_: ' + e); }
-  cachePutBig_('bulletin_sam', out, 600);
-  return out;
+  var res = { min: out, sec: outSec };
+  cachePutBig_('bulletin_sam2', res, 600);
+  return res;
 }
 // every SRN's SAM: typed in the app, overridden by the Making Bulletin
 function samMap_() {
@@ -44,6 +48,32 @@ function samOf_(srn) {
   if (b) return { sam: b, by: 'Making Bulletin' };
   var hit = mastersRows_().filter(function(r) { return str_(r.type) === 'SAM' && str_(r.key).toUpperCase() === k && isTrue_(r.active); })[0];
   return hit ? { sam: num_(hit.value), by: str_(hit.extra) } : null;
+}
+
+// ---------- hourly target (the same formula as the PMS app) ----------
+//   hourly target = 3600 × productive manpower ÷ SAM (seconds) × learning curve factor (0–1, Plan.js hourlyLc_)
+// SAM seconds: the SRN's Making Bulletin; a sub-SRN without one (SRN0621A) uses its master SRN's (SRN0621); a SAM typed in
+// the app (MASTERS, minutes × 60) only when the bulletin has neither.
+function masterSrn_(srn) { return str_(srn).toUpperCase().replace(/^(SRN\d+)[A-Z]+$/, '$1'); }
+function typedSamMap_() {
+  var sam = {};
+  mastersRows_().forEach(function(r) { if (str_(r.type) === 'SAM' && isTrue_(r.active) && num_(r.value) > 0) sam[str_(r.key).toUpperCase()] = num_(r.value); });
+  return sam;
+}
+function samSecOf_(srn) {
+  var k = str_(srn).toUpperCase(), m = masterSrn_(k), b = bulletinSec_(), t;
+  if (b[k] > 0) return { sec: b[k], by: 'bulletin' };
+  if (m !== k && b[m] > 0) return { sec: b[m], by: 'bulletin ' + m };
+  t = typedSamMap_();
+  if (t[k] > 0) return { sec: t[k] * 60, by: 'typed' };
+  if (m !== k && t[m] > 0) return { sec: t[m] * 60, by: 'typed ' + m };
+  return null;
+}
+// pieces per hour for that many productive people on a line / SRN / date; null without a SAM
+function hourlyTargetOf_(date, dept, srn, mp) {
+  var s = samSecOf_(srn); if (!s) return null;
+  var lc = hourlyLc_(date, dept, srn);
+  return { v: num_(mp) > 0 ? Math.round(3600 * num_(mp) / s.sec * lc) : 0, sec: s.sec, lc: lc, by: s.by };
 }
 
 // { date, factory, dept, srn } -> attendance, manpower now, SAM, hourly actuals for the line

@@ -162,7 +162,7 @@
   var PA = { items: [], lines: [], wa: null, incoming: [], allLines: [] };
   // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
   function applyAtt(d) {
-    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; S.planMap = d.plan || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || []; S.allLines = PA.allLines;
+    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; S.samB = d.samB || {}; S.lcMap = d.lc || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || []; S.allLines = PA.allLines;
     trBadge(PA.incoming.length);
     renderPhoneAtt();
   }
@@ -225,7 +225,7 @@
           (lock ? '<em class="tag warn">' + (st === 'Submitted' ? 'In review' : st === 'Sent' ? 'In sheet' : esc(st)) + '</em>'
                 : '<button type="button" class="pl-edit" data-acts="' + esc(x.dept) + '" aria-label="Update ' + esc(S.shortLine(x.dept)) + '">' + icon('edit') + '</button>') + '</div>' +
         '<div class="pl-kv"><div class="pl-mpc"><button type="button" class="pl-mp" data-mp="' + esc(x.dept) + '"><small>Manpower ▾</small><b>' + (+x.count || 0) + (!x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count ? '<i> now ' + x.mpNow + '</i>' : '') + '</b></button></div>' +
-          '<div><small>Hourly target</small>' + (tg && tg.v ? '<b>' + tg.v + '<i> pcs</i></b>' : '<b class="na">—</b>') + '</div>' +
+          '<div><small>Hourly target</small>' + (tg && tg.ok ? '<b>' + tg.v + '<i> pcs</i></b>' : '<b class="na">—</b>') + '</div>' +
           '<div><small>Recorder</small><b class="who">' + esc(nm(x.by) || (x.fromSheet ? 'Main sheet' : '—')) + '</b></div></div>' +
         x.ob.map(obLine).join('') + '</div></div>';
     });
@@ -242,7 +242,7 @@
       '<button class="btn ghost" data-ot="' + esc(x.dept) + '">OT / Night<small>' + (x.ot || x.night ? (x.ot ? 'OT ' + x.ot : '') + (x.ot && x.night ? ' · ' : '') + (x.night ? 'Night ' + x.night : '') : 'fill') + '</small></button>' +
       '<button class="btn ghost upd" data-upd="' + esc(x.dept) + '">Half day / Absent<small>update attendance</small></button>' +
       '<button class="btn ghost trb" data-tr="' + esc(x.dept) + '">Transfer<small>to another line</small></button>' +
-      (x.srn && x.cat === 'STITCH' && !(tg && tg.v) ? '<button class="btn ghost wide" data-setsam="' + esc(x.srn) + '">Set SAM of ' + esc(x.srn) + '<small>hourly target needs it</small></button>' : '') + '</div>' +
+      (x.srn && x.cat === 'STITCH' && tg && tg.noSam ? '<button class="btn ghost wide" data-setsam="' + esc(x.srn) + '">Set SAM of ' + esc(x.srn) + '<small>hourly target needs it</small></button>' : '') + '</div>' +
       (info.length || (x.transfers || []).length ? '<div class="pl-info">' + info.map(function (t) { return '<div class="m">' + esc(t) + '</div>'; }).join('') + trText(x) + '</div>' : '');
     S.sheet.open(S.shortLine(x.dept) + (x.srn ? ' · ' + x.srn : ''), html);
     $('#sheet-content').onclick = function (e) {

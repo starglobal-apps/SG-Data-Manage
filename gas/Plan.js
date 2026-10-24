@@ -104,3 +104,67 @@ function planLcOfSrn_(date, srn) {
   Object.keys(all).forEach(function(k) { if (k.slice(-want.length) === want && all[k].lc) lc = all[k].lc; });
   return lc;
 }
+
+// ---------- learning curve factor for the hourly target (same as the PMS app) ----------
+// From the plan rows of a line + SRN (MASTER DATA col K). Rows of one SRN | line | date | delivery date (col O) entered
+// again: only the newest (timestamp, col A) counts, never added up. The factor of a date:
+//   col P "Learning Curve %" (60 / "60%" / 0.6 -> 0.6, 100 -> 1); col P blank -> day plan qty ÷ daily target (col N);
+//   plan qty 0 (Sunday / holiday) -> the previous working day's factor (1 once the curve is complete);
+//   before the first plan date -> 0; after the last -> 1; no plan of this SRN on this line -> 1. 0 is a real value.
+function lcFactorOfP_(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  var n = parseFloat(String(v).replace('%', '')); if (isNaN(n)) return null;
+  var f = typeof v === 'number' && n <= 1.5 ? n : n / 100;
+  return Math.max(0, Math.min(1, f));
+}
+function lcTs_(x) { var n = Number(x); if (!isNaN(n) && n > 0) return n; var d = new Date(x); return isNaN(d.getTime()) ? 0 : d.getTime(); }
+function hourlyLcAgg_() {
+  var hit = cacheGetBig_('plan_lc'); if (hit) return hit;
+  var newest = {}, md = getSS_().getSheetByName(MASTER_SHEET_NAME);
+  if (md && md.getLastRow() >= 3 && md.getLastColumn() >= 11) {
+    md.getRange(3, 11, md.getLastRow() - 2, 1).getValues().forEach(function(row) {
+      var a = parseJson_(row[0]); if (!a) return;
+      var d = planDate_(a[4]), srn = str_(a[1]).toUpperCase(), line = str_(a[3]); if (!d || !/^SRN/.test(srn) || !line) return;
+      var k = line + '|' + srn + '|' + d + '|' + str_(a[14]), t = lcTs_(a[0]);
+      if (!newest[k] || t >= newest[k].t) newest[k] = { t: t, qty: num_(a[6]), target: num_(a[13]), p: lcFactorOfP_(a[15]) };
+    });
+  }
+  // per line|SRN and date: the delivery dates of that day together
+  var by = {};
+  Object.keys(newest).forEach(function(k) {
+    var p = k.split('|'), lk = p[0] + '|' + p[1], d = p[2], x = newest[k];
+    var o = (by[lk] = by[lk] || {})[d] = by[lk][d] || { qty: 0, target: 0, p: null, pt: -1 };
+    o.qty += x.qty; o.target += x.target; if (x.p !== null && x.t >= o.pt) { o.p = x.p; o.pt = x.t; }
+  });
+  var out = {};
+  Object.keys(by).forEach(function(lk) {
+    var dates = Object.keys(by[lk]).sort(), days = {}, prev = 0;
+    dates.forEach(function(d) {
+      var o = by[lk][d], f;
+      if (o.p !== null) f = o.p;
+      else if (o.qty > 0) f = o.target > 0 ? Math.min(1, o.qty / o.target) : 1;
+      else f = prev >= 1 ? 1 : prev;   // no plan qty that day (Sunday / holiday)
+      days[d] = Math.round(f * 10000) / 10000; prev = f;
+    });
+    out[lk] = { first: dates[0], last: dates[dates.length - 1], days: days };
+  });
+  cachePutBig_('plan_lc', out, 1800);
+  return out;
+}
+function hourlyLc_(date, dept, srn) {
+  var x = hourlyLcAgg_()[str_(dept) + '|' + str_(srn).toUpperCase()];
+  if (!x) return 1;
+  date = str_(date);
+  if (date < x.first) return 0;
+  if (date > x.last) return 1;
+  if (x.days[date] !== undefined) return x.days[date];
+  var f = 0; Object.keys(x.days).sort().forEach(function(d) { if (d < date) f = x.days[d]; });   // a day between plan rows
+  return f;
+}
+// { 'line|SRN': factor } of a date for these lines (the phone works the target out with the people there now)
+function hourlyLcMap_(date, depts) {
+  var all = hourlyLcAgg_(), want = {}, out = {};
+  depts.forEach(function(d) { want[d] = 1; });
+  Object.keys(all).forEach(function(lk) { var p = lk.split('|'); if (want[p[0]]) out[lk] = hourlyLc_(date, p[0], p[1]); });
+  return out;
+}

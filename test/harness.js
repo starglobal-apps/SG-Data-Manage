@@ -471,4 +471,33 @@ if (sent1) {
   var pend1 = [].concat.apply([], (call('admin', 'm.out', { factory: '666' }).groups || []).map(g => g.lines)).filter(l => l.date === sent1.date && l.dept === sent1.dept && l.shift === (sent1.shift || 'Final'))[0];
   check('fill again: the main sheet rows go, the output is pending again (sent back) to be built from the attendance now', rs1.length > 0 && bad1.error === 'CHANGED' && rd.ok && rd.deleted === rs1.length && rd.reopened === 1 && !after1.length && ds1.status === 'Rejected' && /fill again/.test(ds1.remark) && pend1 && pend1.status === 'Rejected', [rs1, rd, after1.length, ds1 && ds1.status, pend1 && pend1.status]);
 } else check('fill again: a sent output to test with', false);
+// ========== 27. hourly target like the PMS app: 3600 × productive people ÷ SAM seconds × learning curve factor ==========
+var MB = ssById(SOURCE_IDS.COST).getSheetByName('Making Bulletin Data');
+MB.data.push(['10/1/2026', '2026-10-01', 'SRN0621A', 'BAG', '', 'op1', 'Operator', '', 'Making Bulletin', 1, 300], ['10/1/2026', '2026-10-01', 'SRN0621A', 'BAG', '', 'op2', 'Helper', '', 'Making Bulletin', 1, 292],
+             ['10/1/2026', '2026-10-01', 'SRN0621A', 'BAG', '', 'op3', 'Operator', '', 'Making Bulletin', 1, 200],
+             ['10/1/2026', '2026-10-01', 'SRN0700', 'TEE', '', 'op1', 'Operator', '', 'Making Bulletin', 1, 600]);
+var SL30 = 'FAC666-Line 1-SL030', PR = (ts, srn, line, d, qty, target, del, p) => JSON.stringify([ts, srn, 'X', line, d, 'Mon', qty, 0, '', 40, '{}', 40, 10, '', del, p === undefined ? '' : p].map((v, i) => i === 13 ? target : v));
+var mdRows = [PR('10/10/2026 09:00:00', 'SRN0621A', SL30, '12/10/2026', 300, 1000, '30/11/2026', ''),      // blank P -> qty ÷ target = 0.3
+  PR('10/10/2026 09:00:00', 'SRN0621A', SL30, '13/10/2026', 600, 1000, '30/11/2026', ''),
+  PR('10/11/2026 09:00:00', 'SRN0621A', SL30, '13/10/2026', 800, 1000, '30/11/2026', ''),                     // same day re-entered: newest only (0.8), not 0.6 + 0.8
+  PR('10/10/2026 09:00:00', 'SRN0621A', SL30, '14/10/2026', 0, 1000, '30/11/2026', ''),                       // Sunday: the day before (0.8)
+  PR('10/10/2026 09:00:00', 'SRN0621A', SL30, '15/10/2026', 0, 1000, '30/11/2026', '60%'),                    // col P wins
+  PR('10/10/2026 09:00:00', 'SRN0621A', SL30, '20/10/2026', 1000, 1000, '30/11/2026', 100),
+  PR('10/10/2026 09:00:00', 'SRN0700A', SL30, '22/10/2026', 0, 1000, '30/11/2026', 0)];                        // 0% is a real value
+mdRows.forEach((r, i) => { md.data[40 + i] = md.data[40 + i] || []; md.data[40 + i][10] = r; });
+cacheDelBig_('plan_lc'); cacheDelBig_('bulletin_sam2');
+var ht = hourlyTargetOf_('2026-10-23', SL30, 'SRN0621A', 52);
+check('PMS case: 23-Oct SL030 SRN0621A, 52 people, SAM 792 s, LC 1 (after the plan) -> 236 / hr', ht && ht.sec === 792 && ht.lc === 1 && ht.v === 236, ht);
+check('learning curve: before the plan 0, blank P = qty ÷ target, newest re-entry only, holiday = day before, col P, after the plan 1, no plan 1',
+  hourlyLc_('2026-10-11', SL30, 'SRN0621A') === 0 && hourlyLc_('2026-10-12', SL30, 'SRN0621A') === 0.3 && hourlyLc_('2026-10-13', SL30, 'SRN0621A') === 0.8 &&
+  hourlyLc_('2026-10-14', SL30, 'SRN0621A') === 0.8 && hourlyLc_('2026-10-15', SL30, 'SRN0621A') === 0.6 && hourlyLc_('2026-10-17', SL30, 'SRN0621A') === 0.6 &&
+  hourlyLc_('2026-10-21', SL30, 'SRN0621A') === 1 && hourlyLc_('2026-10-12', 'FAC666-Line 9-SL099', 'SRN0621A') === 1,
+  ['11', '12', '13', '14', '15', '17', '21'].map(d => hourlyLc_('2026-10-' + d, SL30, 'SRN0621A')));
+var ht0 = hourlyTargetOf_('2026-10-22', SL30, 'SRN0700A', 30);
+check('sub-SRN without a bulletin uses the master SRN (SRN0700A -> SRN0700, 600 s); LC 0 stays 0', ht0 && ht0.sec === 600 && ht0.lc === 0 && ht0.v === 0 && /SRN0700/.test(ht0.by), ht0);
+appendRows_(CFG.TABS.MASTERS, [{ type: 'SAM', key: 'SRN0800A', value: 12, extra: 'admin', active: 'TRUE' }]); invalidateMasters_();
+var htT = hourlyTargetOf_('2026-10-23', SL30, 'SRN0800A', 20), htB = samSecOf_('SRN0621A');
+check('typed SAM (minutes × 60) only when no bulletin; the bulletin wins over a typed SAM', htT && htT.sec === 720 && htT.v === 100 && htB.by === 'bulletin', [htT, htB]);
+var att27 = call('admin', 'm.att', { factory: '666', date: TODAY });
+check('phone gets the bulletin seconds and the learning curve map', att27.samB && att27.samB.SRN0621A === 792 && att27.lc && typeof att27.sam === 'object', [att27.samB && att27.samB.SRN0621A, att27.lc]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);
