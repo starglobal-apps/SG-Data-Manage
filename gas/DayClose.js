@@ -95,9 +95,14 @@ function dayBuild_(req, user) {
     // only the production roles (CFG.TARGET_ROLES) count, like the phone's hourly target
     var samP = samOf_(srn), manHrs = effAtt.reduce(function(t, r) { return CFG.TARGET_ROLES.indexOf(r.role) < 0 ? t : t + num_(r.count) * Math.min(num_(r.hours), payload.hours || num_(r.hours)); }, 0);
     payload.sam = samP ? samP.sam : 0;
-    var planP = null; try { planP = planOf_(date, dept, srn); } catch (e) {}
-    if (planP) { payload.plan = Math.round(planP.rate * manHrs); payload.planFrom = 'plan'; }   // production plan (learning curve), scaled to today's people
-    else payload.plan = samP && samP.sam > 0 && manHrs > 0 ? Math.round(manHrs * 60 / samP.sam) : '';
+    // plan output like the PMS app (the hourly target × hours): man-hours × 3600 ÷ SAM seconds × learning curve factor
+    var samS = null; try { samS = samSecOf_(srn); } catch (e) {}
+    if (samS && samS.sec > 0) { payload.plan = manHrs > 0 ? Math.round(manHrs * 3600 / samS.sec * hourlyLc_(date, dept, srn)) : 0; payload.planFrom = 'pms'; }
+    else {   // no SAM at all: the production plan rate as before
+      var planP = null; try { planP = planOf_(date, dept, srn); } catch (e) {}
+      if (planP) { payload.plan = Math.round(planP.rate * manHrs); payload.planFrom = 'plan'; }
+      else payload.plan = '';
+    }
     CFG.STITCH_ROLE_COLS.forEach(function(role, i) { payload['r' + (i + 1)] = byRole[role] || 0; });
     var flags = [];
     if (!payload.manpower) flags.push({ level: 'warn', msg: 'Is dept ki ' + shift + ' attendance nahi hai' });

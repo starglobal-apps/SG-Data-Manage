@@ -919,26 +919,28 @@ function mPdr_(req, user) {
   });
   // 3) plan of the day (production plan: day plan qty + planned manpower); else the plan written on the sheet rows
   var masters = {}, samMem = {};
-  // plan output for the people who actually worked: rate of that day (learning curve; 100% after the plan ended) × man-hours
-  // no plan for the line: the Making Bulletin (SAM, all manpower types) like the hourly target — man-hours × 60 ÷ SAM,
-  // with the SRN's learning curve of that day when another line's plan has it (else 100%); else the plan written on the sheet
+  // plan output like the PMS app (the hourly target × hours): man-hours (shift + OT) × 3600 ÷ SAM seconds × learning curve
+  // factor of the line + SRN that day; no SAM at all: the production plan rate as before; else the plan written on the sheet
   var dayPlan = function(d, dept, srn, manhours, sheetPlan) {
-    var pl = planOf_(d, dept, srn), sm = null, smLc = '';
-    if (!(pl && pl.rate)) { if (!(srn in samMem)) { try { samMem[srn] = samOf_(srn); } catch (e) { samMem[srn] = null; } } sm = samMem[srn]; if (sm && sm.sam > 0) smLc = planLcOfSrn_(d, srn) || 100; }
-    var planOut = pl && pl.rate ? Math.round(pl.rate * manhours) : sm && sm.sam > 0 && manhours ? Math.round(manhours * 60 / sm.sam * smLc / 100) : Math.round(sheetPlan);
-    return { pl: pl, sm: sm, smLc: smLc, planOut: planOut };
+    if (!(srn in samMem)) { try { samMem[srn] = samSecOf_(srn); } catch (e) { samMem[srn] = null; } }
+    var s = samMem[srn], pl = planOf_(d, dept, srn);
+    if (s && s.sec > 0) {
+      var lc = hourlyLc_(d, dept, srn);
+      return { pl: pl, planOut: manhours > 0 ? Math.round(manhours * 3600 / s.sec * lc) : 0, from: manhours > 0 ? 'pms' : '', lc: Math.round(lc * 1000) / 10, sam: Math.round(s.sec) };
+    }
+    if (pl && pl.rate) return { pl: pl, planOut: Math.round(pl.rate * manhours), from: pl.after ? 'after' : 'plan', lc: pl.lc, sam: '' };
+    return { pl: pl, planOut: Math.round(sheetPlan), from: sheetPlan ? 'sheet' : '', lc: '', sam: '' };
   };
   Object.keys(by).forEach(function(k) {
     // plan of each day it worked in the range, added up; manpower = average per day
     var o = by[k], days = Object.keys(o.days).sort(), nd = days.length || 1, nOt = Object.keys(o.otDays).length || 1, planOut = 0, pmSum = 0, pmN = 0, dp = null;
     days.forEach(function(d) { var x = hist[k][d]; dp = dayPlan(d, o.dept, o.srn, x.manhours, x.plan); planOut += dp.planOut; if (dp.pl && dp.pl.mp) { pmSum += dp.pl.mp; pmN++; } });
-    var pl = dp && dp.pl, sm = dp && dp.sm, smLc = dp ? dp.smLc : '';
     // overall: every day of this line on this SRN up to the date
     var ov = { plan: 0, out: 0, days: 0, from: '' };
     Object.keys(hist[k] || {}).forEach(function(d) { var x = hist[k][d]; ov.plan += dayPlan(d, o.dept, o.srn, x.manhours, x.plan).planOut; ov.out += x.out; ov.days++; if (!ov.from || d < ov.from) ov.from = d; });
     var line = { dept: o.dept, srn: o.srn, supervisor: o.supervisor, planMp: pmN ? Math.round(pmSum / pmN) : '', planOut: planOut || '', mp: Math.round(o.mp / nd), mpOt: Math.round(o.mpOt / nOt), hours: o.hours, hoursOt: o.hoursOt, days: days.length,
                  out: o.out, variance: planOut ? o.out - planOut : '', ach: planOut ? Math.round(o.out * 1000 / planOut) / 10 : '', pending: o.pending,
-                 planFrom: pl && pl.rate ? (pl.after ? 'after' : 'plan') : sm && sm.sam > 0 && o.manhours ? 'sam' : (planOut ? 'sheet' : ''), lc: pl && pl.rate ? pl.lc : smLc, sam: sm && sm.sam > 0 ? sm.sam : '', manhours: Math.round(o.manhours * 10) / 10,
+                 planFrom: dp ? dp.from : '', lc: dp ? dp.lc : '', sam: dp ? dp.sam : '', manhours: Math.round(o.manhours * 10) / 10,
                  ovPlan: ov.plan || '', ovOut: ov.out, ovVar: ov.plan ? ov.out - ov.plan : '', ovDays: ov.days, ovFrom: ov.from };
     var mk = o.master || '—', m = masters[mk.toLowerCase()] = masters[mk.toLowerCase()] || { master: mk, lines: [] };
     m.lines.push(line);

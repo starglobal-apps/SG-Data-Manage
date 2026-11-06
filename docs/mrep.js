@@ -53,7 +53,7 @@
   // ---- PDR: previous day report, master-wise (image to share by hand)
   function nm(v) { return String(v || '').replace(/^[A-Z]{1,4}\d{3,}\s*-\s*/i, ''); }
   // where the plan output of a line came from
-  function planSrc(l) { return l.planFrom === 'plan' ? 'LC ' + l.lc + '%' : l.planFrom === 'after' ? '100% · plan over' : l.planFrom === 'sam' ? 'SAM ' + l.sam + (l.lc && l.lc < 100 ? ' · LC ' + l.lc + '%' : '') : l.planFrom === 'sheet' ? 'sheet plan' : 'no plan'; }
+  function planSrc(l) { return l.planFrom === 'pms' ? 'SAM ' + l.sam + 's · LC ' + l.lc + '%' : l.planFrom === 'plan' ? 'LC ' + l.lc + '%' : l.planFrom === 'after' ? '100% · plan over' : l.planFrom === 'sam' ? 'SAM ' + l.sam + (l.lc && l.lc < 100 ? ' · LC ' + l.lc + '%' : '') : l.planFrom === 'sheet' ? 'sheet plan' : 'no plan'; }
   S.pdrPlanSrc = planSrc;
   function renderPdr() {
     if (P.wk == null) P.wk = new Date().getDay() === 1;   // Monday: last week's report

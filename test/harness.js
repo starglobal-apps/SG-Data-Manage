@@ -144,8 +144,8 @@ check('plan for today given to phone', a1.att.plan && a1.att.plan[L1 + '|SRN0620
 var o1 = call('rec1', 'm.outSave', { rid: 'o1', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 150, other: 0, floor: pend[0].floor, allowOver: false, reason: 'machine down' });
 var ds = dsRows(L1, 'STITCH'), p = ds.length ? parseJsonObj_(ds[0].payload) : {};
 check('m.outSave: one Submitted row, payload right', o1.ok && ds.length === 1 && ds[0].status === 'Submitted' && p.output === 150 && p.operators === 21 && p.manpower === 27 && p.hours === 8 && p.floor === 'FAC666-Stitching Ground' && p.reason === 'machine down' && p.splits.length === 2, { o1: o1, p: p });
-// plan = rate 0.88 x production man-hours (operators 19x8 + 2x4 + helpers 5x8 = 200) = 176
-check('plan output from production plan', p.plan === 176 && p.planFrom === 'plan', p.plan);
+// plan like PMS = production man-hours (operators 19x8 + 2x4 + helpers 5x8 = 200) x 3600 / SAM 1200 s x LC 1 (plan qty 220 / daily target 220) = 600
+check('plan output like PMS: man-hours x 3600 / SAM sec x LC', p.plan === 600 && p.planFrom === 'pms', p.plan);
 check('HOURLY_LOG one row qty 150', readTab_(CFG.TABS.HOURLY_LOG).filter(r => r.dept === L1).length === 1);
 var o1b = call('rec1', 'm.outSave', { rid: 'o1', date: TODAY, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 150, other: 0, floor: '', allowOver: false, reason: 'machine down' });
 check('same rid output: no duplicate', o1b.ok && dsRows(L1, 'STITCH').length === 1 && readTab_(CFG.TABS.HOURLY_LOG).filter(r => r.dept === L1).length === 1);
@@ -380,7 +380,7 @@ check('PDR: bad date refused', call('rec1', 'm.pdr', { factory: '666', date: 'x'
 check('learning curve values: "60%", 0.6, 60, blank', planLc_('60%') === 60 && planLc_(0.6) === 60 && planLc_(60) === 60 && planLc_('') === 100);
 var D0 = (function () { var d = new Date(TODAY + 'T00:00:00'); d.setDate(d.getDate() - 2); return d.toISOString().slice(0, 10); })();
 md.data[3] = []; md.data[3][10] = JSON.stringify(['ts', 'SRN0620A', 'TOTE', L3, D0.split('-').reverse().join('/'), 'Mon', 100, 0, '{}', 10, '{}', 10, 10, 100, '', '50%']);
-cacheDelBig_('plan_agg'); try { CacheService.getScriptCache().remove('plan_agg#t'); } catch (e) {}
+cacheDelBig_('plan_agg'); cacheDelBig_('plan_lc'); try { CacheService.getScriptCache().remove('plan_agg#t'); } catch (e) {}
 var pD0 = planOf_(D0, L3, 'SRN0620A'), pAfter = planOf_(TODAY, L3, 'SRN0620A'), pL1 = planOf_(TODAY, L1, 'SRN0620A');
 check('plan day at 50%: rate of the day 1.0, full rate 2.0', pD0 && Math.abs(pD0.rate - 1) < 1e-9 && pD0.lc === 50 && Math.abs(pD0.rate100 - 2) < 1e-9, pD0);
 check('after the last plan day: 100% of the rate (2.0)', pAfter && pAfter.after === true && pAfter.lc === 100 && Math.abs(pAfter.rate - 2) < 1e-9, pAfter);
@@ -388,14 +388,14 @@ check('no plan before the plan starts / other SRN', planOf_(D0, L1, 'SRN0620A') 
 var pdr2 = call('admin', 'm.pdr', { factory: '666', date: TODAY });
 var lines2 = [].concat.apply([], pdr2.masters.map(m => m.lines));
 var pl1 = lines2.filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0], pl2 = lines2.filter(l => l.dept === L3 && l.srn === 'SRN0620A')[0];
-check('PDR plan output = rate of the day × actual production man-hours (L1, plan day)', pl1 && pl1.planFrom === 'plan' && pl1.planOut === Math.round(pL1.rate * pl1.manhours), [pl1, pL1 && pL1.rate]);
-check('PDR after the plan ended (L3): 100% rate × man-hours', pl2 && pl2.planFrom === 'after' && pl2.lc === 100 && pl2.planOut === Math.round(2 * pl2.manhours), pl2);
+check('PDR plan output like PMS: man-hours × 3600 ÷ SAM sec × LC (L1, plan day)', pl1 && pl1.planFrom === 'pms' && pl1.sam === 1200 && pl1.planOut === Math.round(pl1.manhours * 3600 / 1200 * hourlyLc_(TODAY, L1, 'SRN0620A')), [pl1, hourlyLc_(TODAY, L1, 'SRN0620A')]);
+check('PDR after the plan ended (L3): LC 100% × man-hours × 3600 ÷ SAM sec', pl2 && pl2.planFrom === 'pms' && pl2.lc === 100 && pl2.planOut === Math.round(pl2.manhours * 3600 / 1200), pl2);
 // no plan for the line: Making Bulletin SAM (20 min for SRN0620A) × the SRN's learning curve that day (L1 plan: 100%)
 md.data[3][10] = JSON.stringify(['ts', 'SRN0999Z', 'X', L3, D0.split('-').reverse().join('/'), 'Mon', 100, 0, '{}', 10, '{}', 10, 10, 100, '', '50%']);
-cacheDelBig_('plan_agg'); try { CacheService.getScriptCache().remove('plan_agg#t'); } catch (e) {}
+cacheDelBig_('plan_agg'); cacheDelBig_('plan_lc'); try { CacheService.getScriptCache().remove('plan_agg#t'); } catch (e) {}
 var pdr3 = call('admin', 'm.pdr', { factory: '666', date: TODAY });
 var pl3 = [].concat.apply([], pdr3.masters.map(m => m.lines)).filter(l => l.dept === L3 && l.srn === 'SRN0620A')[0];
-check('PDR without a line plan: bulletin SAM × learning curve × man-hours (like the hourly target)', pl3 && pl3.planFrom === 'sam' && pl3.sam === 20 && pl3.lc === 100 && pl3.planOut === Math.round(pl3.manhours * 60 / 20), pl3);
+check('PDR without a line plan: LC 1 × man-hours × 3600 ÷ SAM sec', pl3 && pl3.planFrom === 'pms' && pl3.sam === 1200 && pl3.lc === 100 && pl3.planOut === Math.round(pl3.manhours * 3600 / 1200), pl3);
 // ========== 22. PDR: endline (checked / pass) after the actual output, and floor-wise packing ==========
 seed(SOURCE_IDS.ENDLINE, 'Quality Endline data', [['h'], ['h'],
   ['13-Oct-2026', 'FAC666', TODAY, 'SRN0620A', 'TOTE', L1, 'Ground', 'Q1', 8, 100, 95, 5],
@@ -429,13 +429,13 @@ seed(SOURCE_IDS.CUTTING, 'cutting data_R', [['Timestamps', 'Date', 'SRN', 'Inten
 var keepK = md.data[2][10], ci = importCutting_();
 check('cutting-only import: header + rows in col L, other columns untouched', /2 rows/.test(ci) && md.data[0][11] === 'Cutting Data' && JSON.parse(md.data[2][11])[3] === 'Poly' && JSON.parse(md.data[3][11])[1] === 'SRN0610A' && !md.data[4][11] && md.data[2][10] === keepK, [ci, md.data[0][11], md.data[2][11]]);
 // ========== 24. report: overall per line / SRN (every day up to the date) and the endline table ==========
-var YD = fmtDate_(new Date(new Date(TODAY + 'T12:00:00').getTime() - 86400000)), YDs = YD.split('-').reverse().join('/');
+var YD = fmtDate_(new Date(new Date(TODAY + 'T12:00:00').getTime() - 86400000)), YDs = fmtSheetDate_(YD);   // the main sheet writes 6-Nov-2026
 var pdr6a = call('admin', 'm.pdr', { factory: '666', date: TODAY }), la = [].concat.apply([], pdr6a.masters.map(m => m.lines)).filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0];
 var DR = []; DR[0] = YDs; DR[2] = L1; DR[3] = 'SRN0620A'; DR[5] = 'Final'; DR[6] = 10; DR[7] = 8; DR[8] = 150; DR[12] = 0; dataSh.data.push(DR);
 var DR2 = DR.slice(); DR2[0] = '01/01/2099'; DR2[8] = 999; dataSh.data.push(DR2);   // after the report date: left out
 var pdr6 = call('admin', 'm.pdr', { factory: '666', date: TODAY }), lb = [].concat.apply([], pdr6.masters.map(m => m.lines)).filter(l => l.dept === L1 && l.srn === 'SRN0620A')[0];
 check('overall: the day before adds its output, a later date does not', la && lb && lb.ovOut === la.ovOut + 150 && lb.ovDays === la.ovDays + 1 && lb.ovFrom === YD && lb.out === la.out, [la && [la.ovOut, la.ovDays], lb && [lb.ovOut, lb.ovDays, lb.ovFrom]]);
-check('overall plan and variance: plan of each day (from its man-hours), variance = actual - plan', lb && lb.ovPlan > la.ovPlan && lb.ovVar === lb.ovOut - lb.ovPlan && pdr6.total.ovOut >= lb.ovOut, lb);
+check('overall plan and variance: plan of each day (from its man-hours; the day before the plan starts: LC 0), variance = actual - plan', lb && lb.ovPlan === la.ovPlan + Math.round(80 * 3600 / 1200 * hourlyLc_(YD, L1, 'SRN0620A')) && lb.ovVar === lb.ovOut - lb.ovPlan && pdr6.total.ovOut >= lb.ovOut, lb);
 var el = pdr6.endline || [], el1 = el.filter(e => e.dept === L1)[0];
 check('endline table: line-wise checked / pass / fail (reject column), no cutting in the reply', el.length === 2 && el1 && el1.checked === 100 && el1.pass === 95 && el1.fail === 5 && pdr6.total.endFail === 7 && !('cutting' in pdr6), el);
 // ========== 25. weekly report: a range of days (Monday..Saturday) ==========
