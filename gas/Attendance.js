@@ -90,6 +90,7 @@ function attSave_(req, user) {
   audit_(user, 'att.save', date + '|' + factory + '|' + dept + '|' + shift, result);
   // straight into the main attendance sheet (entered / changed: HR status blank; OT already there: kept)
   var sync = attSync_(date, factory, dept, shift, user, false);
+  if (req.phone) try { rebuildWaitingOutput_(date, factory, dept, shift, user); } catch (e) {}   // waiting output: plan from the attendance now
   return { ok: true, saved: result.saved, replaced: result.replaced, at: stamp, sheet: sync.ok ? sync.rows : -1, sheetError: sync.ok ? '' : sync.message };
 }
 

@@ -375,6 +375,7 @@ function mAttUpd_(req, user) {
   audit_(user, 'm.attUpd', date + '|' + factory + '|' + dept, { role: role, halfDay: hd, hours: hrs, absent: ab, copied: res.copied });
   // straight into the main attendance sheet, HR status kept
   var s = attSync_(date, factory, dept, 'Final', user, true);
+  try { rebuildWaitingOutput_(date, factory, dept, 'Final', user); } catch (e) {}   // waiting output: plan from the attendance now
   return { ok: true, copied: res.copied, inSheet: !!s.ok, sheetError: s.ok ? '' : s.message };
 }
 
@@ -648,6 +649,39 @@ function mOutReopen_(req, user) {
   if (blocked) return fail_('LOCKED', 'Already approved — it cannot be edited now');
   audit_(user, 'm.outReopen', date + '|' + factory + '|' + dept + '|' + shift, { rows: n });
   return { ok: true, reopened: n };
+}
+
+// Attendance changed after the output went for approval (phone): that line's waiting output of the date and shift is built
+// again from the attendance as it is now (manpower, hours, plan); its pieces, reason and sender stay. Approved / sent: left
+// alone; not done while another output of that line and date is sent back or a draft (it would be sent again unasked).
+function rebuildWaitingOutput_(date, factory, dept, shift, user) {
+  var keep = {}, other = false;
+  readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+    if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept || str_(r.type) !== 'STITCH') return;
+    var st = str_(r.status);
+    if (st === 'Rejected' || st === 'Draft') { other = true; return; }
+    if ((str_(r.shift) || 'Final') !== shift || st !== 'Submitted') return;
+    var p = parseJsonObj_(r.payload); keep[str_(r.srn).toUpperCase()] = { reason: str_(p.reason), editedBy: p.editedBy || '', by: str_(r.submitted_by) };
+  });
+  if (other || !Object.keys(keep).length) return 0;
+  var re = mOutReopen_({ date: date, factory: factory, dept: dept, shift: shift }, user);
+  if (!re.ok || !re.reopened) return 0;
+  var s = daySubmit_({ lite: true, date: date, factory: factory, dept: dept, onlyType: 'STITCH' }, user);
+  if (!s.ok) return 0;
+  var n = 0;
+  withLock_(function() {
+    readTab_(CFG.TABS.DAY_SUMMARY).forEach(function(r) {
+      if (str_(r.date) !== date || str_(r.factory) !== factory || str_(r.dept) !== dept || str_(r.type) !== 'STITCH' || (str_(r.shift) || 'Final') !== shift || str_(r.status) !== 'Submitted') return;
+      var k = keep[str_(r.srn).toUpperCase()]; if (!k) return;
+      var p = parseJsonObj_(r.payload); if (k.reason) p.reason = k.reason; if (k.editedBy) p.editedBy = k.editedBy;
+      setField_(CFG.TABS.DAY_SUMMARY, r._row, 'payload', JSON.stringify(p));
+      if (k.by) setField_(CFG.TABS.DAY_SUMMARY, r._row, 'submitted_by', k.by);
+      n++;
+    });
+    invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+  });
+  audit_(user, 'out.rebuild', date + '|' + factory + '|' + dept + '|' + shift, { rows: n, why: 'attendance changed' });
+  return n;
 }
 
 // { id } (admin) -> "Making Output Report" of that line + SRN: every day's output from the main stitching sheet, the

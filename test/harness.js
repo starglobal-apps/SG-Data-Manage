@@ -503,4 +503,18 @@ check('phone gets the bulletin seconds and the learning curve map', att27.samB &
 // ========== 28. OT hourly target apart from the shift target: the phone gets the OT people by role ==========
 var at28 = call('admin', 'm.att', { factory: '666', date: TODAY }), otIt = (at28.items || []).filter(x => x.ot > 0)[0];
 check('line with OT: OT people by role (sum = OT count) for its own hourly target', otIt && Object.keys(otIt.otRoles || {}).reduce((t, k) => t + otIt.otRoles[k], 0) === otIt.ot && 'otSrn' in otIt, otIt && [otIt.dept, otIt.ot, otIt.otRoles, otIt.otSrn]);
+// ========== 29. attendance changed after the output went for approval: the waiting output's plan follows ==========
+var R29 = h => [{ role: 'Operator', hours: h, count: 10 }, { role: 'Helper', hours: h, count: 2 }];
+call('rec1', 'att.save', { phone: true, rid: 'a29a', date: TODAY, factory: '666', dept: L2, shift: 'Final', srn: 'SRN0620A', floor: 'Ground', supervisor: 'S', incharge: 'I', rows: R29(4) });
+var o29 = call('rec1', 'm.outSave', { rid: 'o29', date: TODAY, factory: '666', dept: L2, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 222, other: 0, floor: 'Ground', allowOver: true, reason: 'new style' });
+var d29 = () => { var r = readTab_(CFG.TABS.DAY_SUMMARY).filter(x => x.date === TODAY && x.dept === L2 && x.type === 'STITCH' && (x.shift || 'Final') === 'Final' && x.status === 'Submitted'); return r.length === 1 ? Object.assign({ by: r[0].submitted_by }, parseJsonObj_(r[0].payload)) : r.length; };
+var b29 = d29();
+call('rec1', 'att.save', { phone: true, rid: 'a29b', date: TODAY, factory: '666', dept: L2, shift: 'Final', srn: 'SRN0620A', floor: 'Ground', supervisor: 'S', incharge: 'I', rows: R29(8) });
+var a29 = d29();
+check('attendance 4 h -> 8 h after the output was sent: plan rebuilt bigger, pieces / reason / sender stay, still waiting', o29.ok && b29.hours < 8 && a29.hours === 8 && a29.plan > b29.plan && a29.output === 222 && a29.reason === 'new style' && a29.by === b29.by, [b29.hours, a29.hours, b29.plan, a29.plan, a29.output, a29.reason, a29.by, b29.by]);
+call('rec1', 'm.attUpd', { rid: 'a29c', date: TODAY, factory: '666', dept: L2, role: 'Operator', halfDay: 2, hours: 4, absent: 0 });
+var h29 = d29();
+check('half day after the output was sent: plan follows (2 operators only 4 h)', h29.plan < a29.plan && h29.output === 222, [a29.plan, h29.plan]);
+call('rec1', 'm.outSave', { rid: 'o29b', date: TODAY, factory: '666', dept: L2, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 222, other: 0, floor: 'Ground', allowOver: true, reason: 'new style' });
+check('rebuilt plan = the plan of saving the output again now', d29().plan === h29.plan, [h29.plan, d29().plan]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);
