@@ -219,23 +219,31 @@
     shown.forEach(function (x) {
       var st = x.status || '', lock = st === 'Submitted' || st === 'Approved' || st === 'Sent';
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.rolesNow || x.roles), x.dept) : null;   // production people there now
+      var tgOt = otTarget(x);
       html += '<div class="chk-line done al-done pl-card"><div class="b">' +
         '<div class="pl-h"><span class="n">' + esc(S.shortLine(x.dept)) + '</span>' + (x.srn ? '<span class="pl-srn">' + esc(x.srn) + '</span>' : '') +
           (x.supervisor || x.incharge ? '<span class="pl-staff">' + (x.supervisor ? '<span><i>Sup</i> ' + esc(nm(x.supervisor)) + '</span>' : '') + (x.incharge ? '<span><i>Inc</i> ' + esc(nm(x.incharge)) + '</span>' : '') + '</span>' : '') +
           (lock ? '<em class="tag warn">' + (st === 'Submitted' ? 'In review' : st === 'Sent' ? 'In sheet' : esc(st)) + '</em>'
                 : '<button type="button" class="pl-edit" data-acts="' + esc(x.dept) + '" aria-label="Update ' + esc(S.shortLine(x.dept)) + '">' + icon('edit') + '</button>') + '</div>' +
         '<div class="pl-kv"><div class="pl-mpc"><button type="button" class="pl-mp" data-mp="' + esc(x.dept) + '"><small>Manpower ▾</small><b>' + (+x.count || 0) + (!x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count ? '<i> now ' + x.mpNow + '</i>' : '') + '</b></button></div>' +
-          '<div><small>Hourly target</small>' + (tg && tg.ok ? '<b>' + tg.v + '<i> pcs</i></b>' : '<b class="na">—</b>') + '</div>' +
+          '<div><small>Hourly target</small>' + (tg && tg.ok ? '<b>' + tg.v + '<i> pcs</i></b>' : '<b class="na">—</b>') + (tgOt ? '<em class="pl-ot">OT ' + tgOt.v + ' pcs</em>' : '') + '</div>' +
           '<div><small>Recorder</small><b class="who">' + esc(nm(x.by) || (x.fromSheet ? 'Main sheet' : '—')) + '</b></div></div>' +
         x.ob.map(obLine).join('') + '</div></div>';
     });
     if (PA.items.length) html += '<div class="sticky-bottom"><button class="btn big wa" data-wa="Final" style="display:flex;align-items:center;justify-content:center;gap:8px">' + icon('wa') + ' Send attendance to group · ' + PA.items.length + (PA.items.length > 1 ? ' lines' : ' line') + '</button></div>';
     box().innerHTML = html;
   }
+  // OT hourly target: the same formula with the OT people (OT attendance of that date), separate from the shift target
+  function otTarget(x) {
+    if (!x.ot || x.cat !== 'STITCH' || !x.otRoles) return null;
+    var srn = x.otSrn || x.srn, t = srn ? S.hourlyTarget(srn, S.targetMp(x.otRoles), x.dept) : null;
+    return t && t.ok ? t : null;
+  }
   // pencil on a line card: the update actions as buttons (+ what changed on that line today)
   function actsSheet(x) {
     var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.rolesNow || x.roles), x.dept) : null, ev = evText(x);
-    var info = [x.fromSheet ? 'Filled in the main sheet' : '', x.status === 'Synced' ? 'In main sheet ✓' : '', ev, x.ot ? 'OT ' + x.ot + ' people' : '', x.night ? 'Night ' + x.night + ' people' : '',
+    var tgOt = otTarget(x);
+    var info = [x.fromSheet ? 'Filled in the main sheet' : '', x.status === 'Synced' ? 'In main sheet ✓' : '', ev, tg && tg.ok ? 'Shift hourly target ' + tg.v + ' pcs' : '', x.ot ? 'OT ' + x.ot + ' people' + (tgOt ? ' · OT hourly target ' + tgOt.v + ' pcs' : '') : '', x.night ? 'Night ' + x.night + ' people' : '',
       !x.fromSheet && x.mpNow !== undefined && x.mpNow !== x.count ? 'Manpower now ' + x.mpNow : ''].filter(Boolean);
     var html = '<div class="pl-acts">' +
       '<button class="btn ghost" data-chg="' + esc(x.dept) + '">Change attendance<small>line, SRN, roles</small></button>' +

@@ -500,4 +500,7 @@ var htT = hourlyTargetOf_('2026-10-23', SL30, 'SRN0800A', 20), htB = samSecOf_('
 check('typed SAM (minutes × 60) only when no bulletin; the bulletin wins over a typed SAM', htT && htT.sec === 720 && htT.v === 100 && htB.by === 'bulletin', [htT, htB]);
 var att27 = call('admin', 'm.att', { factory: '666', date: TODAY });
 check('phone gets the bulletin seconds and the learning curve map', att27.samB && att27.samB.SRN0621A === 792 && att27.lc && typeof att27.sam === 'object', [att27.samB && att27.samB.SRN0621A, att27.lc]);
+// ========== 28. OT hourly target apart from the shift target: the phone gets the OT people by role ==========
+var at28 = call('admin', 'm.att', { factory: '666', date: TODAY }), otIt = (at28.items || []).filter(x => x.ot > 0)[0];
+check('line with OT: OT people by role (sum = OT count) for its own hourly target', otIt && Object.keys(otIt.otRoles || {}).reduce((t, k) => t + otIt.otRoles[k], 0) === otIt.ot && 'otSrn' in otIt, otIt && [otIt.dept, otIt.ot, otIt.otRoles, otIt.otSrn]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

@@ -70,6 +70,7 @@ function lineVisible_(user, owners, dept) {
   return !mineLines.length || mineLines.indexOf(dept) >= 0;
 }
 
+function otRolesOf_(rows) { var o = {}; rows.forEach(function(r) { o[str_(r.role)] = (o[str_(r.role)] || 0) + num_(r.count); }); return o; }
 // { date, factory } -> the phone Attendance tab: only lines with attendance on that date (app, or typed in the sheet),
 // the user's lines for the "line code" picker, manpower now, changes, status, SAM map, WhatsApp data.
 function mAtt_(req, user) {
@@ -98,7 +99,8 @@ function mAtt_(req, user) {
     var ev = mEvents_(events, d.dept), mpNow = fromSheet ? count : mpAtSlot_(attDay, events, d.dept, slot);
     var rolesNow = fromSheet ? roles : rolesAtSlot_(attDay, events, d.dept, slot);   // people there now (half day / absent / transfers): the hourly target
     items.push({ dept: d.dept, cat: d.cat, count: count, srn: srn, supervisor: sup, incharge: inc, by: by, fromSheet: fromSheet, inSheet: !!shF, roles: roles,
-                 ot: otCount, night: night, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow, rolesNow: rolesNow });
+                 ot: otCount, night: night, status: st[d.dept + '|ATT'] || '', events: ev, mpNow: mpNow, rolesNow: rolesNow,
+                 otRoles: otRolesOf_(ot), otSrn: ot.length ? str_(ot[0].srn) : '' });   // OT people by role: the OT hourly target
     wa.depts.push({ dept: d.dept, cat: d.cat });
     wa.att[d.dept + '|Final'] = count; wa.attRoles[d.dept + '|Final'] = roles; if (srn) wa.attSrn[d.dept] = srn;
     ev.forEach(function(e) { wa.eventList.push({ dept: d.dept, role: e.role, event: e.event, count: e.count, time: e.time }); });
