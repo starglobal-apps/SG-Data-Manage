@@ -517,4 +517,17 @@ var h29 = d29();
 check('half day after the output was sent: plan follows (2 operators only 4 h)', h29.plan < a29.plan && h29.output === 222, [a29.plan, h29.plan]);
 call('rec1', 'm.outSave', { rid: 'o29b', date: TODAY, factory: '666', dept: L2, shift: 'Final', slot: '17-18', srn: 'SRN0620A', qty: 222, other: 0, floor: 'Ground', allowOver: true, reason: 'new style' });
 check('rebuilt plan = the plan of saving the output again now', d29().plan === h29.plan, [h29.plan, d29().plan]);
+// ========== 30. no double attendance: saving reads the sheet as it is now, never a stale cached copy ==========
+var D30 = '2026-10-05', R30 = n => [{ role: 'Operator', hours: 8, count: n }, { role: 'Helper', hours: 8, count: 4 }];
+call('rec2', 'att.save', { phone: true, rid: 'a30a', date: D30, factory: '666', dept: L3, shift: 'Final', srn: 'SRN0620A', floor: 'First', supervisor: 'S', incharge: 'I', rows: R30(23) });
+readDaily_(CFG.TABS.ATT_DAILY); call('rec2', 'm.att', { factory: '666', date: D30 });   // a copy is cached
+var attSh = APP.getSheetByName(sheetOf_(CFG.TABS.ATT_DAILY)), head30 = physHeadOf_(CFG.TABS.ATT_DAILY), evLabel = store_(CFG.TABS.MANPOWER_EVENTS).label;
+var other = head30.map(h => h === 'table' ? evLabel : h === 'id' ? 'keep-me' : h === 'date' ? D30 : h === 'dept' ? L1 : h === 'factory' ? '666' : h === 'event' ? 'ABSENT' : h === 'count' ? 1 : h === 'role' ? 'Helper' : '');
+attSh.data.splice(1, 0, other);   // another phone's row lands above: every row number moves, the cached copy is now wrong
+DAILY_MEM_ = {};
+call('rec2', 'att.save', { phone: true, rid: 'a30b', date: D30, factory: '666', dept: L3, shift: 'Final', srn: 'SRN0620A', floor: 'First', supervisor: 'S', incharge: 'I', rows: R30(25) });
+DAILY_MEM_ = {}; cacheDelBig_('daily:' + CFG.TABS.ATT_DAILY);
+var a30 = readTab_(CFG.TABS.ATT_DAILY).filter(r => r.date === D30 && r.dept === L3 && r.shift === 'Final'), ops30 = a30.filter(r => r.role === 'Operator');
+var kept30 = attSh.data.some(r => r && r[head30.indexOf('id')] === 'keep-me');
+check('attendance saved after the cached copy went stale: one copy only (25 operators), the other row untouched', ops30.length === 1 && ops30[0].count === 25 && a30.length === 2 && kept30, [a30.map(r => r.role + ' ' + r.count), kept30]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

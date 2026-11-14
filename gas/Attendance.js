@@ -79,11 +79,18 @@ function attSave_(req, user) {
       var ev = readDaily_(CFG.TABS.MANPOWER_EVENTS).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept; });
       deleteRows_(CFG.TABS.MANPOWER_EVENTS, ev.map(function(r) { return r._row; }));
     }
+    var ids = {};
     appendRows_(CFG.TABS.ATT_DAILY, clean.map(function(c) {
-      return { id: uuid_(), date: date, factory: factory, dept: dept, shift: shift, role: c.role,
+      var id = uuid_(); ids[id] = 1;
+      return { id: id, date: date, factory: factory, dept: dept, shift: shift, role: c.role,
                hours: c.hours, count: c.count, entered_by: userName_(user), entered_at: stamp, srn: srn, supervisor: supervisor, incharge: incharge, qc_names: qcNames, floor: floor };
     }));
-    return { replaced: existing.length, saved: clean.length };
+    // never two copies of a line's attendance: anything else of this date / line / shift still there goes
+    var left = readDaily_(CFG.TABS.ATT_DAILY).filter(function(r) {
+      return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.shift) === shift && !ids[str_(r.id)];
+    });
+    if (left.length) deleteRows_(CFG.TABS.ATT_DAILY, left.map(function(r) { return r._row; }));
+    return { replaced: existing.length + left.length, saved: clean.length };
   });
 
   if (floor && clean.length) try { lineFloorSet_(dept, factory, floor); } catch (e) {}   // the line's floor for everything else (output rows, reports)

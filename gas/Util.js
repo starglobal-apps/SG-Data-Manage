@@ -132,10 +132,16 @@ function audit_(user, action, ref, detail) {
   } catch (e) {}
 }
 
+// Inside the lock the day tables are read straight from the sheet (never a cached copy): rows are deleted / changed by
+// their row number, and a copy cached by another phone a moment earlier could point at the wrong rows (attendance saved
+// twice, 13 Nov 2026).
+var LOCK_DEPTH_ = 0;
 function withLock_(fn) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
-  try { return fn(); } finally { lock.releaseLock(); }
+  if (!LOCK_DEPTH_) DAILY_MEM_ = {};
+  LOCK_DEPTH_++;
+  try { return fn(); } finally { LOCK_DEPTH_--; if (!LOCK_DEPTH_) DAILY_MEM_ = {}; lock.releaseLock(); }
 }
 
 function json_(o) {
@@ -200,10 +206,12 @@ function readRecent_(name, n) {
 var DAILY_MEM_ = {};
 function readDaily_(name) {
   if (DAILY_MEM_[name]) return DAILY_MEM_[name];
+  if (LOCK_DEPTH_) return (DAILY_MEM_[name] = readRecent_(name, 3000));   // saving: the sheet as it is now
   var hit = cacheGetBig_('daily:' + name);
   if (hit) { DAILY_MEM_[name] = hit; return hit; }
-  var rows = readRecent_(name, 3000);
-  cachePutBig_('daily:' + name, rows, 600);
+  // cached only when nothing was written while reading (else the copy would already be out of date)
+  var v0 = dataVer_(), rows = readRecent_(name, 3000);
+  if (dataVer_() === v0) { cachePutBig_('daily:' + name, rows, 600); if (dataVer_() !== v0) cacheDelBig_('daily:' + name); }
   DAILY_MEM_[name] = rows;
   return rows;
 }
