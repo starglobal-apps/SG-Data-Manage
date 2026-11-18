@@ -799,6 +799,18 @@ function mOutSave_(req, user) {
   if (date === todayStr_() && shift === 'Final') { var oa = outOpensFor_(date, factory, dept); if (nowHm_() < oa) return fail_('EARLY', 'Today\'s output of this line can be entered from ' + hm12_(oa)); }
   var re = mOutReopen_({ date: date, factory: factory, dept: dept, shift: shift }, user);
   if (!re.ok) return re;
+  // output sent back by the admin, saved again with another SRN: the old SRN's output of that line / shift goes
+  // (only when that SRN's review row is Rejected; dayBuild_ then replaces its row with the new SRN's)
+  var oldSrn = str_(req.oldSrn), newSrn = str_(req.srn);
+  var moved = -1;
+  if (oldSrn && oldSrn !== newSrn) withLock_(function() {
+    var rej = readTab_(CFG.TABS.DAY_SUMMARY).some(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.type) === 'STITCH' && (str_(r.shift) || 'Final') === shift && str_(r.srn) === oldSrn && str_(r.status) === 'Rejected'; });
+    if (!rej) return;
+    var old = readTab_(CFG.TABS.HOURLY_LOG).filter(function(r) { return str_(r.date) === date && str_(r.factory) === factory && str_(r.dept) === dept && str_(r.type) === 'STITCH' && (str_(r.shift) || 'Final') === shift && str_(r.srn) === oldSrn; });
+    if (old.length) { deleteRows_(CFG.TABS.HOURLY_LOG, old.map(function(r) { return r._row; })); invalidateDaily_(CFG.TABS.HOURLY_LOG); }
+    moved = old.length;
+  });
+  if (moved >= 0) audit_(user, 'm.outSrn', date + '|' + factory + '|' + dept + '|' + shift, { from: oldSrn, to: newSrn, rows: moved });
   var h = hourSave_({ lite: true, date: date, factory: factory, slot: str_(req.slot),
                       items: [{ type: 'STITCH', dept: dept, srn: str_(req.srn), qty: num_(req.qty) - num_(req.other), floor: str_(req.floor), allowOver: !!req.allowOver, keepZero: true }] }, user);
   if (!h.ok) return h;

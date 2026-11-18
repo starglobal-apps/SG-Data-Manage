@@ -116,7 +116,8 @@
   function openLine(l) {
     if (!l) return;
     var opts = l.srns || [], cur = l.entries[0] || { srn: l.attSrn || (opts[0] || {}).srn || '', total: 0, other: 0 };
-    var fixed = !!l.entries.length;
+    // sent back by the admin: the recorder may pick another SRN (one SRN, nothing filled hour-wise from the computer)
+    var canSrn = l.status === 'Rejected' && l.entries.length === 1 && !num(cur.other), fixed = !!l.entries.length && !canSrn;
     var mpNote = l.events && l.events.length ? l.events.map(function (e) { return e.event === 'LINE_CLOSED' ? 'line closed ' + e.time : e.count + ' ' + e.role + ' ' + evLabel(e.event) + (e.time ? ' ' + e.time : ''); }).join(', ') : '';
     var html = '<div class="mo-info"><div><span>People</span><b>' + l.mp + '</b>' + (l.mp !== l.mpBase ? '<small>morning ' + l.mpBase + '</small>' : '') + '</div><div><span>Hours</span><b>' + l.hours + '</b></div><div><span>Date</span><b style="font-size:15px">' + esc(S.fmtDay(l.date)) + '</b></div></div>' +
       (mpNote ? '<div class="hint" style="margin:0 0 8px">Changes: ' + esc(mpNote) + '</div>' : '') +
@@ -149,7 +150,7 @@
       if (q > 0 && !srn) { toast('Select SRN', 'bad'); return; }
       if (q < num(cur.other)) { toast(cur.other + ' already filled hour-wise from computer — total cannot be less than ' + cur.other, 'bad', 6000); return; }
       var why = ($('#mo-why') || {}).value || '';
-      var c = check(), go = function () { saveLine(l, { srn: srn, qty: q, other: num(cur.other), allowOver: c.over > 0, reason: why.trim() }); };
+      var c = check(), go = function () { saveLine(l, { srn: srn, oldSrn: canSrn && cur.srn !== srn ? cur.srn : '', qty: q, other: num(cur.other), allowOver: c.over > 0, reason: why.trim() }); };
       if (q === 0) { S.ask('Save 0 pieces for ' + S.shortLine(l.dept) + ' (' + shLabel(l.shift) + ')? It goes to the admin as no output.', { ok: 'Yes, 0 output', cancel: 'Cancel' }).then(function (ok) { if (ok) go(); }); return; }
       if (c.over > 0) S.ask(c.over + ' pcs more than loading. Save anyway? Admin gets an alert.', { ok: 'Yes, save', cancel: 'Let me fix it' }).then(function (ok) { if (ok) go(); });
       else go();
@@ -160,7 +161,7 @@
   // shown at once as "waiting for approval", sent in the background in one call (phone.js outbox, m.outSave);
   // a failed one stays there with Resend
   function saveLine(l, x) {
-    S.pd.send('m.outSave', { date: l.date, factory: state.factory, dept: l.dept, shift: l.shift, slot: l.slot, srn: x.srn, qty: x.qty, other: x.other, floor: l.floor, allowOver: x.allowOver, reason: x.reason || '' },
+    S.pd.send('m.outSave', { date: l.date, factory: state.factory, dept: l.dept, shift: l.shift, slot: l.slot, srn: x.srn, qty: x.qty, other: x.other, floor: l.floor, allowOver: x.allowOver, reason: x.reason || '', oldSrn: x.oldSrn || '' },
               { kind: 'out', dept: l.dept, date: l.date, shift: l.shift, label: 'Output ' + x.qty + ' pcs', line: { mp: l.mp, mpBase: l.mpBase, hours: l.hours, srn: x.srn, qty: x.qty } });
     S.sheet.close();
     toast('Saved · ' + S.shortLine(l.dept) + ' sent for approval ✓', 'ok');
