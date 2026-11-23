@@ -488,13 +488,14 @@ mdRows.forEach((r, i) => { md.data[40 + i] = md.data[40 + i] || []; md.data[40 +
 cacheDelBig_('plan_lc'); cacheDelBig_('bulletin_sam2');
 var ht = hourlyTargetOf_('2026-10-23', SL30, 'SRN0621A', 52);
 check('PMS case: 23-Oct SL030 SRN0621A, 52 people, SAM 792 s, LC 1 (after the plan) -> 236 / hr', ht && ht.sec === 792 && ht.lc === 1 && ht.v === 236, ht);
-check('learning curve: before the plan 0, blank P = qty ÷ target, newest re-entry only, holiday = day before, col P, after the plan 1, no plan 1',
-  hourlyLc_('2026-10-11', SL30, 'SRN0621A') === 0 && hourlyLc_('2026-10-12', SL30, 'SRN0621A') === 0.3 && hourlyLc_('2026-10-13', SL30, 'SRN0621A') === 0.8 &&
-  hourlyLc_('2026-10-14', SL30, 'SRN0621A') === 0.8 && hourlyLc_('2026-10-15', SL30, 'SRN0621A') === 0.6 && hourlyLc_('2026-10-17', SL30, 'SRN0621A') === 0.6 &&
-  hourlyLc_('2026-10-21', SL30, 'SRN0621A') === 1 && hourlyLc_('2026-10-12', 'FAC666-Line 9-SL099', 'SRN0621A') === 1,
-  ['11', '12', '13', '14', '15', '17', '21'].map(d => hourlyLc_('2026-10-' + d, SL30, 'SRN0621A')));
+check('learning curve from the plan (kept, not used): before the plan 0, blank P = qty ÷ target, newest re-entry only, holiday = day before, col P, after the plan 1, no plan 1',
+  hourlyLcFromPlan_('2026-10-11', SL30, 'SRN0621A') === 0 && hourlyLcFromPlan_('2026-10-12', SL30, 'SRN0621A') === 0.3 && hourlyLcFromPlan_('2026-10-13', SL30, 'SRN0621A') === 0.8 &&
+  hourlyLcFromPlan_('2026-10-14', SL30, 'SRN0621A') === 0.8 && hourlyLcFromPlan_('2026-10-15', SL30, 'SRN0621A') === 0.6 && hourlyLcFromPlan_('2026-10-17', SL30, 'SRN0621A') === 0.6 &&
+  hourlyLcFromPlan_('2026-10-21', SL30, 'SRN0621A') === 1 && hourlyLcFromPlan_('2026-10-12', 'FAC666-Line 9-SL099', 'SRN0621A') === 1,
+  ['11', '12', '13', '14', '15', '17', '21'].map(d => hourlyLcFromPlan_('2026-10-' + d, SL30, 'SRN0621A')));
 var ht0 = hourlyTargetOf_('2026-10-22', SL30, 'SRN0700A', 30);
-check('sub-SRN without a bulletin uses the master SRN (SRN0700A -> SRN0700, 600 s); LC 0 stays 0', ht0 && ht0.sec === 600 && ht0.lc === 0 && ht0.v === 0 && /SRN0700/.test(ht0.by), ht0);
+check('sub-SRN without a bulletin uses the master SRN (SRN0700A -> SRN0700, 600 s); LC always 100% (a 0% plan day too)', ht0 && ht0.sec === 600 && ht0.lc === 1 && ht0.v === 180 && /SRN0700/.test(ht0.by), ht0);
+check('LC always 100%: before the plan, a plan day at 30%, no plan', ['2026-10-11', '2026-10-12'].every(d => hourlyLc_(d, SL30, 'SRN0621A') === 1) && hourlyLc_('2026-10-12', 'FAC666-Line 9-SL099', 'SRN0621A') === 1);
 appendRows_(CFG.TABS.MASTERS, [{ type: 'SAM', key: 'SRN0800A', value: 12, extra: 'admin', active: 'TRUE' }]); invalidateMasters_();
 var htT = hourlyTargetOf_('2026-10-23', SL30, 'SRN0800A', 20), htB = samSecOf_('SRN0621A');
 check('typed SAM (minutes × 60) only when no bulletin; the bulletin wins over a typed SAM', htT && htT.sec === 720 && htT.v === 100 && htB.by === 'bulletin', [htT, htB]);

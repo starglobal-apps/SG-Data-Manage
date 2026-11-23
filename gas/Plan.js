@@ -151,7 +151,12 @@ function hourlyLcAgg_() {
   cachePutBig_('plan_lc', out, 1800);
   return out;
 }
+// LC is always 100% (user, 23 Nov 2026: the production plan changes again and again, its 0% days left lines with no
+// target): hourly target, OT target and plan output = 3600 × people ÷ SAM seconds. The plan-based factor below is kept.
 function hourlyLc_(date, dept, srn) {
+  return 1;
+}
+function hourlyLcFromPlan_(date, dept, srn) {
   var x = hourlyLcAgg_()[str_(dept) + '|' + str_(srn).toUpperCase()];
   if (!x) return 1;
   date = str_(date);
