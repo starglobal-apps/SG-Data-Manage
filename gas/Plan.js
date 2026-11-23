@@ -166,6 +166,31 @@ function hourlyLcFromPlan_(date, dept, srn) {
   var f = 0; Object.keys(x.days).sort().forEach(function(d) { if (d < date) f = x.days[d]; });   // a day between plan rows
   return f;
 }
+// Extension days of the production plan: Day column (F) like "Mon (Ext)" -> { 'line|SRN': { date: 1 } } (newest re-entry
+// per SRN|line|date|delivery date, as the learning curve). The phone shows "Ext" on that line's card.
+function planExtAgg_() {
+  var hit = cacheGetBig_('plan_ext'); if (hit) return hit;
+  var newest = {}, md = getSS_().getSheetByName(MASTER_SHEET_NAME);
+  if (md && md.getLastRow() >= 3 && md.getLastColumn() >= 11) {
+    md.getRange(3, 11, md.getLastRow() - 2, 1).getValues().forEach(function(row) {
+      var a = parseJson_(row[0]); if (!a) return;
+      var d = planDate_(a[4]), srn = str_(a[1]).toUpperCase(), line = str_(a[3]); if (!d || !/^SRN/.test(srn) || !line) return;
+      var k = line + '|' + srn + '|' + d + '|' + str_(a[14]), t = lcTs_(a[0]);
+      if (!newest[k] || t >= newest[k].t) newest[k] = { t: t, ext: /\(\s*ext\s*\)/i.test(str_(a[5])) };
+    });
+  }
+  var out = {};
+  Object.keys(newest).forEach(function(k) { if (!newest[k].ext) return; var p = k.split('|'); (out[p[0] + '|' + p[1]] = out[p[0] + '|' + p[1]] || {})[p[2]] = 1; });
+  cachePutBig_('plan_ext', out, 1800);
+  return out;
+}
+// { 'line|SRN': 1 } for the lines on an extension day of the plan on that date
+function planExtMap_(date, depts) {
+  var all = planExtAgg_(), want = {}, out = {};
+  depts.forEach(function(d) { want[d] = 1; });
+  Object.keys(all).forEach(function(lk) { if (want[lk.split('|')[0]] && all[lk][date]) out[lk] = 1; });
+  return out;
+}
 // { 'line|SRN': factor } of a date for these lines (the phone works the target out with the people there now)
 function hourlyLcMap_(date, depts) {
   var all = hourlyLcAgg_(), want = {}, out = {};

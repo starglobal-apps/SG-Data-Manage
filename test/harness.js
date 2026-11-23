@@ -546,4 +546,14 @@ check('saved again with another SRN: one waiting row of the new SRN, the old SRN
 var ap31 = call('admin', 'm.reviewDecide', { ids: [d31[0].id], decision: 'approve', remark: 'ok', override: true, reasons: {} });
 var o31c = call('rec1', 'm.outSave', { rid: 'o31c', date: D31, factory: '666', dept: L1, shift: 'Final', slot: '17-18', srn: 'SRN0620A', oldSrn: 'SRN0621A', qty: 100, other: 0, floor: 'Ground', allowOver: true, reason: '' });
 check('approved output: SRN cannot be changed by the recorder', ap31.ok && !o31c.ok && hl31().join() === 'SRN0621A:100', [o31c, hl31()]);
+// ========== 32. plan extension days: "Mon (Ext)" in the plan's Day column -> Ext on the line's card ==========
+var PRX = (ts, srn, line, d, day, del) => JSON.stringify([ts, srn, 'X', line, d, day, 0, 0, '', 40, '{}', 40, 10, 1000, del, 0]);
+var TODAYdmy = TODAY.split('-').reverse().join('/');
+var extRows = [PRX('21/11/2026 16:25:33', 'SRN0620A', L1, TODAYdmy, 'Mon (Ext)', '18/11/2026'), PRX('21/11/2026 16:25:33', 'SRN0620A', L2, TODAYdmy, 'Mon', '18/11/2026')];
+extRows.forEach((r, i) => { md.data[60 + i] = md.data[60 + i] || []; md.data[60 + i][10] = r; });
+cacheDelBig_('plan_ext');
+var em = planExtMap_(TODAY, [L1, L2]);
+check('plan extension: "Mon (Ext)" day -> Ext for that line + SRN, a normal day none', em[L1 + '|SRN0620A'] === 1 && !em[L2 + '|SRN0620A'], em);
+var ma32 = call('admin', 'm.att', { factory: '666', date: TODAY });
+check('m.att carries the extension map', ma32.ok && ma32.ext && ma32.ext[L1 + '|SRN0620A'] === 1, ma32.ext);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

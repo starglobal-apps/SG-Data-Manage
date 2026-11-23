@@ -114,7 +114,8 @@ function mAtt_(req, user) {
   var plan = {}; try { plan = planOfDay_(date, depts.map(function(d) { return d.dept; })); } catch (e) {}   // production plan of the date (learning curve)
   // hourly target on the phone: 3600 × productive people now ÷ SAM seconds × learning curve factor
   var samB = {}, lcMap = {}; try { samB = bulletinSec_(); } catch (e) {} try { lcMap = hourlyLcMap_(date, depts.map(function(d) { return d.dept; })); } catch (e) {}
-  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: typedSamMap_(), samB: samB, lc: lcMap, plan: plan, incoming: tr.incoming, allLines: allLines };
+  var ext = {}; try { ext = planExtMap_(date, depts.map(function(d) { return d.dept; })); } catch (e) {}   // plan extension days ("Mon (Ext)")
+  return { ok: true, date: date, items: items, lines: pick, wa: wa, sam: typedSamMap_(), samB: samB, lc: lcMap, ext: ext, plan: plan, incoming: tr.incoming, allLines: allLines };
 }
 
 // Phone Output tab: every line / shift (from PHONE_FROM up to today) that has attendance — in the app or typed in the

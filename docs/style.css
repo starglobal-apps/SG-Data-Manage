@@ -758,7 +758,8 @@ body.phone .pl-kv b.na { color: #cbd5e1; } body.phone .pl-kv b.who { font-size: 
 body.phone .pl-staff { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; font-size: 11px; line-height: 1.25; color: var(--text); font-weight: 600; }
 body.phone .pl-staff span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body.phone .pl-staff i { font-style: normal; font-weight: 600; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
-body.phone .pl-h .n, body.phone .pl-srn { flex: none; }
+body.phone .pl-h .n, body.phone .pl-srn, body.phone .pl-ext { flex: none; }
+body.phone .pl-ext { font-size: 11px; font-weight: 800; color: #fff; background: var(--bad); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
 body.phone .pl-h .n { max-width: 46%; }
 /* "turn on notifications" card (phone Attendance tab) */
 body.phone .nt-ask { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-color: #c7d6fb; background: #f4f7ff; }

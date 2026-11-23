@@ -162,7 +162,7 @@
   var PA = { items: [], lines: [], wa: null, incoming: [], allLines: [] };
   // data comes from the phone store (phone.js): drawn at once, fetched only when missing / old / after a save
   function applyAtt(d) {
-    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; S.samB = d.samB || {}; S.lcMap = d.lc || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || []; S.allLines = PA.allLines;
+    PA.loading = !!d.loading; PA.items = d.items || []; PA.lines = d.lines || []; PA.wa = d.wa; S.samMap = d.sam || {}; S.samB = d.samB || {}; S.lcMap = d.lc || {}; S.extMap = d.ext || {}; PA.incoming = d.incoming || []; PA.allLines = d.allLines || []; S.allLines = PA.allLines;
     trBadge(PA.incoming.length);
     renderPhoneAtt();
   }
@@ -221,7 +221,7 @@
       var tg = x.srn && x.cat === 'STITCH' ? S.hourlyTarget(x.srn, S.targetMp(x.rolesNow || x.roles), x.dept) : null;   // production people there now
       var tgOt = otTarget(x);
       html += '<div class="chk-line done al-done pl-card"><div class="b">' +
-        '<div class="pl-h"><span class="n">' + esc(S.shortLine(x.dept)) + '</span>' + (x.srn ? '<span class="pl-srn">' + esc(x.srn) + '</span>' : '') +
+        '<div class="pl-h"><span class="n">' + esc(S.shortLine(x.dept)) + '</span>' + (x.srn ? '<span class="pl-srn">' + esc(x.srn) + '</span>' : '') + (x.srn && (S.extMap || {})[x.dept + '|' + String(x.srn).toUpperCase()] ? '<span class="pl-ext" title="Plan extension">Ext</span>' : '') +
           (x.supervisor || x.incharge ? '<span class="pl-staff">' + (x.supervisor ? '<span><i>Sup</i> ' + esc(nm(x.supervisor)) + '</span>' : '') + (x.incharge ? '<span><i>Inc</i> ' + esc(nm(x.incharge)) + '</span>' : '') + '</span>' : '') +
           (lock ? '<em class="tag warn">' + (st === 'Submitted' ? 'In review' : st === 'Sent' ? 'In sheet' : esc(st)) + '</em>'
                 : '<button type="button" class="pl-edit" data-acts="' + esc(x.dept) + '" aria-label="Update ' + esc(S.shortLine(x.dept)) + '">' + icon('edit') + '</button>') + '</div>' +
