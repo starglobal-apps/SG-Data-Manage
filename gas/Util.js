@@ -141,7 +141,9 @@ function withLock_(fn) {
   lock.waitLock(30000);
   if (!LOCK_DEPTH_) DAILY_MEM_ = {};
   LOCK_DEPTH_++;
-  try { return fn(); } finally { LOCK_DEPTH_--; if (!LOCK_DEPTH_) DAILY_MEM_ = {}; lock.releaseLock(); }
+  // writes are flushed before the lock goes: Apps Script holds setValue() back until later, so the next request could
+  // still read the old value (SL033 OT output sent twice, 26 Nov 2026: status 'Sent' not yet written, auto-send sent it again)
+  try { return fn(); } finally { LOCK_DEPTH_--; if (!LOCK_DEPTH_) { DAILY_MEM_ = {}; try { SpreadsheetApp.flush(); } catch (e) {} } lock.releaseLock(); }
 }
 
 function json_(o) {
