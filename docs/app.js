@@ -7,7 +7,7 @@
   // Cloudflare Worker in front of Apps Script (cloudflare/): m.all comes from its D1 cache. Empty = call Apps Script directly.
   var WORKER_URL = (window.SG_CONFIG && window.SG_CONFIG.WORKER_URL) || '';
   var VERSION = '2.0';
-  var BUILD = 'v119';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
+  var BUILD = 'v120';   // bump with CACHE in sw.js: the Worker / server never answer a new build with a copy made by older code
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
@@ -532,7 +532,7 @@
     push('att', (att.moveFrom ? 'Change attendance' : att.shift === 'Final' ? 'Attendance' : att.shift + ' attendance') + ' · ' + fmtDay(state.date));
     $('#att-inc-wrap').hidden = attType() === 'PACKING';
     $('#att-floor-wrap').hidden = !isMobile() || attType() === 'PACKING' || att.shift !== 'Final';
-    $('#att-floor').value = ''; $('#att-floor').classList.remove('need');
+    $('#att-floor').value = ''; $('#att-floor').disabled = false; $('#att-floor').classList.remove('need');
     $('#att-cancel').hidden = true;
     att.srn = ''; staffPick('#att-sup', ''); staffPick('#att-inc', ''); loadStaff(); loadAttendance();
   }
@@ -545,6 +545,8 @@
         att.srn = isMobile() && (d.prefill || d.fromSheet) ? '' : (d.srn || ''); loadAttSrns();
         // floor: only a saved attendance of this date shows its floor; a new entry is picked every time
         var fl = $('#att-floor'); fl.value = !d.prefill && !d.fromSheet && d.floor ? String(d.floor).replace(/^.*Stitching\s+/, '') : ''; if (fl.value && !/^(Ground|First|Second)$/.test(fl.value)) fl.value = '';
+        // auto floor (admin setting, default on): the line's fixed floor, the recorder cannot change it
+        fl.disabled = !!d.autoFloor; if (d.autoFloor) { fl.value = d.autoFloor; fl.classList.remove('need'); }
         staffPick('#att-sup', d.supervisor); staffPick('#att-inc', d.incharge);
         att.qc = d.qc_names || [];
         renderAttRows(d.rows); renderQc();
@@ -780,6 +782,7 @@
     html += '<div class="task" data-m="ctx"><div class="ic">' + icon('home') + '</div><div class="b"><div class="n">Entry / Data ki line</div><div class="s">' + esc(state.line || '—') + ' · FAC' + esc(state.factory) + '</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="endline"><div class="ic">' + icon('qc') + '</div><div class="b"><div class="n">Endline timeline me dikhao</div><div class="s">QC checker ke liye on karo</div></div><span class="v">' + (recall('show_endline') === '1' ? 'On' : 'Off') + '</span></div>';
     html += '<div class="task" data-m="hard"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Refresh sab data</div><div class="s">Sheet me haath se kuch badla / delete kiya ho to</div></div>' + icon('chev') + '</div>';
+    if (isAdmin()) { var afOn = autoFloorOn(); html += '<div class="task" data-m="autofloor"><div class="ic"' + (afOn ? ' style="background:var(--ok-soft);color:var(--ok)"' : '') + '>' + icon('att') + '</div><div class="b"><div class="n">Auto floor · ' + (afOn ? 'On' : 'Off') + '</div><div class="s">' + (afOn ? 'Attendance floor fixed by line: Line 1–2 Ground, 3–4 First, 5–6 Second' : 'Recorders select the floor themselves') + '</div></div><span class="v">' + (afOn ? 'On' : 'Off') + '</span></div>'; }
     if (isAdmin()) html += '<div class="task" data-m="import"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Import + cleanup chalao</div><div class="s">Background me: main sheet → MASTER DATA, phir Sent data app se hataye</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="refresh"><div class="ic">' + icon('refresh') + '</div><div class="b"><div class="n">Loading refresh</div><div class="s">Nayi loading sheet me aayi ho to</div></div>' + icon('chev') + '</div>';
     html += '<div class="task" data-m="masters"><div class="ic">' + icon('table') + '</div><div class="b"><div class="n">Masters reload</div><div class="s">Depts / roles badle ho to</div></div>' + icon('chev') + '</div>';
@@ -820,6 +823,7 @@
     html += '<div class="menu" style="margin-top:12px"><div class="task" data-m="logout"><div class="ic" style="background:var(--bad-soft);color:var(--bad)">' + icon('logout') + '</div><div class="b"><div class="n">Logout</div><div class="s">SG Data v' + VERSION + '</div></div></div></div>';
     $('#main-body').innerHTML = html;
   }
+  function autoFloorOn() { var h = M('APP_SETTING').filter(function (x) { return x.key === 'AUTO_FLOOR'; })[0]; return !h || String(h.value).toUpperCase() !== 'OFF'; }
   // phone "Clear cache": everything kept on the phone except the login, unsent saves (outbox / queue) and the notification
   // registration; the app files cache too; then a fresh start (the first data call asks the server for a new copy)
   function clearPhoneCache() {
@@ -856,6 +860,7 @@
     else if (m === 'hard') hardRefresh();
     else if (m === 'prefresh') phoneRefresh();
     else if (m === 'pclear') ask(tx('Phone ka cache saaf karein?', 'Clear the cache on this phone? The app reloads with fresh data. Your login and unsent saves stay.'), { ok: tx('Saaf karo', 'Clear cache') }).then(function (ok) { if (ok) clearPhoneCache(); });
+    else if (m === 'autofloor') { var on = autoFloorOn(); ask(on ? 'Turn auto floor off? Recorders will select the floor themselves.' : 'Turn auto floor on? The floor comes from the line (1–2 Ground, 3–4 First, 5–6 Second) and recorders cannot change it.', { ok: on ? 'Turn off' : 'Turn on' }).then(function (ok) { if (!ok) return; api('m.autoFloor', { on: !on }, { busy: true }).then(function () { return loadMasters(); }).then(function () { toast('Auto floor ' + (on ? 'off' : 'on'), 'ok'); tabs.main(); }).catch(function (er) { toast(er.message, 'bad'); }); }); }
     else if (m === 'notif') { if (SG.notify) { SG.notify.screen(); SG.sheet.onClose = function () { tabs.main(); }; } }
     else if (m === 'import') ask(tx('Import + cleanup background me chalayein? 1–2 minute me ho jayega.', 'Run import in the background? It takes 1–2 minutes.'), { ok: tx('Chalao', 'Run') }).then(function (ok) { if (!ok) return; toast(tx('Import chal raha hai… (lagbhag 30 sec)', 'Import running… (about 30 sec)'), '', 6000); api('admin.importNow', {}, { quiet: true }).then(function (d) { toast(d.running ? tx('Import pehle se chal raha hai — 2 min baad Refresh karo', 'Import is already running — try again in 2 min') : tx('Import ho gaya ✓', 'Import done ✓ — loading the new data'), 'ok', 8000); if (d.done && SG.pd) { SG.pd.dirty = true; SG.pd.load(true).catch(function () {}); } }).catch(function (er) { toast(er.message, 'bad', 9000); }); });
     else if (m === 'print') SG.printSrn();
@@ -879,6 +884,7 @@
   $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) tab(b.dataset.tab); });
   $('#att-dept').addEventListener('change', function () {
     att.dept = this.value; att.srn = ''; $('#att-inc-wrap').hidden = attType() === 'PACKING';
+    if (att.moveFrom) { var fl = $('#att-floor'), lm = /^FAC666-Line\s*(\d+)\b/i.exec(att.dept), af = lm && autoFloorOn() ? ({ 1: 'Ground', 2: 'Ground', 3: 'First', 4: 'First', 5: 'Second', 6: 'Second' })[+lm[1]] || '' : ''; fl.disabled = !!af; if (af) fl.value = af; }
     if (att.moveFrom) { loadAttSrns(); updateAttTotals(); toast('Save par attendance ' + shortLine(att.dept) + ' par chali jayegi', '', 4000); return; }   // phone "Change": keep what is typed, only the line changes
     loadAttendance();
   });

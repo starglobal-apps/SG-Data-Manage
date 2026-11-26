@@ -62,6 +62,9 @@ function attSave_(req, user) {
   var srn = str_(req.srn), supervisor = str_(req.supervisor), incharge = str_(req.incharge), stamp = nowStr_();
   // floor: the phone picks it every time (Ground / First / Second); stored as the sheet writes it, "FAC666-Stitching Ground"
   var floorName = str_(req.floor), floor = floorName ? (/^FAC/i.test(floorName) ? floorName : 'FAC' + factory + '-Stitching ' + floorName) : '';
+  // phone: the line's fixed floor (auto floor on) — whatever the phone sent
+  var autoF = req.phone && shift === 'Final' ? lineAutoFloorNow_(dept) : '';
+  if (autoF) floor = 'FAC' + factory + '-Stitching ' + autoF;
   var qcNames = (Array.isArray(req.qc_names) ? req.qc_names.map(str_) : csv_(req.qc_names)).filter(String).join(',');
   var cat = deptCategory_(dept);
   if (clean.length && shift === 'Final') {
@@ -222,4 +225,36 @@ function lineFloorSet_(dept, factory, value) {
     else appendRows_(CFG.TABS.MASTERS, [{ type: 'LINE_FLOOR', key: dept, value: value, factory: factory, extra: '', active: 'TRUE' }]);
   });
   invalidateMasters_();
+}
+
+// ---------- auto floor (user, 26 Nov 2026) ----------
+// The phone attendance floor comes from the line number and cannot be changed: Line 1-2 Ground, 3-4 First, 5-6 Second
+// (FAC666). The admin switches it off / on from the phone Main tab (SETTINGS APP_SETTING AUTO_FLOOR = ON / OFF; default on).
+function lineAutoFloor_(dept) {
+  var m = /^FAC666-Line\s*(\d+)\b/i.exec(str_(dept));
+  return m ? ({ 1: 'Ground', 2: 'Ground', 3: 'First', 4: 'First', 5: 'Second', 6: 'Second' })[+m[1]] || '' : '';
+}
+function autoFloorOn_() {
+  var hit = mastersRows_().filter(function(r) { return str_(r.type) === 'APP_SETTING' && str_(r.key) === 'AUTO_FLOOR'; })[0];
+  return !hit || str_(hit.value).toUpperCase() !== 'OFF';
+}
+function lineAutoFloorNow_(dept) { var f = lineAutoFloor_(dept); return f && autoFloorOn_() ? f : ''; }
+// att.get + the line's fixed floor ('' = the recorder picks it)
+function attGetAuto_(req, user) {
+  var r = attGet_(req, user);
+  if (r && r.ok) r.autoFloor = (str_(req.shift) || 'Final') === 'Final' ? lineAutoFloorNow_(str_(req.dept)) : '';
+  return r;
+}
+// { on: true / false } (admin) -> switches it (the phone reads it from masters APP_SETTING)
+function mAutoFloor_(req, user) {
+  if (!isAdmin_(user)) return fail_('PERM', 'Admin only');
+  var value = req.on ? 'ON' : 'OFF';
+  withLock_(function() {
+    var hit = readTab_(CFG.TABS.MASTERS).filter(function(r) { return str_(r.type) === 'APP_SETTING' && str_(r.key) === 'AUTO_FLOOR'; })[0];
+    if (hit) { setField_(CFG.TABS.MASTERS, hit._row, 'value', value); setField_(CFG.TABS.MASTERS, hit._row, 'active', 'TRUE'); }
+    else appendRows_(CFG.TABS.MASTERS, [{ type: 'APP_SETTING', key: 'AUTO_FLOOR', value: value, factory: '', extra: '', active: 'TRUE' }]);
+  });
+  invalidateMasters_();
+  audit_(user, 'm.autoFloor', value, '');
+  return { ok: true, on: !!req.on };
 }

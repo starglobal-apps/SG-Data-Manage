@@ -111,8 +111,10 @@ var a0 = call('rec1', 'm.all', { factory: '666', date: TODAY });
 check('m.all empty att/out, pms shows loaded SRN', a0.ok && a0.att.items.length === 0 && a0.out.groups.length === 0 && a0.pms.rows.some(r => r.srn === 'SRN0620A' && r.loading === 936), { pms: a0.pms });
 // ========== 2. attendance save (phone) ==========
 var ROWS = [{ role: 'Operator', hours: 8, count: 20 }, { role: 'Helper', hours: 8, count: 5 }, { role: 'Supervisor', hours: 8, count: 1 }];
+call('admin', 'm.autoFloor', { on: false });   // auto floor off: the recorder must pick the floor
 var noFloor = call('rec1', 'att.save', { phone: true, rid: 'r0', date: TODAY, factory: '666', dept: L1, shift: 'Final', srn: 'SRN0620A', supervisor: 'SG02-Sup', incharge: 'SG01-Inch', rows: ROWS });
 check('att.save without floor refused (phone)', !noFloor.ok && /floor/i.test(noFloor.message), noFloor);
+call('admin', 'm.autoFloor', { on: true });
 var s1 = call('rec1', 'att.save', { phone: true, rid: 'r1', date: TODAY, factory: '666', dept: L1, shift: 'Final', srn: 'SRN0620A', floor: 'Ground', supervisor: 'SG02-Sup', incharge: 'SG01-Inch', rows: ROWS });
 check('att.save ok + sheet 3 rows', s1.ok && s1.sheet === 3, s1);
 var sr = attSheetRows(L1, TODAY);
@@ -565,4 +567,17 @@ setField_(CFG.TABS.DAY_SUMMARY, r33._row, 'status', 'Approved'); invalidateDaily
 resendApproved_();
 var st33 = readTab_(CFG.TABS.DAY_SUMMARY).filter(x => x.id === r33.id)[0].status;
 check('approved output already in the sheet: auto-send does not write it again, marks it Sent', n33 === 1 && dRows33() === 1 && st33 === 'Sent', [n33, dRows33(), st33]);
+// ========== 34. auto floor: the phone attendance floor comes from the line number (admin can switch it off) ==========
+var D34 = fmtDate_(new Date(new Date(TODAY + 'T12:00:00').getTime() - 5 * 86400000));
+var fl34 = () => readTab_(CFG.TABS.ATT_DAILY).filter(r => r.date === D34 && r.dept === L3 && r.shift === 'Final').map(r => r.floor);
+var g34 = call('rec1', 'att.get', { date: D34, factory: '666', dept: L3, shift: 'Final' });
+var s34 = call('rec1', 'att.save', { phone: true, rid: 'a34', date: D34, factory: '666', dept: L3, shift: 'Final', srn: 'SRN0620A', floor: 'Ground', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 8, count: 10 }] });
+check('auto floor on: Line 3 -> First in att.get, a Ground sent by the phone is saved as First', g34.autoFloor === 'First' && s34.ok && fl34().join() === 'FAC666-Stitching First', [g34.autoFloor, s34.ok, fl34()]);
+check('auto floor: Line 1-2 Ground, 5-6 Second, other lines none', lineAutoFloor_(L1) === 'Ground' && lineAutoFloor_('FAC666-Line 6-SL038') === 'Second' && lineAutoFloor_('FAC666-Line 7-SL040') === '' && lineAutoFloor_('FAC117-Line 1-X') === '', '');
+var r34 = call('rec1', 'm.autoFloor', { on: false });
+call('admin', 'm.autoFloor', { on: false });
+var g34b = call('rec1', 'att.get', { date: D34, factory: '666', dept: L3, shift: 'Final' });
+var s34b = call('rec1', 'att.save', { phone: true, rid: 'a34b', date: D34, factory: '666', dept: L3, shift: 'Final', srn: 'SRN0620A', floor: 'Second', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 8, count: 10 }] });
+check('auto floor off (admin only): the recorder picks it', !r34.ok && !g34b.autoFloor && s34b.ok && fl34().join() === 'FAC666-Stitching Second', [r34.ok, g34b.autoFloor, fl34()]);
+call('admin', 'm.autoFloor', { on: true });
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

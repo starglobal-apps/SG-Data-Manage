@@ -53,7 +53,7 @@ function routes_() {
   return {
     'me':         function(req, user) { var nt = renewIfOld_(str_(req.token), user.user_id); return { ok: true, user: user, token: nt || undefined, exp: tokenExp_(nt || str_(req.token)) }; },
     'masters':    getMasters_,
-    'att.get':    attGet_,
+    'att.get':    attGetAuto_,
     'att.save':   attSave_,
     'att.status': attStatus_,
     'orders.active':  ordersActive_,
@@ -87,6 +87,7 @@ function routes_() {
     'm.outSave':      mOutSave_,
     'm.reviewDecide': mReviewDecide_,
     'm.setFloor':     mSetFloor_,
+    'm.autoFloor':    mAutoFloor_,
     'm.reviewEdit':   mReviewEdit_,
     'm.outDay':       mOutDay_,
     'm.outReopen':    mOutReopen_,
