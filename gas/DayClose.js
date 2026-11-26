@@ -388,6 +388,19 @@ function reviewSend_(req, user) {
       }
       catch (e) { log.push(fin.target + ': purani rows nahi hati — ' + (e && e.message || e)); }
     });
+    // stitching output already in the main sheet (same date, line, SRN, shift, manpower, hours, pieces): not written again,
+    // only marked Sent (SL033 OT 25 Nov 2026 went in twice)
+    ['STITCH_666', 'STITCH_117'].forEach(function(tk) {
+      if (!byTarget[tk]) return;
+      var have = {};
+      try { have = stitchSheetSigs_(CFG.FINAL_TARGETS[tk]); } catch (e) { return; }
+      byTarget[tk] = byTarget[tk].filter(function(x) {
+        if (!have[stitchSig_(x.rows[0])]) return true;
+        sentIds.push(str_(x.r.id)); log.push(tk + ': ' + str_(x.r.dept) + ' ' + str_(x.r.srn) + ' ' + str_(x.r.shift) + ' already in the sheet — not written again');
+        return false;
+      });
+      if (!byTarget[tk].length) delete byTarget[tk];
+    });
     Object.keys(byTarget).forEach(function(tk) {
       var T = CFG.FINAL_TARGETS[tk];
       var flat = [];
@@ -408,6 +421,24 @@ function reviewSend_(req, user) {
   var scheduled = sentIds.length ? scheduleAfterSend_() : false;
   audit_(user, 'review.send', sentIds.join(','), log.concat(['import trigger: ' + scheduled]));
   return { ok: true, sent: sentIds.length, log: log, skipped: skipped, importScheduled: scheduled };
+}
+
+// one stitching output row -> 'date|line|SRN|Final/OT|manpower|hours|pieces' (a row from finalRow_ or from the sheet)
+function stitchSig_(o) {
+  return [dateKey_(o.date), str_(o.dept), str_(o.srn).toUpperCase(), /^final$/i.test(str_(o.shift)) ? 'Final' : 'OT', num_(o.manpower), num_(o.hours), num_(o.output)].join('|');
+}
+// every stitching row of the main sheet as { sig: 1 }
+function stitchSheetSigs_(T) {
+  var col = {}; Object.keys(T.cols).forEach(function(c) { col[T.cols[c]] = +c; });
+  var maxC = Math.max(col.date, col.dept, col.srn, col.shift, col.manpower, col.hours, col.output);
+  var v = Sheets.Spreadsheets.Values.get(srcId_(T.srcKey), a1_(T.sheet, T.minRow, 1, maxC), { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' }).values || [];
+  var out = {};
+  v.forEach(function(r) {
+    var g = function(f) { return r[col[f] - 1]; };
+    if (!str_(g('dept'))) return;
+    out[stitchSig_({ date: g('date'), dept: g('dept'), srn: g('srn'), shift: g('shift'), manpower: g('manpower'), hours: g('hours'), output: g('output') })] = 1;
+  });
+  return out;
 }
 
 // Deletes the rows of one line/date from an attendance target sheet (matched on its date and dept columns).

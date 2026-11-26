@@ -349,6 +349,8 @@ check('sheet without empty rows: rows added, output written, row Sent', apFull.o
 // an Approved row left behind (send failed earlier) goes in the background (m.warm), once
 var left = readTab_(CFG.TABS.DAY_SUMMARY).filter(r => r.type === 'STITCH' && r.status === 'Sent')[0];
 setField_(CFG.TABS.DAY_SUMMARY, left._row, 'status', 'Approved'); invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+var leftSig = stitchSig_(finalRow_(left, parseJsonObj_(left.payload)).rows[0]);   // a send that failed: its row is not in the sheet
+dataSh.data = dataSh.data.filter((r, i) => i === 0 || !r || stitchSig_({ date: r[0], dept: r[2], srn: r[3], shift: r[5], manpower: r[6], hours: r[7], output: r[8] }) !== leftSig);
 var rowsBefore = dataSh.getLastRow();
 var w1 = call('rec2', 'm.warm', {}), afterW1 = dataSh.getLastRow();
 var w2 = call('rec2', 'm.warm', {}), afterW2 = dataSh.getLastRow();
@@ -556,4 +558,11 @@ var em = planExtMap_(TODAY, [L1, L2]);
 check('plan extension: "Mon (Ext)" day -> Ext for that line + SRN, a normal day none', em[L1 + '|SRN0620A'] === 1 && !em[L2 + '|SRN0620A'], em);
 var ma32 = call('admin', 'm.att', { factory: '666', date: TODAY });
 check('m.att carries the extension map', ma32.ok && ma32.ext && ma32.ext[L1 + '|SRN0620A'] === 1, ma32.ext);
+// ========== 33. output already in the main sheet is never written twice (auto-send after the status lagged) ==========
+var dRows33 = () => ssById(ATTID).getSheetByName('Data').data.slice(1).filter(r => r && str_(r[2]) === L1 && str_(r[3]) === 'SRN0621A' && dateKey_(r[0]) === D31).length;
+var n33 = dRows33(), r33 = readTab_(CFG.TABS.DAY_SUMMARY).filter(x => x.date === D31 && x.dept === L1 && x.type === 'STITCH')[0];
+setField_(CFG.TABS.DAY_SUMMARY, r33._row, 'status', 'Approved'); invalidateDaily_(CFG.TABS.DAY_SUMMARY);
+resendApproved_();
+var st33 = readTab_(CFG.TABS.DAY_SUMMARY).filter(x => x.id === r33.id)[0].status;
+check('approved output already in the sheet: auto-send does not write it again, marks it Sent', n33 === 1 && dRows33() === 1 && st33 === 'Sent', [n33, dRows33(), st33]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);
