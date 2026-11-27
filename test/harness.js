@@ -580,4 +580,11 @@ var g34b = call('rec1', 'att.get', { date: D34, factory: '666', dept: L3, shift:
 var s34b = call('rec1', 'att.save', { phone: true, rid: 'a34b', date: D34, factory: '666', dept: L3, shift: 'Final', srn: 'SRN0620A', floor: 'Second', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 8, count: 10 }] });
 check('auto floor off (admin only): the recorder picks it', !r34.ok && !g34b.autoFloor && s34b.ok && fl34().join() === 'FAC666-Stitching Second', [r34.ok, g34b.autoFloor, fl34()]);
 call('admin', 'm.autoFloor', { on: true });
+// ========== 35. output more than the loading: saved + sent for approval, the approver sees the loading alert ==========
+var D35 = fmtDate_(new Date(new Date(TODAY + 'T12:00:00').getTime() - 6 * 86400000));
+call('rec1', 'att.save', { phone: true, rid: 'a35', date: D35, factory: '666', dept: L2, shift: 'OT', srn: 'SRN0620A', supervisor: 'S', incharge: 'I', rows: [{ role: 'Operator', hours: 2, count: 10 }] });
+var o35 = call('rec1', 'm.outSave', { rid: 'o35', date: D35, factory: '666', dept: L2, shift: 'OT', slot: '21-22', srn: 'SRN0620A', qty: 999999, other: 0, floor: '', allowOver: false, reason: '' });
+var r35 = readTab_(CFG.TABS.DAY_SUMMARY).filter(x => x.date === D35 && x.dept === L2 && x.type === 'STITCH' && x.shift === 'OT')[0];
+var f35 = r35 ? parseJsonArr_(r35.flags).filter(f => f.level === 'block' && /Loading/.test(f.msg)) : [];
+check('output over the loading (phone thought it was within): saved, waiting for approval, loading alert for the approver', o35.ok && r35 && r35.status === 'Submitted' && f35.length === 1, [o35, r35 && r35.status, r35 && r35.flags]);
 console.log(RESULTS.join('\n')); console.log('\n' + RESULTS.filter(r => r.startsWith('FAIL')).length + ' FAIL / ' + RESULTS.length);

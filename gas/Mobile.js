@@ -812,8 +812,10 @@ function mOutSave_(req, user) {
     moved = old.length;
   });
   if (moved >= 0) audit_(user, 'm.outSrn', date + '|' + factory + '|' + dept + '|' + shift, { from: oldSrn, to: newSrn, rows: moved });
+  // more than the loading: always saved and sent for approval; the review row gets the block alert (Stitching > Loading),
+  // so the approver gets the loading done first (user, 27 Nov 2026: the phone's balance was old and the save was refused)
   var h = hourSave_({ lite: true, date: date, factory: factory, slot: str_(req.slot),
-                      items: [{ type: 'STITCH', dept: dept, srn: str_(req.srn), qty: num_(req.qty) - num_(req.other), floor: str_(req.floor), allowOver: !!req.allowOver, keepZero: true }] }, user);
+                      items: [{ type: 'STITCH', dept: dept, srn: str_(req.srn), qty: num_(req.qty) - num_(req.other), floor: str_(req.floor), allowOver: true, keepZero: true }] }, user);
   if (!h.ok) return h;
   var f = (h.results || []).filter(function(r) { return !r.ok; })[0];
   if (f) return fail_(f.error || 'VAL', f.message);
